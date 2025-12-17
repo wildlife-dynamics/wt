@@ -17,6 +17,8 @@ import warnings  # 🧪
 from ecoscope_workflows_core.testing import create_task_magicmock  # 🧪
 {% endif %}
 
+from wt_task import task
+
 {% for t in spec.flat_workflow -%}
 {{ t.known_task.importable_reference.statement }}
 {% for condition in t.skipif.known_tasks -%}

@@ -11,6 +11,8 @@
 # ## Imports
 
 import os
+from wt_task import task
+
 {% for t in spec.flat_workflow -%}
 {{ t.known_task.importable_reference.statement }}
 {% for condition in t.skipif.known_tasks -%}

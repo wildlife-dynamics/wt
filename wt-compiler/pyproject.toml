@@ -17,7 +17,7 @@ dependencies = [
     "pydantic>=2.0.0,<3.0.0",
     "jinja2>=3.0.0",
     "ruamel.yaml>=0.17.0",
-    "rattler>=0.8.0",
+    "py-rattler>=0.8.0",
     "datamodel-code-generator>=0.25.0",
     "pydot>=1.4.0",
     "tomli>=2.0.0; python_version < '3.11'",
@@ -47,8 +47,8 @@ where = ["src"]
 [tool.setuptools_scm]
 # Version comes from git tags matching this pattern
 tag_regex = "^wt-compiler/v(?P<version>[0-9.]+)$"
-# Root is the git repository root
-root = "../.."
+# Root is the git repository root (parent of wt/)
+root = ".."
 # Generate version file
 version_file = "src/wt_compiler/_version.py"
 

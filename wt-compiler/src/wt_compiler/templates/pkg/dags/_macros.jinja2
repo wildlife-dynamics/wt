@@ -1,5 +1,5 @@
 {% macro create_callable(t, partial, method, validate, params, set_executor) %}
-{{ t.known_task.importable_reference.function }}
+task({{ t.known_task.importable_reference.function }})
 {% if validate %}
 .validate()
 {% endif %}
@@ -10,7 +10,7 @@
 .skipif(
     conditions=[
         {% for condition in t.skipif.known_tasks %}
-        {{ condition.importable_reference.function }},
+        task({{ condition.importable_reference.function }}),
         {% endfor %}
     ],
     unpack_depth={{ t.skipif.unpack_depth }},

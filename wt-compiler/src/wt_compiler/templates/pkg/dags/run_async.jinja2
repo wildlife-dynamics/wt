@@ -17,6 +17,7 @@ import warnings  # 🧪
 from ecoscope_workflows_core.testing import create_task_magicmock  # 🧪
 {% endif %}
 
+from wt_task import task
 from ecoscope_workflows_core.graph import DependsOn, DependsOnSequence, Graph, Node
 
 {% for t in spec.flat_workflow -%}
