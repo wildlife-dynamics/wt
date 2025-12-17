@@ -490,6 +490,316 @@ wt-compiler/
 
 ---
 
+### Phase 4.1: Complete wt-compiler Implementation (INCOMPLETE)
+
+**Status**: ⚠️ **Core structure implemented, but several components need full implementation**
+
+**What's Complete** (✅):
+1. **Package Structure**: Full directory layout with src/ structure, pyproject.toml with setuptools-scm
+2. **spec.py**: Complete Spec, TaskInstance, and all related models (~700 lines)
+   - Full validation with Pydantic
+   - Variable parsing and serialization
+   - Topological ordering validation
+   - All computed fields and validators
+3. **discovery.py**: Task discovery via rattler + wt-registry CLI (~300 lines)
+   - Environment creation and management
+   - CLI subprocess calls
+   - JSON parsing and KnownTask creation
+   - Fallback to pixi/mamba/conda
+4. **artifacts.py**: Complete artifact models (~550 lines)
+   - Dags, PixiToml, PixiWorkspace, Tests, PackageDirectory
+   - WorkflowArtifacts with dump/from_disk
+   - VersionYaml with bump logic
+5. **requirements.py**: Full channel and MatchSpec handling (~260 lines)
+6. **jsonschema.py**: Complete JSON schema utilities (~370 lines)
+   - SurfacesDescriptionSchema workaround
+   - ReactJSONSchemaForm models
+   - Override application logic
+7. **util.py**: Import reference validation (~60 lines)
+8. **formatting.py**: Ruff formatting decorator (~60 lines)
+9. **_models.py**: Pydantic base classes (~110 lines)
+10. **templates/**: All Jinja2 templates copied from legacy codebase
+11. **compiler.py**: Core DagCompiler structure (~450 lines) - **PARTIAL**
+12. **__init__.py**: Public API exports
+13. **README.md**: Comprehensive documentation with architecture and usage
+
+**What's Incomplete** (⚠️):
+
+#### 1. compiler.py - Missing Full Implementations
+
+**1a. `get_params_jsonschema()` method** (CRITICAL - currently returns empty schema):
+```python
+# CURRENT: Simplified stub that returns empty schema
+# NEEDS:
+- Extract JSON schemas from discovered task metadata (via wt-registry CLI output)
+- For each TaskInstance:
+  - Get task's parameters_jsonschema from KnownTask metadata
+  - Apply omit_args to exclude dependency parameters
+  - Merge schemas into properties dict
+- Handle TaskGroup schema merging
+- Generate proper uiSchema with:
+  - ui:order for property ordering
+  - ui:widget specifications
+  - Task group annotations
+- Apply Spec.rjsf_overrides using ReactJSONSchemaFormOverrides.apply_overrides()
+- Extract and merge $defs using find_referenced_defs()
+```
+**Files to reference**:
+- Legacy `compiler.py:943-997` for full implementation
+- `jsonschema.py` for schema utilities
+
+**1b. `generate_params_model()` method** (CRITICAL - currently stub):
+```python
+# CURRENT: Returns placeholder comment
+# NEEDS:
+- Use datamodel-code-generator to create Pydantic model from JSON schema
+- Generate proper imports (from typing import ..., from pydantic import ...)
+- Generate model class with proper field types and defaults
+- Include docstrings from schema descriptions
+- Format with ruff via @ruff_formatted decorator
+```
+**Files to reference**:
+- Legacy `compiler.py:1167-1182` for datamodel-code-generator usage
+- Need to call: `dcg.generate(..., output_model_type=dcg.DataModelType.PydanticV2BaseModel)`
+
+**1c. Graph visualization** (MISSING):
+```python
+# NEEDS:
+- Create pydot.Dot graph object
+- Add nodes for each TaskInstance
+- Add edges based on task_instance_dependencies
+- Apply styling (colors, shapes, labels)
+- Set graph attributes (rankdir, etc.)
+- Export to PNG via graph.write_png()
+```
+**Files to reference**:
+- Legacy `compiler.py:1192-1250` for graph generation logic
+- Use `pydot.Node()`, `pydot.Edge()`, `pydot.Dot()`
+
+**1d. README.md generation** (MISSING):
+```python
+# NEEDS:
+- Render README.jinja2 template with:
+  - Workflow description
+  - Parameter documentation
+  - Fingerprint YAML block (with params_sha256)
+  - Usage instructions
+  - Dependency list
+- Include graph.png reference
+- Add version information
+```
+**Files to reference**:
+- Legacy `compiler.py:1252-1280` for README rendering
+- Template: `templates/README.jinja2`
+
+**1e. `get_per_taskinstance_params_notebook()` method** (MISSING):
+```python
+# CURRENT: Returns empty dict
+# NEEDS:
+- For each TaskInstance:
+  - Generate Jupyter notebook cells
+  - Include parameter input cells
+  - Include execution cells
+  - Format as jupytext-compatible string
+- Return dict mapping task_id -> notebook_content
+```
+**Files to reference**:
+- Legacy `compiler.py:1008-1014`
+- Only needed for jupytext DAG type
+
+**1f. Complete `compile()` method**:
+```python
+# CURRENT: Basic structure but missing:
+# NEEDS:
+- Generate README.md with fingerprint
+- Generate graph.png with pydot
+- Set WorkflowArtifacts.readme_md field
+- Set WorkflowArtifacts.pydot_graph field
+- Proper params.json example generation
+- Fix formdata.py template reference (should be formdata, not response)
+```
+
+#### 2. discovery.py - Enhancements
+
+**2a. Native rattler-py API** (ENHANCEMENT):
+```python
+# CURRENT: Uses subprocess fallback to pixi/mamba/conda
+# NEEDS:
+- Update when rattler-py solve/install API is stable and well-documented
+- Direct API calls instead of subprocess
+- Better error handling and progress reporting
+```
+
+**2b. Schema validation** (ENHANCEMENT):
+```python
+# CURRENT: Basic dict parsing and validation
+# NEEDS:
+- Import and use wt_contracts.registry.RegistryOutput for validation
+- Better error messages for malformed CLI output
+- Validate against RegistryEntry schema
+- Handle version compatibility
+```
+
+#### 3. Testing - Comprehensive Test Suite
+
+**3a. Unit Tests** (MISSING - critical for production):
+```
+tests/test_spec.py:
+- Test Spec parsing from YAML
+- Test TaskInstance validation
+- Test variable parsing (${{ workflow.X.return }})
+- Test topological ordering validation
+- Test duplicate ID detection
+- Test skipif conditions
+
+tests/test_discovery.py:
+- Test discover_tasks_from_requirements() with mock environment
+- Test CLI output parsing
+- Test KnownTask creation
+- Test error handling (missing CLI, bad JSON, etc.)
+- Mock subprocess.run for isolation
+
+tests/test_compiler.py:
+- Test DagCompiler.compile() end-to-end
+- Test get_params_jsonschema() with sample tasks
+- Test generate_params_model() output
+- Test DAG rendering for each type (async, sequential, jupytext)
+- Test template rendering
+
+tests/test_artifacts.py:
+- Test PixiToml serialization/deserialization
+- Test WorkflowArtifacts.dump() and from_disk()
+- Test VersionYaml.bump_from()
+- Test artifact file generation
+
+tests/test_jsonschema.py:
+- Test ReactJSONSchemaFormOverrides.apply_overrides()
+- Test find_referenced_defs()
+- Test _apply_dict_overrides()
+
+tests/test_requirements.py:
+- Test ChannelType parsing
+- Test NamelessMatchSpecType parsing
+- Test serialization/deserialization
+
+tests/test_util.py:
+- Test validate_importable_reference()
+- Test rsplit_importable_reference()
+
+tests/fixtures/:
+- Sample spec.yaml files
+- Sample wt-registry JSON output
+- Expected compilation results
+```
+
+**3b. Integration Tests** (MISSING):
+```
+tests/integration/:
+- Test full compilation pipeline with real wt-registry
+- Test discovery with actual conda environments
+- Test generated artifacts can be executed
+- Test pixi install on generated artifacts
+```
+
+#### 4. Additional Features
+
+**4a. CLI Tool** (FUTURE):
+```python
+# Add wt-compiler CLI for standalone use
+# src/wt_compiler/cli.py:
+- Command: wt-compiler compile <spec.yaml>
+- Options: --output-dir, --clobber, --no-install, etc.
+- Progress reporting
+- Error handling and helpful messages
+```
+
+**4b. Validation Tool** (FUTURE):
+```python
+# Add spec validation without compilation
+# wt-compiler validate <spec.yaml>
+- Check spec syntax
+- Validate task references exist
+- Check for circular dependencies
+- Validate variable references
+```
+
+**4c. Visualization Tool** (FUTURE):
+```python
+# Add standalone graph generation
+# wt-compiler visualize <spec.yaml> --output graph.png
+- Generate dependency graph without full compilation
+- Support different output formats (PNG, SVG, PDF)
+```
+
+#### 5. Documentation
+
+**5a. Docstrings** (MOSTLY COMPLETE):
+- ✅ All modules have module-level docstrings
+- ✅ Most functions have docstrings with examples
+- ⚠️ Some complex functions need more detailed examples
+- ⚠️ Type hints are complete but some could be more specific
+
+**5b. User Guide** (MISSING):
+```
+docs/user-guide.md:
+- Getting started tutorial
+- Spec file format reference
+- Template customization guide
+- Troubleshooting guide
+```
+
+**5c. API Reference** (MISSING):
+```
+docs/api-reference.md:
+- Auto-generated from docstrings
+- Examples for each public function
+- Type reference
+```
+
+#### 6. Known Issues and Limitations
+
+**6a. Template Compatibility**:
+- ⚠️ Templates were copied from legacy codebase
+- ⚠️ May reference legacy imports (ecoscope_workflows_core → wt_task)
+- ⚠️ Need to audit and update all template imports
+- ⚠️ Need to verify generated code actually works
+
+**6b. Error Handling**:
+- ⚠️ Many functions raise generic ValueError
+- ⚠️ Need custom exception types for better error messages
+- ⚠️ Need validation error aggregation (report all errors, not just first)
+
+**6c. Performance**:
+- ⚠️ Environment creation for discovery is slow
+- ⚠️ Could cache discovered tasks by requirements hash
+- ⚠️ Template rendering could be optimized
+
+---
+
+**Phase 4.1 Success Criteria** (when complete):
+- ✅ All `# TODO:` comments in compiler.py resolved
+- ✅ Comprehensive test suite with >90% coverage
+- ✅ All tests passing
+- ✅ Generated artifacts actually compile and run
+- ✅ Template imports updated to use wt-task instead of legacy
+- ✅ Integration tests with wt-registry pass
+- ✅ CLI tool for standalone compilation
+- ✅ User guide and API documentation
+
+**Priority Order for Completion**:
+1. **HIGH**: Fix `get_params_jsonschema()` - critical for parameter generation
+2. **HIGH**: Fix `generate_params_model()` - critical for Pydantic model generation
+3. **HIGH**: Write core unit tests (spec, discovery, basic compilation)
+4. **MEDIUM**: Add graph visualization
+5. **MEDIUM**: Add README generation
+6. **MEDIUM**: Audit and fix template imports
+7. **MEDIUM**: Write integration tests
+8. **LOW**: Add CLI tool
+9. **LOW**: Performance optimizations
+10. **LOW**: Documentation enhancements
+
+---
+
 ### Phase 5: Create wt-runner Package
 
 **Goal**: Port FastAPI application for workflow execution.
