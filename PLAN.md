@@ -380,10 +380,10 @@ wt-invokers/
 **Target Structure**:
 ```
 wt-compiler/
-├── pyproject.toml           # Deps: pydantic, jinja2, ruamel.yaml, rattler-py, datamodel-code-generator
+├── pyproject.toml           # Deps: wt-contracts, pydantic, jinja2, ruamel.yaml, rattler-py, datamodel-code-generator
 ├── src/wt_compiler/
 │   ├── __init__.py          # Export: DagCompiler, Spec, compile_workflow
-│   ├── spec.py              # Spec, TaskInstance models (from compiler.py)
+│   ├── spec.py              # Spec, TaskInstance models (STAYS in wt-compiler, not wt-contracts)
 │   ├── compiler.py          # DagCompiler class
 │   ├── discovery.py         # NEW: Task discovery via rattler + wt-registry CLI
 │   ├── artifacts.py         # Artifact generation
@@ -408,7 +408,13 @@ wt-compiler/
 
 **Key Adaptations**:
 
-1. **Use wt-contracts for deserialization**:
+1. **Spec model stays in wt-compiler** (architectural decision):
+   - `Spec` and `TaskInstance` models define workflow input format (spec.yaml)
+   - These are **not** inter-package interfaces - only wt-compiler needs them
+   - If wt-runner eventually needs to compile specs, it will depend on wt-compiler
+   - wt-contracts is reserved for interfaces **between** packages, not package inputs
+
+2. **Use wt-contracts for deserialization**:
    - Import `wt_contracts.registry.RegistryOutput` to deserialize wt-registry CLI JSON
    - Import `wt_contracts.task.TaskProtocol` to type-check generated code
    - Import `wt_contracts.cli.WorkflowCLIArgs` to generate standard CLI interface
