@@ -18,7 +18,7 @@ This plan refactors the legacy ecoscope-workflows codebase into modular, indepen
 - **Shared contracts**: wt-contracts package provides type-safe interface definitions (Pydantic models + Protocols) that all packages depend on for compatibility
 - **Decorator pattern**: Task library authors use `@register` only. Generated code wraps functions with `task(registered_func).partial(...).map(...)`
 - **Dual-purpose task**: `task` works as both decorator (legacy compat) AND wrapper function
-- **Zero Python dependencies**: wt-compiler discovers tasks by creating ephemeral rattler environments and calling wt-registry CLI (subprocess)
+- **Environment isolation**: wt-compiler does not need to be compatible with task library dependencies - it discovers tasks by creating ephemeral rattler environments and calling wt-registry CLI (subprocess)
 - **JSON serialization boundary**: wt-registry CLI outputs complete JSON with metadata + schemas (validated against wt-contracts schemas)
 - **Independence**: All packages depend only on wt-contracts (lightweight type-only dependency), plus wt-runner → wt-invokers
 - **Backward compatibility**: ecoscope-workflows updated to use wt packages internally, examples work with minor import changes
