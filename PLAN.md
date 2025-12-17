@@ -6,56 +6,170 @@ This plan refactors the legacy ecoscope-workflows codebase into modular, indepen
 
 ## Architecture Summary
 
-### New Packages (all independent)
-1. **wt-registry**: Function registration with JSON schema generation (moved from ../wt-registry)
-2. **wt-task**: Task decorator with execution features (map, partial, validation, tracing, error handling)
-3. **wt-compiler**: Workflow spec compilation to DAG artifacts (shells out to wt-registry CLI)
-4. **wt-invokers**: Abstract invoker interface + implementations (local, GCP Cloud Batch)
-5. **wt-runner**: FastAPI application for workflow execution (depends on wt-invokers only)
+### Packages
+1. **wt-contracts**: Shared interface definitions and type contracts (Pydantic models, Protocols)
+2. **wt-registry**: Function registration with JSON schema generation (moved from ../wt-registry, uses wt-contracts)
+3. **wt-task**: Task decorator with execution features (uses wt-contracts for Protocol)
+4. **wt-compiler**: Workflow spec compilation to DAG artifacts (uses wt-contracts for schemas)
+5. **wt-invokers**: Abstract invoker interface + implementations (uses wt-contracts for CLI contract)
+6. **wt-runner**: FastAPI application for workflow execution (depends on wt-invokers)
 
 ### Key Design Decisions
+- **Shared contracts**: wt-contracts package provides type-safe interface definitions (Pydantic models + Protocols) that all packages depend on for compatibility
 - **Decorator pattern**: Task library authors use `@register` only. Generated code wraps functions with `task(registered_func).partial(...).map(...)`
 - **Dual-purpose task**: `task` works as both decorator (legacy compat) AND wrapper function
 - **Zero Python dependencies**: wt-compiler discovers tasks by creating ephemeral rattler environments and calling wt-registry CLI (subprocess)
-- **JSON serialization boundary**: wt-registry CLI outputs complete JSON with metadata + schemas
-- **Independence**: All packages independent except wt-runner → wt-invokers
+- **JSON serialization boundary**: wt-registry CLI outputs complete JSON with metadata + schemas (validated against wt-contracts schemas)
+- **Independence**: All packages depend only on wt-contracts (lightweight type-only dependency), plus wt-runner → wt-invokers
 - **Backward compatibility**: ecoscope-workflows updated to use wt packages internally, examples work with minor import changes
 
 ---
 
 ## Implementation Phases
 
+### Phase 0: Create wt-contracts Package
+
+**Goal**: Create foundational package containing all shared interface definitions and type contracts.
+
+**Rationale**: Establishes type-safe contracts between packages without implementation dependencies. This enables:
+1. **Registry JSON Schema Contract**: wt-compiler deserializes wt-registry CLI output using shared Pydantic models
+2. **Task Execution Interface Contract**: wt-compiler generates code against Protocol, wt-task implements it
+3. **Generated CLI Contract**: wt-compiler generates CLIs, wt-invokers calls them with shared argument schema
+
+**Target Structure**:
+```
+wt-contracts/
+├── pyproject.toml           # Minimal deps: pydantic>=2.0.0 only
+├── src/wt_contracts/
+│   ├── __init__.py          # Export all contracts
+│   ├── registry.py          # Contract 1: Registry JSON schema
+│   ├── task.py              # Contract 2: Task execution Protocol
+│   ├── cli.py               # Contract 3: Generated CLI contract
+│   └── _version.py
+├── tests/
+│   ├── test_registry_schema.py
+│   ├── test_task_protocol.py
+│   └── test_cli_schema.py
+└── README.md
+```
+
+**Contract Definitions**:
+
+1. **Registry Contract** (`wt_contracts/registry.py`):
+   ```python
+   from pydantic import BaseModel, Field
+
+   class RegistryMetadata(BaseModel):
+       """Metadata for a registered function."""
+       title: str
+       description: str
+       tags: list[str] = Field(default_factory=list)
+       deprecated: bool = False
+       deprecation_message: str | None = None
+
+   class RegistryEntry(BaseModel):
+       """Complete registry entry from CLI output."""
+       metadata: RegistryMetadata
+       module_path: str
+       function_name: str
+       import_statement: str
+       json_schema: dict  # JSON Schema for function signature
+
+   class RegistryOutput(BaseModel):
+       """Top-level schema for wt-registry CLI JSON output."""
+       entries: dict[str, RegistryEntry]  # FQN -> Entry
+       version: str = "1.0.0"
+   ```
+
+2. **Task Protocol** (`wt_contracts/task.py`):
+   ```python
+   from typing import Protocol, TypeVar, ParamSpec, Callable, Sequence, Any
+   from typing_extensions import Self
+
+   P = ParamSpec("P")
+   R = TypeVar("R")
+
+   class TaskProtocol(Protocol[P, R]):
+       """Protocol defining task execution interface."""
+
+       def partial(self, **kwargs: Any) -> Self: ...
+       def call(self, *args: P.args, **kwargs: P.kwargs) -> R: ...
+       def map(self, argname: str, argvalues: Sequence[Any], **kwargs: Any) -> Sequence[R]: ...
+       def mapvalues(self, argname: str, argvalues: Sequence[tuple[Any, Any]], **kwargs: Any) -> Sequence[tuple[Any, R]]: ...
+       def validate(self) -> Self: ...
+       def skipif(self, condition: Callable[..., bool]) -> Self: ...
+       def set_executor(self, executor: Any) -> Self: ...
+   ```
+
+3. **CLI Contract** (`wt_contracts/cli.py`):
+   ```python
+   from pydantic import BaseModel
+
+   class WorkflowCLIArgs(BaseModel):
+       """Standard CLI arguments for generated workflows."""
+       params: str  # JSON string or file path
+       params_file: str | None = None
+       output_dir: str | None = None
+       trace_file: str | None = None
+       log_level: str = "INFO"
+
+   class WorkflowCLIEnv(BaseModel):
+       """Standard environment variables for workflows."""
+       WORKFLOW_RUN_ID: str | None = None
+       WORKFLOW_TRACE_ENABLED: str = "false"
+       WORKFLOW_OUTPUT_DIR: str | None = None
+   ```
+
+**Testing Strategy**:
+- Schema validation tests (round-trip serialization)
+- Protocol structural typing tests
+- Version compatibility tests
+- Example usage in docstrings
+
+**Success Criteria**:
+- Package builds and installs with minimal dependencies (pydantic only)
+- All schemas validate correctly
+- Protocols type-check correctly with mypy
+- Comprehensive documentation with examples
+- >90% test coverage
+
+---
+
 ### Phase 1: Move and Enhance wt-registry
 
-**Goal**: Move wt-registry into wt/ directory and ensure CLI outputs complete JSON with all metadata and schemas needed by compiler.
+**Goal**: Move wt-registry into wt/ directory and refactor to use wt-contracts schemas for CLI output.
 
 **Tasks**:
 1. Move `../wt-registry/` into `wt/wt-registry/`
 2. Update any references to the old location
-3. Review current CLI output format (cli.py:60-103 `serialize_entries`)
-4. Verify JSON includes all required fields:
-   - Function metadata (title, description, tags, deprecated, deprecation_message)
-   - Module path and function name
-   - JSON schema (parameters + return type)
-   - Import statement
-5. Test CLI with various function signatures (optional params, complex types, generics)
-6. Document expected JSON format for compiler consumption
+3. **Add dependency on wt-contracts** to `pyproject.toml`
+4. **Refactor to use wt-contracts schemas**:
+   - Replace local `RegistryMetadata` model with `wt_contracts.registry.RegistryMetadata`
+   - Replace local `RegistryEntry` model with `wt_contracts.registry.RegistryEntry`
+   - Update CLI to output `wt_contracts.registry.RegistryOutput` format
+5. Review current CLI output format (cli.py:60-103 `serialize_entries`)
+6. Verify JSON includes all required fields matching wt-contracts schema
+7. Test CLI with various function signatures (optional params, complex types, generics)
+8. Document expected JSON format for compiler consumption
 
 **Files Modified**:
 - Move entire `../wt-registry/` directory to `wt/wt-registry/`
-- `wt/wt-registry/src/wt_registry/cli.py` (potentially enhance if needed)
-- `wt/wt-registry/tests/test_cli.py` (add comprehensive tests)
+- `wt/wt-registry/pyproject.toml` (add wt-contracts dependency)
+- `wt/wt-registry/src/wt_registry/models.py` (use wt-contracts models)
+- `wt/wt-registry/src/wt_registry/cli.py` (output wt-contracts format)
+- `wt/wt-registry/tests/test_cli.py` (validate against wt-contracts schemas)
 
 **Success Criteria**:
-- CLI outputs valid JSON with all metadata
+- CLI outputs valid JSON matching `wt_contracts.registry.RegistryOutput` schema
 - JSON includes parameter + return type schemas
 - Works with complex type annotations
+- Validates against wt-contracts Pydantic models
 
 ---
 
 ### Phase 2: Create wt-task Package
 
-**Goal**: Port task decorator and execution features from legacy decorators.py into standalone wt-task package.
+**Goal**: Port task decorator and execution features from legacy decorators.py into standalone wt-task package, implementing wt-contracts TaskProtocol.
 
 **Source Files** (from ecoscope-workflows-core):
 - `ecoscope_workflows_core/decorators.py` (642 lines) → Main decorator logic
@@ -101,7 +215,12 @@ wt-task/
 
 **Key Adaptations**:
 
-1. **Dual-purpose `task` function**:
+1. **Implement TaskProtocol from wt-contracts**:
+   - `SyncTask` and `AsyncTask` must implement `wt_contracts.task.TaskProtocol`
+   - Ensures type-safe contract with wt-compiler generated code
+   - mypy validates Protocol implementation
+
+2. **Dual-purpose `task` function**:
    ```python
    @overload
    def task(func: Callable[P, R]) -> SyncTask[P, R]: ...  # Decorator usage
@@ -132,9 +251,9 @@ wt-task/
        ...
    ```
 
-2. **Remove registry dependencies**: No imports from wt-registry or legacy registry module
+3. **Remove registry dependencies**: No imports from wt-registry or legacy registry module (only wt-contracts dependency)
 
-3. **Preserve execution features**:
+4. **Preserve execution features**:
    - `.partial()` → Partial function application
    - `.call()` → Direct execution
    - `.map()` → Map over iterables
@@ -145,8 +264,8 @@ wt-task/
    - `.skipif()` → Conditional skipping
    - `.set_executor()` → Custom executor
 
-4. **Dependencies**:
-   - Core: `pydantic>=2.0.0`, `typing-extensions` (for Python 3.10)
+5. **Dependencies**:
+   - Core: `wt-contracts>=0.1.0`, `pydantic>=2.0.0`, `typing-extensions` (for Python 3.10)
    - Optional: `opentelemetry-api` (for tracing), `lithops` (for distributed execution)
 
 **Testing Strategy**:
@@ -166,7 +285,7 @@ wt-task/
 
 ### Phase 3: Create wt-invokers Package
 
-**Goal**: Port invoker abstractions and implementations into standalone wt-invokers package.
+**Goal**: Port invoker abstractions and implementations into standalone wt-invokers package, using wt-contracts for CLI calling convention.
 
 **Source Files** (from ecoscope-workflows-runner):
 - `ecoscope_workflows_runner/invokers/abstract.py` → AbstractInvoker base class
@@ -192,21 +311,26 @@ wt-invokers/
 
 **Key Adaptations**:
 
-1. **Make GCP dependencies optional**:
+1. **Use wt-contracts for CLI contract**:
+   - Import `wt_contracts.cli.WorkflowCLIArgs` for subprocess argument construction
+   - Import `wt_contracts.cli.WorkflowCLIEnv` for environment variable setup
+   - Ensures invokers call generated CLIs with correct interface
+
+2. **Make GCP dependencies optional**:
    ```toml
    [project]
-   dependencies = ["rattler>=0.8.0"]
+   dependencies = ["wt-contracts>=0.1.0", "rattler>=0.8.0"]
 
    [project.optional-dependencies]
    gcp = ["google-cloud-batch>=1.0.0", "google-auth>=2.0.0"]
    dev = ["pytest>=7.0.0", "pytest-cov>=4.0.0", ...]
    ```
 
-2. **Clean imports**:
+3. **Clean imports**:
    - Remove ecoscope-specific imports
    - Use rattler.MatchSpec (already used)
 
-3. **Abstract interface** (preserve as-is):
+4. **Abstract interface** (preserve as-is):
    ```python
    class AbstractInvoker(ABC):
        @abstractmethod
@@ -226,7 +350,7 @@ wt-invokers/
        def is_waitable(self) -> bool: ...
    ```
 
-4. **No dependencies on other wt packages**
+5. **Dependencies**: Only wt-contracts (no other wt packages)
 
 **Testing Strategy**:
 - Unit tests for abstract interface
@@ -243,7 +367,7 @@ wt-invokers/
 
 ### Phase 4: Create wt-compiler Package
 
-**Goal**: Port compiler logic with rattler environment creation and wt-registry CLI subprocess calls.
+**Goal**: Port compiler logic with rattler environment creation and wt-registry CLI subprocess calls, using wt-contracts for schema deserialization and code generation.
 
 **Source Files** (from ecoscope-workflows-core):
 - `ecoscope_workflows_core/compiler.py` (1321 lines) → Main compiler logic
@@ -284,11 +408,19 @@ wt-compiler/
 
 **Key Adaptations**:
 
-1. **Task discovery via CLI** (NEW - `discovery.py`):
+1. **Use wt-contracts for deserialization**:
+   - Import `wt_contracts.registry.RegistryOutput` to deserialize wt-registry CLI JSON
+   - Import `wt_contracts.task.TaskProtocol` to type-check generated code
+   - Import `wt_contracts.cli.WorkflowCLIArgs` to generate standard CLI interface
+   - Ensures type-safe contract with both registry and task packages
+
+2. **Task discovery via CLI** (NEW - `discovery.py`):
    ```python
+   from wt_contracts.registry import RegistryOutput
+
    def discover_tasks_from_requirements(
        requirements: list[MatchSpec],
-   ) -> dict[str, dict[str, Any]]:
+   ) -> RegistryOutput:
        """
        Discover tasks by creating ephemeral rattler environment.
 
@@ -316,29 +448,29 @@ wt-compiler/
                check=True,
            )
 
-           # Parse JSON output
-           return json.loads(result.stdout)
+           # Parse and validate JSON output using wt-contracts schema
+           return RegistryOutput.model_validate_json(result.stdout)
    ```
 
-2. **Remove direct Python imports of tasks**:
+3. **Remove direct Python imports of tasks**:
    - Legacy: `from ecoscope_workflows_core.registry import known_tasks`
-   - New: Call `discover_tasks_from_requirements()` to get metadata
+   - New: Call `discover_tasks_from_requirements()` to get `RegistryOutput` with type-safe metadata
 
-3. **Preserve artifact generation**:
+4. **Preserve artifact generation**:
    - DAG Python code generation
    - Dockerfile
    - pixi.toml
    - Tests
    - Make outputs configurable (via Spec model), current as defaults
 
-4. **Variable reference parsing** (preserve as-is):
+5. **Variable reference parsing** (preserve as-is):
    - `${{ workflow.task_id.return }}`
    - `${{ env.VAR }}`
    - `${{ params.field }}`
 
-5. **Dependencies**:
-   - Core: `pydantic>=2.0.0`, `jinja2`, `ruamel.yaml`, `rattler>=0.8.0`, `datamodel-code-generator`
-   - NO Python import dependency on wt-registry (subprocess only)
+6. **Dependencies**:
+   - Core: `wt-contracts>=0.1.0`, `pydantic>=2.0.0`, `jinja2`, `ruamel.yaml`, `rattler>=0.8.0`, `datamodel-code-generator`
+   - NO Python import dependency on wt-registry or wt-task (only wt-contracts for types)
 
 **Testing Strategy**:
 - Unit tests for spec parsing
@@ -531,17 +663,26 @@ wt-runner/
 
 Execute phases **sequentially** in order:
 
-1. **Phase 1** (wt-registry enhancement) → Required by Phase 4
-2. **Phase 2** (wt-task) → Independent, can start early
-3. **Phase 3** (wt-invokers) → Independent
-4. **Phase 4** (wt-compiler) → Depends on Phase 1 (wt-registry CLI)
-5. **Phase 5** (wt-runner) → Depends on Phase 3 (wt-invokers)
-6. **Phase 6** (ecoscope-workflows) → Depends on Phases 2, 4, 5
+0. **Phase 0** (wt-contracts) → **MUST BE FIRST** - All other packages depend on this
+1. **Phase 1** (wt-registry) → Depends on Phase 0
+2. **Phase 2** (wt-task) → Depends on Phase 0, can be parallel with Phase 3
+3. **Phase 3** (wt-invokers) → Depends on Phase 0, can be parallel with Phase 2
+4. **Phase 4** (wt-compiler) → Depends on Phases 0 and 1
+5. **Phase 5** (wt-runner) → Depends on Phases 0 and 3
+6. **Phase 6** (ecoscope-workflows) → Depends on Phases 1, 2, 4, 5
 7. **Phase 7** (task libraries) → Depends on Phase 6
 
+**Critical Path**:
+1. Phase 0 (wt-contracts) - foundational
+2. Phase 1 (wt-registry) - needed by Phase 4
+3. Phase 4 (wt-compiler) - needed by Phase 6
+4. Phase 6 (ecoscope-workflows) - needed by Phase 7
+5. Phase 7 (task libraries) - final step
+
 **Parallelization opportunities**:
-- Phases 2 & 3 can be done in parallel (both independent)
-- Phase 1 must complete before Phase 4
+- After Phase 0: Phases 1, 2, and 3 can start in parallel
+- After Phase 1: Phase 4 can start while Phases 2/3 continue
+- After Phase 3: Phase 5 can start while Phase 4 continues
 
 ---
 
@@ -555,10 +696,11 @@ Execute phases **sequentially** in order:
 - `ecoscope-workflows/src/ecoscope-workflows-runner/ecoscope_workflows_runner/app.py` (510 lines)
 
 ### Target Packages
-- `wt/wt-registry/` (moved from ../wt-registry)
-- `wt/wt-task/` (NEW)
-- `wt/wt-compiler/` (NEW)
-- `wt/wt-invokers/` (NEW)
+- `wt/wt-contracts/` (NEW - foundational type contracts)
+- `wt/wt-registry/` (moved from ../wt-registry, refactored to use wt-contracts)
+- `wt/wt-task/` (NEW - implements wt-contracts TaskProtocol)
+- `wt/wt-compiler/` (NEW - uses wt-contracts for all schemas)
+- `wt/wt-invokers/` (NEW - uses wt-contracts CLI contract)
 - `wt/wt-runner/` (NEW)
 
 ---
@@ -583,15 +725,16 @@ Each package should have:
 ## Success Criteria
 
 **Overall Project Success**:
-1. All 5 packages in wt/ directory and installable
+1. All 6 packages in wt/ directory and installable
 2. All packages have >90% test coverage
 3. Type checking passes (mypy strict)
-4. ecoscope-workflows examples work with same behavior
-5. Task libraries discoverable via wt-registry CLI
-6. Compiler generates correct artifacts using CLI discovery
-7. Runner executes workflows correctly
-8. Zero circular dependencies
-9. Clean separation of concerns (metadata vs execution)
+4. wt-contracts provides type-safe interface contracts
+5. ecoscope-workflows examples work with same behavior
+6. Task libraries discoverable via wt-registry CLI (validated against wt-contracts schemas)
+7. Compiler generates correct artifacts using CLI discovery (type-safe via wt-contracts)
+8. Runner executes workflows correctly
+9. Zero circular dependencies (only wt-contracts as common dependency)
+10. Clean separation of concerns (contracts vs metadata vs execution)
 
 **Ready for production when**:
 - All tests pass across all packages
