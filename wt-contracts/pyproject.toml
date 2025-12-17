@@ -1,0 +1,98 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wt-contracts"
+dynamic = ["version"]
+description = "Shared interface contracts for wt workflow packages"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "wt Contributors" }
+]
+keywords = ["workflow", "contracts", "interfaces", "types"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    "pydantic>=2.0.0,<3.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/wildlife-dynamics/wt"
+Repository = "https://github.com/wildlife-dynamics/wt"
+Issues = "https://github.com/wildlife-dynamics/wt/issues"
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+# Version comes from git tags matching this pattern
+tag_regex = "^wt-contracts/v(?P<version>[0-9.]+)$"
+# Root is the git repository root (parent of wt/)
+root = ".."
+# Generate version file
+version_file = "src/wt_contracts/_version.py"
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "src/wt_contracts"]
+python_files = ["test_*.py"]
+addopts = "--doctest-modules --doctest-continue-on-failure --cov=wt_contracts --cov-report=term-missing"
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+follow_imports = "normal"
+ignore_missing_imports = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = ["src/wt_contracts/_version.py"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]  # Allow unused imports in __init__.py
+"tests/**/*.py" = ["D"]   # Don't require docstrings in tests
