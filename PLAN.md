@@ -690,6 +690,405 @@ Execute phases **sequentially** in order:
 
 ---
 
+## Versioning and Development Workflow
+
+### Overview
+
+The wt repository is a monorepo containing 6 independently-versioned packages. This requires:
+1. **Independent versioning**: Each package has its own semantic version
+2. **Automated version derivation**: Versions come from git tags, not manual pyproject.toml edits
+3. **Git tag strategy**: Multiple packages in one repo need unique tag naming
+4. **Per-package development**: Isolated environments with editable wt-contracts references
+
+---
+
+### 1. Git Tag Strategy
+
+Use prefixed tags following the pattern: `<package-name>/v<semver>`
+
+**Examples**:
+```bash
+git tag wt-contracts/v0.1.0
+git tag wt-registry/v0.2.0
+git tag wt-task/v0.1.0
+git tag wt-compiler/v0.1.0
+git tag wt-invokers/v0.1.0
+git tag wt-runner/v0.1.0
+```
+
+**Rationale**:
+- Industry standard for monorepos (used by Go modules, Rust workspaces, etc.)
+- Clear namespace prevents tag collisions
+- Tooling can parse package name from tag prefix
+- Easy to see all versions: `git tag -l "wt-contracts/*"`
+
+**Tag Lifecycle**:
+```bash
+# Create annotated tag with release notes
+git tag -a wt-contracts/v0.1.0 -m "Release wt-contracts v0.1.0
+
+- Initial release with Registry, Task, and CLI contracts
+- Full Pydantic model validation
+- Protocol-based task interface"
+
+# Push tag to remote
+git push origin wt-contracts/v0.1.0
+
+# List all tags for a package
+git tag -l "wt-contracts/*"
+
+# Delete tag (if needed)
+git tag -d wt-contracts/v0.1.0
+git push origin :refs/tags/wt-contracts/v0.1.0
+```
+
+---
+
+### 2. Automated Versioning with setuptools-scm
+
+Use **setuptools-scm** for automatic version derivation from git tags.
+
+**Why setuptools-scm**:
+- Mature, battle-tested tool (used by pytest, numpy, scipy, etc.)
+- Native monorepo support via `tag_regex` and `root` parameters
+- No manual version numbers in pyproject.toml
+- Generates version files automatically
+- Works with PEP 517 build systems (including uv)
+
+**Configuration per package** (e.g., `wt-contracts/pyproject.toml`):
+
+```toml
+[build-system]
+requires = ["setuptools>=64", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wt-contracts"
+dynamic = ["version"]
+description = "Shared interface contracts for wt packages"
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.0.0,<3.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+# Version comes from git tags matching this pattern
+tag_regex = "^wt-contracts/v(?P<version>[0-9.]+)$"
+# Root is the git repository root
+root = ".."
+# Generate version file
+version_file = "src/wt_contracts/_version.py"
+```
+
+**Key Parameters**:
+- `tag_regex`: Matches tags like `wt-contracts/v0.1.0`
+- `root = ".."`: Git root is parent directory (monorepo root)
+- `version_file`: Auto-generated file with version string
+
+**How It Works**:
+1. Developer creates tag: `git tag wt-contracts/v0.1.0`
+2. During build, setuptools-scm:
+   - Runs `git describe` to find matching tags
+   - Parses tag using regex to extract version
+   - Generates `_version.py` with version string
+   - Injects version into package metadata
+3. Between releases: generates dev versions like `0.1.1.dev3+g1a2b3c4`
+
+---
+
+### 3. Per-Package Development Environments
+
+**Philosophy**: Each package gets its own isolated environment (not a unified workspace).
+
+**Why isolated environments**:
+- ✅ Most packages only depend on wt-contracts (minimal inter-dependency)
+- ✅ Developers typically work on ONE package at a time
+- ✅ Faster sync (only install what you need)
+- ✅ Realistic testing (matches end-user install experience)
+- ✅ Each package independently testable
+
+**Package dependency structure**:
+```
+wt-contracts (no wt deps)
+    ↑
+    ├── wt-registry (depends on wt-contracts only)
+    ├── wt-task (depends on wt-contracts only)
+    ├── wt-compiler (depends on wt-contracts only)
+    └── wt-invokers (depends on wt-contracts only)
+            ↑
+        wt-runner (depends on wt-invokers + wt-contracts)
+```
+
+---
+
+### 4. Development with uv and tool.uv.sources
+
+Each package references editable wt-contracts using `[tool.uv.sources]`.
+
+**Example: wt-registry/pyproject.toml**
+
+```toml
+[project]
+name = "wt-registry"
+dynamic = ["version"]
+dependencies = [
+    "wt-contracts>=0.1.0,<1.0.0",  # WHAT to install (version constraint)
+    "pydantic>=2.0.0,<3.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+]
+
+[tool.uv.sources]
+# WHERE to install from (development override)
+wt-contracts = { path = "../wt-contracts", editable = true }
+
+[tool.setuptools_scm]
+tag_regex = "^wt-registry/v(?P<version>[0-9.]+)$"
+root = ".."
+version_file = "src/wt_registry/_version.py"
+```
+
+**How [tool.uv.sources] works**:
+1. `[project.dependencies]` declares `"wt-contracts>=0.1.0"` is required
+2. `[tool.uv.sources]` overrides WHERE to get it (local path instead of PyPI)
+3. `uv` installs from `../wt-contracts` in editable mode
+4. `uv` validates local version satisfies `>=0.1.0` constraint
+5. **Published packages**: `[tool.uv.sources]` is dev-only; end users get from PyPI
+
+**Example: wt-runner/pyproject.toml (multiple wt deps)**
+
+```toml
+[project]
+name = "wt-runner"
+dependencies = [
+    "wt-invokers>=0.1.0,<1.0.0",
+    "wt-contracts>=0.1.0,<1.0.0",  # Explicit, though transitive via wt-invokers
+    "fastapi>=0.100.0",
+    "uvicorn>=0.20.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "httpx>=0.24.0",  # For FastAPI testing
+]
+
+[tool.uv.sources]
+# Reference multiple local packages
+wt-contracts = { path = "../wt-contracts", editable = true }
+wt-invokers = { path = "../wt-invokers", editable = true }
+
+[tool.setuptools_scm]
+tag_regex = "^wt-runner/v(?P<version>[0-9.]+)$"
+root = ".."
+version_file = "src/wt_runner/_version.py"
+```
+
+---
+
+### 5. Developer Workflow
+
+**Working on a single package**:
+
+```bash
+# 1. Navigate to package
+cd wt/wt-registry
+
+# 2. Create isolated environment and install dependencies
+uv sync
+
+# This installs:
+# - wt-contracts from ../wt-contracts (editable)
+# - pydantic from PyPI
+# - dev dependencies (pytest, mypy, ruff)
+
+# 3. Activate environment (optional, uv run works without activation)
+source .venv/bin/activate
+
+# 4. Run tests
+uv run pytest
+
+# 5. Type check
+uv run mypy src/
+
+# 6. Lint
+uv run ruff check .
+
+# 7. Make changes to wt-contracts
+cd ../wt-contracts
+# Edit src/wt_contracts/registry.py
+
+# 8. Changes immediately available in wt-registry (editable install)
+cd ../wt-registry
+uv run pytest  # Tests see updated wt-contracts
+```
+
+**Working on wt-contracts (no dependencies)**:
+
+```bash
+cd wt/wt-contracts
+uv sync          # Only installs dev deps (no other wt packages)
+uv run pytest
+uv run mypy src/
+```
+
+**Working on wt-runner (depends on wt-invokers)**:
+
+```bash
+cd wt/wt-runner
+uv sync          # Installs editable wt-contracts + wt-invokers
+uv run pytest
+
+# Changes to wt-invokers immediately reflected
+cd ../wt-invokers
+# Edit src/wt_invokers/local.py
+cd ../wt-runner
+uv run pytest    # Sees updated wt-invokers
+```
+
+**Cross-package testing**:
+
+```bash
+# Test wt-registry after updating wt-contracts
+cd wt/wt-contracts
+# Make breaking change to RegistryEntry
+
+cd ../wt-registry
+uv run pytest    # Will fail if incompatible
+
+cd ../wt-compiler
+uv run pytest    # Will also fail if incompatible
+```
+
+---
+
+### 6. Handling tool.uv.sources for Release
+
+**Important**: `[tool.uv.sources]` should be kept in development but won't affect published packages.
+
+**Why it's safe to keep**:
+- When users `pip install wt-registry` from PyPI, they get the built wheel/sdist
+- The built package contains resolved dependencies, not the `[tool.uv.sources]` section
+- PyPI packages reference other packages normally (e.g., `wt-contracts>=0.1.0` from PyPI)
+
+**Best practice**: Keep `[tool.uv.sources]` in the repository for developer convenience. It only affects local development, not published packages.
+
+**Optional: Comment for clarity**:
+```toml
+[tool.uv.sources]
+# Development override - uses local editable wt-contracts
+# Published packages will reference PyPI version normally
+wt-contracts = { path = "../wt-contracts", editable = true }
+```
+
+---
+
+### 7. Release Process
+
+**Per-Package Release Workflow**:
+
+```bash
+# 1. Ensure on main with clean working directory
+git checkout main
+git pull origin main
+git status  # Should be clean
+
+# 2. Run tests for the package
+cd wt/wt-contracts
+uv run pytest tests/
+uv run mypy src/
+
+# 3. Create git tag
+git tag -a wt-contracts/v0.1.0 -m "Release wt-contracts v0.1.0
+
+Features:
+- Registry JSON schema contract
+- Task execution Protocol
+- Generated CLI contract
+"
+
+# 4. Push tag (triggers version bump via setuptools-scm)
+git push origin wt-contracts/v0.1.0
+
+# 5. Build package (version auto-derived from tag)
+uv build
+
+# Verify version in dist/
+ls dist/
+# wt_contracts-0.1.0-py3-none-any.whl
+# wt_contracts-0.1.0.tar.gz
+
+# 6. Publish to PyPI
+uv publish
+
+# 7. Verify installation
+uv pip install wt-contracts==0.1.0 --index-url https://pypi.org/simple/
+python -c "import wt_contracts; print(wt_contracts.__version__)"
+```
+
+**Releasing dependent packages**:
+
+```bash
+# After publishing wt-contracts v0.1.0, publish wt-registry
+
+cd wt/wt-registry
+
+# Ensure pyproject.toml has correct wt-contracts version
+# [project]
+# dependencies = ["wt-contracts>=0.1.0,<1.0.0"]
+
+git tag -a wt-registry/v0.1.0 -m "Release wt-registry v0.1.0"
+git push origin wt-registry/v0.1.0
+
+uv build
+uv publish
+```
+
+---
+
+### 8. Version Coordination Strategy
+
+**Independent vs Coordinated Releases**:
+
+Use **independent versioning** (recommended): Each package has its own version
+- wt-contracts: 0.1.0
+- wt-registry: 0.1.0
+- wt-task: 0.1.0
+- wt-compiler: 0.2.1 (more features)
+- wt-invokers: 0.1.2 (bug fix)
+- wt-runner: 0.3.0 (breaking change)
+
+**Semantic Versioning (MAJOR.MINOR.PATCH)**:
+
+- **MAJOR** (0.x.0 → 1.0.0): Breaking changes to public API
+  - Example: Remove field from TaskProtocol
+  - Requires dependent packages to update
+- **MINOR** (0.1.0 → 0.2.0): New features, backward compatible
+  - Example: Add optional field to RegistryEntry
+  - Dependent packages can upgrade without changes
+- **PATCH** (0.1.0 → 0.1.1): Bug fixes only
+  - Example: Fix CLI parsing bug
+  - Safe to upgrade immediately
+
+---
+
 ## Critical Files Reference
 
 ### Source Files (Legacy)
