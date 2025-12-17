@@ -1,0 +1,95 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wt-registry"
+dynamic = ["version"]
+description = "Explicit function registry with JSON schema generation"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "BSD-3-Clause"}
+authors = [
+    {name = "Charles Stern", email = "charles@example.com"},
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Typing :: Typed",
+]
+dependencies = [
+    "wt-contracts>=0.1.0,<1.0.0",
+    "pydantic>=2.0.0,<3.0.0",
+]
+
+[project.scripts]
+wt-registry = "wt_registry.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+    "pre-commit>=3.0.0",
+]
+
+[tool.uv.sources]
+# Development override - uses local editable wt-contracts
+# Published packages will reference PyPI version normally
+wt-contracts = { path = "../wt-contracts", editable = true }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+# Version comes from git tags matching this pattern
+tag_regex = "^wt-registry/v(?P<version>[0-9.]+)$"
+# Root is the git repository root (parent of wt/)
+root = ".."
+# Generate version file
+version_file = "src/wt_registry/_version.py"
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "src/wt_registry"]
+python_files = ["test_*.py"]
+addopts = "--doctest-modules --doctest-continue-on-failure --cov=wt_registry --cov-report=term-missing --cov-report=xml"
+
+[tool.coverage.run]
+source = ["src/wt_registry"]
+omit = ["*/tests/*", "*/_version.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "RUF"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+# Allow long lines in doctests showing exception messages
+"src/wt_registry/exceptions.py" = ["E501"]
+"src/wt_registry/registry.py" = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+files = ["src/wt_registry"]

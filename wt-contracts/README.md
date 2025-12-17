@@ -60,9 +60,11 @@ def my_task_wrapper(func: Callable[P, R]) -> TaskProtocol[P, R]:
 ## Development
 
 ```bash
-# Install dependencies
+# Install dependencies (including dev dependencies)
 cd wt/wt-contracts
-uv sync
+
+# IMPORTANT: Use --group dev to install pytest, mypy, ruff, etc.
+uv sync --group dev
 
 # Run tests
 uv run pytest
@@ -73,6 +75,8 @@ uv run mypy src/
 # Lint
 uv run ruff check .
 ```
+
+**Note**: This project uses `[dependency-groups]` instead of `[project.optional-dependencies]`. You **must** use `--group dev` to install dev dependencies. Running `uv sync` alone will only install production dependencies (pydantic).
 
 ## Design Philosophy
 
