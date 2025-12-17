@@ -176,7 +176,6 @@ wt-contracts/
 - `ecoscope_workflows_core/executors/` → Execution backends
   - `base.py` → Abstract executor interfaces
   - `python.py` → Python executor (sync/async)
-  - `lithops.py` → Lithops executor (distributed)
 - `ecoscope_workflows_core/skip.py` → Skip sentinel and skipif logic
 - `ecoscope_workflows_core/tracing.py` → OpenTelemetry tracing
 - `ecoscope_workflows_core/exceptions.py` → Error handling
@@ -195,8 +194,7 @@ wt-task/
 │   ├── executors/
 │   │   ├── __init__.py
 │   │   ├── base.py          # Abstract executor interfaces
-│   │   ├── python.py        # PythonExecutor
-│   │   └── lithops.py       # LithopsExecutor (optional dependency)
+│   │   └── python.py        # PythonExecutor
 │   ├── skip.py              # Skip sentinel and skipif
 │   ├── tracing.py           # OpenTelemetry integration
 │   ├── exceptions.py        # Error handling decorators
@@ -266,7 +264,7 @@ wt-task/
 
 5. **Dependencies**:
    - Core: `wt-contracts>=0.1.0`, `pydantic>=2.0.0`, `typing-extensions` (for Python 3.10)
-   - Optional: `opentelemetry-api` (for tracing), `lithops` (for distributed execution)
+   - Optional: `opentelemetry-api` (for tracing)
 
 **Testing Strategy**:
 - Port existing tests from ecoscope-workflows-core/tests/
