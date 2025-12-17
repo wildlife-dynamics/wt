@@ -6,11 +6,12 @@ This plan refactors the legacy ecoscope-workflows codebase into modular, indepen
 
 ## Architecture Summary
 
-### New Packages (all independent, following wt-registry pattern)
-1. **wt-task**: Task decorator with execution features (map, partial, validation, tracing, error handling)
-2. **wt-compiler**: Workflow spec compilation to DAG artifacts (shells out to wt-registry CLI)
-3. **wt-invokers**: Abstract invoker interface + implementations (local, GCP Cloud Batch)
-4. **wt-runner**: FastAPI application for workflow execution (depends on wt-invokers only)
+### New Packages (all independent)
+1. **wt-registry**: Function registration with JSON schema generation (moved from ../wt-registry)
+2. **wt-task**: Task decorator with execution features (map, partial, validation, tracing, error handling)
+3. **wt-compiler**: Workflow spec compilation to DAG artifacts (shells out to wt-registry CLI)
+4. **wt-invokers**: Abstract invoker interface + implementations (local, GCP Cloud Batch)
+5. **wt-runner**: FastAPI application for workflow execution (depends on wt-invokers only)
 
 ### Key Design Decisions
 - **Decorator pattern**: Task library authors use `@register` only. Generated code wraps functions with `task(registered_func).partial(...).map(...)`
@@ -24,23 +25,26 @@ This plan refactors the legacy ecoscope-workflows codebase into modular, indepen
 
 ## Implementation Phases
 
-### Phase 1: Enhance wt-registry CLI Output
+### Phase 1: Move and Enhance wt-registry
 
-**Goal**: Ensure wt-registry CLI outputs complete JSON with all metadata and schemas needed by compiler.
+**Goal**: Move wt-registry into wt/ directory and ensure CLI outputs complete JSON with all metadata and schemas needed by compiler.
 
 **Tasks**:
-1. Review current CLI output format (cli.py:60-103 `serialize_entries`)
-2. Verify JSON includes all required fields:
+1. Move `../wt-registry/` into `wt/wt-registry/`
+2. Update any references to the old location
+3. Review current CLI output format (cli.py:60-103 `serialize_entries`)
+4. Verify JSON includes all required fields:
    - Function metadata (title, description, tags, deprecated, deprecation_message)
    - Module path and function name
    - JSON schema (parameters + return type)
    - Import statement
-3. Test CLI with various function signatures (optional params, complex types, generics)
-4. Document expected JSON format for compiler consumption
+5. Test CLI with various function signatures (optional params, complex types, generics)
+6. Document expected JSON format for compiler consumption
 
 **Files Modified**:
-- `wt-registry/src/wt_registry/cli.py` (potentially enhance if needed)
-- `wt-registry/tests/test_cli.py` (add comprehensive tests)
+- Move entire `../wt-registry/` directory to `wt/wt-registry/`
+- `wt/wt-registry/src/wt_registry/cli.py` (potentially enhance if needed)
+- `wt/wt-registry/tests/test_cli.py` (add comprehensive tests)
 
 **Success Criteria**:
 - CLI outputs valid JSON with all metadata
@@ -551,11 +555,11 @@ Execute phases **sequentially** in order:
 - `ecoscope-workflows/src/ecoscope-workflows-runner/ecoscope_workflows_runner/app.py` (510 lines)
 
 ### Target Packages
+- `wt/wt-registry/` (moved from ../wt-registry)
 - `wt/wt-task/` (NEW)
 - `wt/wt-compiler/` (NEW)
 - `wt/wt-invokers/` (NEW)
 - `wt/wt-runner/` (NEW)
-- `wt-registry/` (existing, enhance CLI)
 
 ---
 
@@ -579,7 +583,7 @@ Each package should have:
 ## Success Criteria
 
 **Overall Project Success**:
-1. All 4 new packages created and installable
+1. All 5 packages in wt/ directory and installable
 2. All packages have >90% test coverage
 3. Type checking passes (mypy strict)
 4. ecoscope-workflows examples work with same behavior
