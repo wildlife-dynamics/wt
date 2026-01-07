@@ -7,11 +7,17 @@ executable workflow packages with DAGs, parameter models, CLIs, and deployment c
 Main exports:
 - DagCompiler: Main compiler class
 - Spec: Workflow specification model
-- compile_workflow: Convenience function for compilation
+- compile_workflow_from_yaml: Recommended entry point with automatic task discovery
+- compile_workflow: Lower-level compilation (requires known_tasks pre-populated)
 - discover_tasks_from_requirements: Task discovery via wt-registry CLI
 """
 
-from wt_compiler.compiler import DagCompiler, Fingerprint, compile_workflow
+from wt_compiler.compiler import (
+    DagCompiler,
+    Fingerprint,
+    compile_workflow,
+    compile_workflow_from_yaml,
+)
 from wt_compiler.discovery import (
     discover_tasks_from_requirements,
     discover_tasks_from_spec_requirements,
@@ -31,6 +37,7 @@ __all__ = [
     "DagCompiler",
     "Fingerprint",
     "compile_workflow",
+    "compile_workflow_from_yaml",
     # Discovery
     "discover_tasks_from_requirements",
     "discover_tasks_from_spec_requirements",

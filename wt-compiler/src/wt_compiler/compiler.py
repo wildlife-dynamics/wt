@@ -18,6 +18,7 @@ import io
 import json
 import pathlib
 import sys
+from pathlib import Path
 from typing import Any, Literal
 
 if sys.version_info >= (3, 11):
@@ -40,6 +41,7 @@ from wt_compiler.artifacts import (
 )
 from wt_compiler.formatting import ruff_formatted
 from wt_compiler.jsonschema import ReactJSONSchemaFormConfiguration, find_referenced_defs
+from wt_compiler.discovery import populate_known_tasks
 from wt_compiler.spec import (
     DagTypes,
     KnownTaskArgName,
@@ -683,10 +685,14 @@ def compile_workflow(
     spec_relpath: str,
     **compiler_kwargs: Any,
 ) -> WorkflowArtifacts:
-    """Convenience function to compile a workflow.
+    """Compile a workflow from a validated Spec.
+
+    Note: If calling with a Spec directly, ensure the global known_tasks dict
+    is populated first via discovery. For automatic discovery, use
+    compile_workflow_from_yaml() instead.
 
     Args:
-        spec: Workflow specification
+        spec: Workflow specification (must have known_tasks already populated)
         spec_relpath: Relative path to spec file
         **compiler_kwargs: Additional arguments for DagCompiler
 
@@ -695,8 +701,104 @@ def compile_workflow(
 
     Examples:
         >>> from wt_compiler.spec import Spec
-        >>> # spec = Spec.parse_file("spec.yaml")  # doctest: +SKIP
-        >>> # artifacts = compile_workflow(spec, "workflows/my-workflow/spec.yaml")  # doctest: +SKIP
+        >>> # For manual workflow (requires known_tasks to be populated):
+        >>> # spec = Spec.model_validate(data)  # doctest: +SKIP
+        >>> # artifacts = compile_workflow(spec, "spec.yaml")  # doctest: +SKIP
+        >>>
+        >>> # Prefer using compile_workflow_from_yaml() for automatic discovery:
+        >>> # artifacts = compile_workflow_from_yaml("spec.yaml")  # doctest: +SKIP
     """
     compiler = DagCompiler(spec=spec, **compiler_kwargs)
     return compiler.compile(spec_relpath)
+
+
+def _parse_requirements_from_yaml(yaml_path: Path) -> list[SpecRequirement]:
+    """Parse just the requirements from a spec YAML without full Spec validation.
+
+    This enables task discovery before full Spec validation, since Spec validation
+    requires the global known_tasks dict to be populated.
+
+    Args:
+        yaml_path: Path to the spec.yaml file
+
+    Returns:
+        List of SpecRequirement objects
+
+    Raises:
+        FileNotFoundError: If yaml_path doesn't exist
+        ValueError: If requirements section is missing or invalid
+    """
+    with open(yaml_path) as f:
+        data = yaml.load(f)
+
+    if "requirements" not in data:
+        raise ValueError(
+            f"Spec file {yaml_path} is missing 'requirements' section. "
+            "Requirements are needed to discover tasks."
+        )
+
+    # Parse only requirements - minimal validation
+    requirements = []
+    for req_data in data["requirements"]:
+        requirements.append(SpecRequirement.model_validate(req_data))
+
+    return requirements
+
+
+def compile_workflow_from_yaml(
+    yaml_path: str | Path,
+    **compiler_kwargs: Any,
+) -> WorkflowArtifacts:
+    """Compile a workflow from a spec.yaml file with automatic task discovery.
+
+    This is the recommended entry point for compilation. It handles the complete
+    workflow:
+    1. Parse requirements from YAML (without full Spec validation)
+    2. Discover tasks via wt-registry CLI in ephemeral rattler environment
+    3. Validate full Spec (now works because known_tasks is populated)
+    4. Compile to workflow artifacts
+
+    Args:
+        yaml_path: Path to spec.yaml file
+        **compiler_kwargs: Additional arguments for DagCompiler
+
+    Returns:
+        Compiled workflow artifacts
+
+    Raises:
+        FileNotFoundError: If yaml_path doesn't exist
+        ValueError: If spec is invalid
+        subprocess.CalledProcessError: If wt-registry CLI fails
+
+    Examples:
+        >>> # Compile a workflow with automatic discovery:
+        >>> # artifacts = compile_workflow_from_yaml("workflows/my-workflow/spec.yaml")  # doctest: +SKIP
+        >>> # artifacts.dump("output/")  # doctest: +SKIP
+    """
+    from rattler import MatchSpec
+
+    yaml_path = Path(yaml_path)
+
+    # Phase 1: Parse requirements from YAML
+    requirements = _parse_requirements_from_yaml(yaml_path)
+
+    # Phase 2: Convert SpecRequirements to MatchSpecs and discover tasks
+    # Build MatchSpec strings: "{channel}::{name} {version}"
+    match_specs = []
+    for req in requirements:
+        channel_str = req.channel.name or req.channel.base_url
+        version_str = str(req.version.version) if req.version.version else ""
+        matchspec_str = f"{channel_str}::{req.name} {version_str}".strip()
+        match_specs.append(MatchSpec(matchspec_str))
+
+    # Discover tasks and populate global known_tasks
+    populate_known_tasks(match_specs)
+
+    # Phase 3: Now we can safely validate the full Spec
+    with open(yaml_path) as f:
+        data = yaml.load(f)
+    spec = Spec.model_validate(data)
+
+    # Phase 4: Compile
+    spec_relpath = str(yaml_path)
+    return compile_workflow(spec, spec_relpath, **compiler_kwargs)

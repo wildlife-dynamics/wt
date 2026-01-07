@@ -5,7 +5,6 @@ discovering tasks by creating ephemeral rattler environments and calling
 the wt-registry CLI, avoiding direct Python import dependencies on task libraries.
 """
 
-import json
 import subprocess
 import sys
 import tempfile
@@ -13,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from rattler import Channel, MatchSpec
+from wt_contracts.registry import RegistryEntry, RegistryOutput
 
 from wt_compiler.spec import KnownTask, TaskTag, known_tasks
 
@@ -70,25 +70,11 @@ def discover_tasks_from_requirements(
     with tempfile.TemporaryDirectory() as tmpdir:
         env_path = Path(tmpdir) / "env"
 
-        # NOTE: The rattler-py API for solve/install may vary
-        # This is a simplified version - actual implementation may need adjustment
-        # based on rattler-py version and API
-
-        # For now, use pixi/conda-style subprocess call as a fallback
-        # TODO: Update to use rattler-py native API when stable
-        try:
-            from rattler import solve, install  # type: ignore[attr-defined]
-
-            solved = solve(
-                specs=requirements,
-                channels=channels,
-                platforms=[platform],
-            )
-            install(solved, target_prefix=str(env_path))
-        except (ImportError, AttributeError):
-            # Fallback: use subprocess with pixi or mamba/conda
-            # This ensures the code works even if rattler-py API changes
-            _install_via_subprocess(env_path, requirements, channels, platform)
+        # NOTE: The rattler-py API for solve/install may vary between versions.
+        # Some versions have async APIs (solve/install are coroutines).
+        # For reliability, we use the subprocess fallback with pixi/mamba/conda.
+        # TODO: Update to use rattler-py native API when stable and well-documented
+        _install_via_subprocess(env_path, requirements, channels, platform)
 
         # Determine the executable path based on platform
         if sys.platform == "win32":
@@ -104,38 +90,36 @@ def discover_tasks_from_requirements(
             check=True,
         )
 
-        # Parse JSON output
-        registry_data = json.loads(result.stdout)
-
-        # Validate structure (expecting wt-contracts RegistryOutput schema)
-        if "entries" not in registry_data:
-            raise ValueError(
-                f"Invalid wt-registry output: missing 'entries' key. Got: {list(registry_data.keys())}"
-            )
+        # Parse and validate JSON output using wt-contracts schema
+        registry_output = RegistryOutput.model_validate_json(result.stdout)
 
         # Convert to KnownTask instances and populate known_tasks dict
         discovered_tasks: dict[str, dict[str, KnownTask]] = {}
 
-        for fqn, entry in registry_data["entries"].items():
-            # Parse entry structure from wt-contracts.registry.RegistryEntry
-            module_path = entry.get("module_path", "")
-            function_name = entry.get("function_name", "")
-            metadata = entry.get("metadata", {})
-            json_schema = entry.get("json_schema", {})
+        for fqn, entry in registry_output.entries.items():
+            # entry is typed as RegistryEntry from wt-contracts
+            module_path = entry.module_path
+            function_name = entry.function_name
+            metadata = entry.metadata
+            json_schema = dict(entry.json_schema)
 
             # Build importable reference
             importable_reference = f"{module_path}.{function_name}"
 
-            # Parse tags
-            tags = [TaskTag(tag) for tag in metadata.get("tags", []) if tag in [t.value for t in TaskTag]]
+            # Parse tags - filter to only known TaskTag values
+            tags = [
+                TaskTag(tag)
+                for tag in metadata.tags
+                if tag in [t.value for t in TaskTag]
+            ]
 
-            # Create KnownTask
+            # Create KnownTask from typed RegistryEntry
             known_task = KnownTask(
                 importable_reference=importable_reference,
                 tags=tags,
                 registry_ref=0,
                 json_schema=json_schema,
-                description=metadata.get("description"),
+                description=metadata.description,
             )
 
             # Add to discovered_tasks dict
