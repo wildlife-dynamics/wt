@@ -96,7 +96,7 @@ def discover_tasks_from_requirements(
         # Convert to KnownTask instances and populate known_tasks dict
         discovered_tasks: dict[str, dict[str, KnownTask]] = {}
 
-        for fqn, entry in registry_output.entries.items():
+        for _, entry in registry_output.entries.items():
             # entry is typed as RegistryEntry from wt-contracts
             module_path = entry.module_path
             function_name = entry.function_name
@@ -247,7 +247,7 @@ def discover_tasks_from_spec_requirements(
 
     Examples:
         >>> # from wt_compiler.spec import SpecRequirement  # doctest: +SKIP
-        >>> # reqs = [SpecRequirement(name="my-lib", version=">=1.0", channel="conda-forge")]  # doctest: +SKIP
+        >>> # reqs = [SpecRequirement(name="lib", version=">=1.0")]  # doctest: +SKIP
         >>> # tasks = discover_tasks_from_spec_requirements(reqs)  # doctest: +SKIP
     """
     # Convert SpecRequirements to MatchSpec

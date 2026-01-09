@@ -530,7 +530,7 @@ class SkipIf(_ForbidExtra):
     def ensure_known_tasks(self) -> "SkipIf":
         """Validate that all tasks in conditions can be resolved."""
         try:
-            self.known_tasks_list
+            _ = self.known_tasks_list
         except ValueError as e:
             raise e
         return self
@@ -601,11 +601,11 @@ class TaskInstance(_ForbidExtra):
     mapvalues: MapValuesOperation = Field(
         default_factory=MapValuesOperation,
         description="""\
-        A `mapvalues` operation to apply the task to an iterable of key-value pairs. The `argnames`
-        must be a single string, or a single-element list of strings, which correspond to the name
-        of an argument on the task function signature. The `argvalues` must be a list of tuples where
-        the first element of each tuple is the key to passthrough, and the second element is the value
-        to transform.
+        A `mapvalues` operation to apply the task to an iterable of key-value pairs.
+        The `argnames` must be a single string, or a single-element list of strings,
+        which correspond to the name of an argument on the task function signature.
+        The `argvalues` must be a list of tuples where the first element of each tuple
+        is the key to passthrough, and the second element is the value to transform.
 
         For more details, see `Task.mapvalues` in the `decorators` module.
         """,
@@ -692,7 +692,7 @@ class TaskInstance(_ForbidExtra):
     def ensure_known_task(self) -> "TaskInstance":
         """Validate that the known task can be resolved."""
         try:
-            self.known_task
+            _ = self.known_task
         except ValueError as e:
             raise e
         return self
@@ -838,7 +838,7 @@ class Spec(_ForbidExtra):
         if dupes:
             raise ValueError(
                 "All task instance `id`s must be unique in the workflow. "
-                f"Found duplicate ids: {','.join([id for id in dupes.keys()])}"
+                f"Found duplicate ids: {','.join(dupes.keys())}"
             )
         return self
 

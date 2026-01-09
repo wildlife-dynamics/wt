@@ -151,7 +151,7 @@ class CloudBatchInvoker(AbstractInvoker):
             ...     matchspec=MatchSpec("my-workflow>=1.0.0")
             ... )
             >>> # asyncio.run(invoker.install())
-            >>> # NotImplementedError: Dynamic installation of workflows is not yet supported.
+            >>> # NotImplementedError: Dynamic installation not yet supported.
         """
         raise NotImplementedError(
             "Dynamic installation of workflows is not yet supported."

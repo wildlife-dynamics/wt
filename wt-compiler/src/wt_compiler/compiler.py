@@ -192,12 +192,7 @@ class DagCompiler(BaseModel):
             Mapping of task ID to list of argument names to omit
         """
         return {
-            t.id: (
-                ["return"]
-                + [arg for arg in t.partial]
-                + [arg for arg in t.map.argnames]
-                + [arg for arg in t.mapvalues.argnames]
-            )
+            t.id: (["return"] + list(t.partial) + list(t.map.argnames) + list(t.mapvalues.argnames))
             for t in self.spec.flat_workflow
         }
 
@@ -243,7 +238,7 @@ class DagCompiler(BaseModel):
         """
         # ui:order is redundant in the case of 0 or 1 prop
         if len(group_or_instance.get("properties", {})) > 1:
-            ui_schema[name] = {"ui:order": [prop for prop in group_or_instance["properties"]]}
+            ui_schema[name] = {"ui:order": list(group_or_instance["properties"])}
 
         if group_or_instance.get("ecoscope:task_group"):
             for task_name in group_or_instance.get("properties", {}):
@@ -253,7 +248,7 @@ class DagCompiler(BaseModel):
                     # and if so we would not have inited ui_schema[name] yet
                     if not ui_schema.get(name):
                         ui_schema[name] = {}
-                    ui_schema[name][task_name] = {"ui:order": [prop for prop in task["properties"]]}
+                    ui_schema[name][task_name] = {"ui:order": list(task["properties"])}
 
     def get_params_jsonschema(self, flat: bool = True) -> ReactJSONSchemaFormConfiguration:
         """Generate JSON schema for workflow parameters.
@@ -315,7 +310,7 @@ class DagCompiler(BaseModel):
                             self._maybe_add_ui_order(uiSchema, props[t.id], t.id)
 
         # Set top-level ui:order
-        uiSchema["ui:order"] = [prop for prop in properties]
+        uiSchema["ui:order"] = list(properties)
 
         # Create base configuration
         config = ReactJSONSchemaFormConfiguration(
@@ -756,7 +751,7 @@ def compile_workflow_from_yaml(
 
     Examples:
         >>> # Compile a workflow with automatic discovery:
-        >>> # artifacts = compile_workflow_from_yaml("workflows/my-workflow/spec.yaml")  # doctest: +SKIP
+        >>> # artifacts = compile_workflow_from_yaml("spec.yaml")  # doctest: +SKIP
         >>> # artifacts.dump("output/")  # doctest: +SKIP
     """
     from rattler import MatchSpec

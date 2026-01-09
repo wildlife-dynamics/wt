@@ -135,7 +135,7 @@ class LocalSubprocessInvoker(AbstractInvoker):
             ...     matchspec=MatchSpec("my-workflow>=1.0.0")
             ... )
             >>> # asyncio.run(invoker.install())
-            >>> # NotImplementedError: Dynamic installation of workflows is not yet supported.
+            >>> # NotImplementedError: Dynamic installation not yet supported.
         """
         raise NotImplementedError(
             "Dynamic installation of workflows is not yet supported."
@@ -219,13 +219,18 @@ class LocalSubprocessInvoker(AbstractInvoker):
             config_tmpfile.flush()
 
             # Build command
+            otel_exp_arg = f" --otel-exporter {otel_exporter}" if otel_exporter else ""
+            otel_dst_arg = (
+                f" --otel-console-exporter-dst {otel_console_exporter_dst}"
+                if otel_console_exporter_dst
+                else ""
+            )
             cmd = (
                 f"{self.entrypoint} run "
                 f"--config-file {config_tmpfile.name} "
                 f"--execution-mode {execution_mode} "
                 f'{("--mock-io" if mock_io else "--no-mock-io")}'
-                f'{" --otel-exporter " + otel_exporter if otel_exporter else ""}'
-                f'{" --otel-console-exporter-dst " + otel_console_exporter_dst if otel_console_exporter_dst else ""}'
+                f"{otel_exp_arg}{otel_dst_arg}"
             ).split()
 
             # Merge environment variables

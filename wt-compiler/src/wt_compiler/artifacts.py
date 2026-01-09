@@ -50,9 +50,12 @@ class PixiWorkspace(_AllowArbitraryTypes):
 
     name: str
     # mypy throws:
-    # `error: List comprehension has incompatible type List[str | None]; expected List[Channel]  [misc]`
-    # `error: List comprehension has incompatible type List[str]; expected List[Platform]  [misc]`
-    # but pydantic parsing handles these correctly (and stumbles without the list comprehension)
+    # `error: List comprehension has incompatible type List[str | None];
+    #  expected List[Channel]  [misc]`
+    # `error: List comprehension has incompatible type List[str];
+    #  expected List[Platform]  [misc]`
+    # but pydantic parsing handles these correctly
+    # (and stumbles without the list comprehension)
     channels: list[ChannelType] = [c.name for c in CHANNELS]  # type: ignore[misc]
     platforms: list[PlatformType] = [str(p) for p in PLATFORMS]  # type: ignore[misc]
 
@@ -361,9 +364,8 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
 
     def update(self) -> None:
         """Update dependencies using pixi without installing."""
-        subprocess.run(
-            f"pixi update --no-install --manifest-path {self.release_dir.joinpath('pixi.toml')}".split()
-        )
+        manifest_path = self.release_dir.joinpath("pixi.toml")
+        subprocess.run(f"pixi update --no-install --manifest-path {manifest_path}".split())
 
     @classmethod
     def from_disk(cls, spec_relpath: str, artifacts_dir: str | Path) -> "WorkflowArtifacts":
@@ -378,7 +380,7 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
 
         Examples:
             >>> from pathlib import Path
-            >>> # artifacts = WorkflowArtifacts.from_disk("spec.yaml", "my-workflow")  # doctest: +SKIP
+            >>> # artifacts = WorkflowArtifacts.from_disk("spec.yaml", "wf")  # doctest: +SKIP
         """
         if isinstance(artifacts_dir, str):
             artifacts_dir = Path(artifacts_dir)
