@@ -1,13 +1,12 @@
 """Tests for CLI functionality."""
 
 import sys
-import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from wt_compiler.cli import _compile, main
+from wt_compiler.cli import main
 
 
 class TestMainParser:
@@ -75,9 +74,7 @@ class TestCompileCommand:
         self, capsys: pytest.CaptureFixture[str], tmp_path: Path
     ) -> None:
         """Test error when spec path is a directory."""
-        with patch.object(
-            sys, "argv", ["wt-compiler", "compile", "--spec", str(tmp_path)]
-        ):
+        with patch.object(sys, "argv", ["wt-compiler", "compile", "--spec", str(tmp_path)]):
             with pytest.raises(SystemExit) as exc_info:
                 main()
 
@@ -85,9 +82,7 @@ class TestCompileCommand:
         captured = capsys.readouterr()
         assert "Error: Spec path is not a file" in captured.err
 
-    def test_compile_success(
-        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
-    ) -> None:
+    def test_compile_success(self, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
         """Test successful compilation with mocked compile_workflow_from_yaml."""
         # Create a dummy spec file
         spec_file = tmp_path / "spec.yaml"
@@ -97,9 +92,7 @@ class TestCompileCommand:
         mock_artifacts = MagicMock()
         mock_artifacts.release_dir = tmp_path / "test-workflow"
 
-        with patch.object(
-            sys, "argv", ["wt-compiler", "compile", "--spec", str(spec_file)]
-        ):
+        with patch.object(sys, "argv", ["wt-compiler", "compile", "--spec", str(spec_file)]):
             with patch(
                 "wt_compiler.cli.compile_workflow_from_yaml", return_value=mock_artifacts
             ) as mock_compile:
@@ -111,9 +104,7 @@ class TestCompileCommand:
         captured = capsys.readouterr()
         assert "Compiled workflow to:" in captured.out
 
-    def test_compile_with_clobber(
-        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
-    ) -> None:
+    def test_compile_with_clobber(self, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
         """Test compilation with --clobber flag."""
         spec_file = tmp_path / "spec.yaml"
         spec_file.write_text("id: test-workflow\n")
@@ -124,16 +115,12 @@ class TestCompileCommand:
         with patch.object(
             sys, "argv", ["wt-compiler", "compile", "--spec", str(spec_file), "--clobber"]
         ):
-            with patch(
-                "wt_compiler.cli.compile_workflow_from_yaml", return_value=mock_artifacts
-            ):
+            with patch("wt_compiler.cli.compile_workflow_from_yaml", return_value=mock_artifacts):
                 main()
 
         mock_artifacts.dump.assert_called_once_with(clobber=True, update=False)
 
-    def test_compile_with_update(
-        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
-    ) -> None:
+    def test_compile_with_update(self, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
         """Test compilation with --update flag."""
         spec_file = tmp_path / "spec.yaml"
         spec_file.write_text("id: test-workflow\n")
@@ -146,9 +133,7 @@ class TestCompileCommand:
             "argv",
             ["wt-compiler", "compile", "--spec", str(spec_file), "--clobber", "--update"],
         ):
-            with patch(
-                "wt_compiler.cli.compile_workflow_from_yaml", return_value=mock_artifacts
-            ):
+            with patch("wt_compiler.cli.compile_workflow_from_yaml", return_value=mock_artifacts):
                 main()
 
         mock_artifacts.dump.assert_called_once_with(clobber=True, update=True)
@@ -161,16 +146,10 @@ class TestCompileCommand:
         spec_file.write_text("id: test-workflow\n")
 
         mock_artifacts = MagicMock()
-        mock_artifacts.dump.side_effect = FileExistsError(
-            "Path 'test-workflow' already exists."
-        )
+        mock_artifacts.dump.side_effect = FileExistsError("Path 'test-workflow' already exists.")
 
-        with patch.object(
-            sys, "argv", ["wt-compiler", "compile", "--spec", str(spec_file)]
-        ):
-            with patch(
-                "wt_compiler.cli.compile_workflow_from_yaml", return_value=mock_artifacts
-            ):
+        with patch.object(sys, "argv", ["wt-compiler", "compile", "--spec", str(spec_file)]):
+            with patch("wt_compiler.cli.compile_workflow_from_yaml", return_value=mock_artifacts):
                 with pytest.raises(SystemExit) as exc_info:
                     main()
 
@@ -186,9 +165,7 @@ class TestCompileCommand:
         spec_file = tmp_path / "spec.yaml"
         spec_file.write_text("id: test-workflow\n")
 
-        with patch.object(
-            sys, "argv", ["wt-compiler", "compile", "--spec", str(spec_file)]
-        ):
+        with patch.object(sys, "argv", ["wt-compiler", "compile", "--spec", str(spec_file)]):
             with patch(
                 "wt_compiler.cli.compile_workflow_from_yaml",
                 side_effect=ValueError("Invalid spec format"),
