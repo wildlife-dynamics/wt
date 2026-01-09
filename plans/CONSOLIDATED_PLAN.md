@@ -85,8 +85,8 @@ Workflow compilation requires:
 - ✅ Metadata enrichment (titles, descriptions, tags)
 
 **Remaining:**
-- ⏳ wt-compiler CLI implementation
-- ⏳ Discovery integration into compiler (PLAN_FIX_DISCOVERY.md)
+- ✅ wt-compiler CLI implementation
+- ⏳ Discovery integration into compiler (PLAN_FIX_DISCOVERY.md) - code exists, needs e2e verification
 - ⏳ Legacy module removal from ecoscope-workflows
 - ⏳ Example recompilation and testing
 - ⏳ Documentation updates
@@ -105,9 +105,9 @@ Workflow compilation requires:
 
 | Issue | Location | Status |
 |-------|----------|--------|
-| wt-compiler CLI not implemented | wt-compiler/src/wt_compiler/__main__.py | 🔴 Missing |
+| wt-compiler CLI not implemented | wt-compiler/src/wt_compiler/cli.py | ✅ Complete |
 | 15 failing tests in wt-compiler | wt-compiler/tests/ | 🟡 67% pass |
-| Discovery not integrated into compiler | wt-compiler/compiler.py | 🟡 Documented in PLAN_FIX_DISCOVERY |
+| Discovery not integrated into compiler | wt-compiler/compiler.py | 🟡 Code exists, needs e2e test |
 
 ### Technical Debt
 - 10 `# type: ignore` comments (external library typing issues)
@@ -128,16 +128,17 @@ Workflow compilation requires:
 
 ### P0: Critical Path (Unblocks Phase 6 Completion)
 
-1. **Implement wt-compiler CLI**
-   - Create `wt-compiler/src/wt_compiler/__main__.py`
-   - Command: `wt-compiler compile --spec <file> --clobber`
-   - Add entry point to pyproject.toml
-   - Files: `__main__.py` (new), `pyproject.toml`
+1. **~~Implement wt-compiler CLI~~** ✅ COMPLETE
+   - Created `wt-compiler/src/wt_compiler/cli.py`
+   - Command: `wt-compiler compile --spec <file> --clobber --update`
+   - Entry point added to pyproject.toml
+   - Files: `cli.py`, `__main__.py`, `pyproject.toml`, `tests/test_cli.py`
 
-2. **Integrate Discovery into Compiler** (PLAN_FIX_DISCOVERY.md)
-   - Update `discovery.py` to use wt-contracts `RegistryOutput`
-   - Add `compile_workflow_from_yaml()` with two-phase loading
-   - Files: `discovery.py`, `compiler.py`, `__init__.py`
+2. **Integrate Discovery into Compiler** (PLAN_FIX_DISCOVERY.md) 🟡 CODE EXISTS
+   - `discovery.py` uses wt-contracts `RegistryOutput` ✅
+   - `compile_workflow_from_yaml()` implements two-phase loading ✅
+   - End-to-end integration test needed ⏳
+   - Files: `discovery.py`, `compiler.py`
 
 ### P1: Phase 6 Completion
 
@@ -221,8 +222,8 @@ Phase 6 Completion Path:
 ## 7. Success Criteria
 
 ### Phase 6 Complete When:
-- [ ] `wt-compiler compile --spec <file>` works end-to-end
-- [ ] Discovery populates known_tasks before Spec validation
+- [x] `wt-compiler compile --spec <file>` works end-to-end
+- [ ] Discovery populates known_tasks before Spec validation (code exists, needs e2e test)
 - [ ] All legacy modules removed from ecoscope-workflows
 - [ ] All examples recompiled and tests passing
 - [ ] Generated code imports from `wt_task`, not legacy modules
@@ -240,10 +241,11 @@ Phase 6 Completion Path:
 ## 8. Key Files Reference
 
 ### wt-compiler (Primary Focus)
-- `wt/wt-compiler/src/wt_compiler/compiler.py` - Main compilation logic
-- `wt/wt-compiler/src/wt_compiler/discovery.py` - Task discovery (needs integration)
-- `wt/wt-compiler/src/wt_compiler/spec.py` - Spec validation
-- `wt/wt-compiler/src/wt_compiler/__main__.py` - CLI (to create)
+- `wt-compiler/src/wt_compiler/compiler.py` - Main compilation logic
+- `wt-compiler/src/wt_compiler/discovery.py` - Task discovery (code exists, needs e2e test)
+- `wt-compiler/src/wt_compiler/spec.py` - Spec validation
+- `wt-compiler/src/wt_compiler/cli.py` - CLI implementation (new)
+- `wt-compiler/src/wt_compiler/__main__.py` - CLI entry point (new)
 
 ### wt-contracts (Foundation)
 - `wt/wt-contracts/src/wt_contracts/registry.py` - RegistryOutput schema
