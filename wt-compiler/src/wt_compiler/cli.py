@@ -1,0 +1,87 @@
+"""Command-line interface for wt-compiler."""
+
+import argparse
+import sys
+from pathlib import Path
+
+from wt_compiler.compiler import compile_workflow_from_yaml
+
+
+def main() -> None:
+    """
+    Main CLI entry point.
+
+    Parses command-line arguments and dispatches to the appropriate subcommand.
+    Currently supports the 'compile' subcommand for compiling workflow specs.
+    """
+    parser = argparse.ArgumentParser(
+        prog="wt-compiler",
+        description="Compile workflow specifications into executable artifacts",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # compile subcommand
+    compile_parser = subparsers.add_parser(
+        "compile",
+        help="Compile a workflow spec.yaml to artifacts",
+        description="Compile a workflow specification file into executable DAG artifacts, "
+        "including Python code, Docker configuration, and pixi.toml.",
+    )
+    compile_parser.add_argument(
+        "--spec",
+        required=True,
+        type=Path,
+        metavar="FILE",
+        help="Path to the workflow spec.yaml file",
+    )
+    compile_parser.add_argument(
+        "--clobber",
+        action="store_true",
+        help="Overwrite existing output directory if it exists",
+    )
+    compile_parser.add_argument(
+        "--update",
+        action="store_true",
+        help="Carry over lockfile from existing build and bump version",
+    )
+
+    args = parser.parse_args()
+
+    if args.command == "compile":
+        _compile(args)
+
+
+def _compile(args: argparse.Namespace) -> None:
+    """
+    Execute the compile command.
+
+    Args:
+        args: Parsed command-line arguments containing spec path and flags.
+    """
+    spec_path = args.spec.resolve()
+
+    if not spec_path.exists():
+        print(f"Error: Spec file not found: {spec_path}", file=sys.stderr)
+        sys.exit(1)
+
+    if not spec_path.is_file():
+        print(f"Error: Spec path is not a file: {spec_path}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        # compile_workflow_from_yaml handles discovery automatically
+        artifacts = compile_workflow_from_yaml(str(spec_path))
+
+        # Write artifacts to disk
+        artifacts.dump(clobber=args.clobber, update=args.update)
+
+        print(f"Compiled workflow to: {artifacts.release_dir}")
+
+    except FileExistsError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        print("Use --clobber to overwrite existing directory", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
