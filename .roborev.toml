@@ -1,0 +1,9 @@
+agent = "claude-code"      # AI agent to use
+review_context_count = 5   # Recent reviews to include as context
+
+# Project-specific review guidelines
+review_guidelines = """
+Prefer composition over inheritance.
+All public APIs must have documentation comments.
+Pay special attention to security vulnerabilities.
+"""
