@@ -4,7 +4,8 @@ This module provides the `task` function which works both as a decorator and
 as a wrapper function for creating SyncTask instances.
 """
 
-from typing import Callable, ParamSpec, TypeVar, overload
+from collections.abc import Callable
+from typing import ParamSpec, TypeVar, overload
 
 from .sync_task import SyncTask
 

@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass
 from importlib.metadata import PackageNotFoundError, version
 from io import StringIO
 from pathlib import Path
-from typing import Any, Dict, Literal
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 import ruamel.yaml
@@ -30,12 +30,12 @@ from fastapi.responses import JSONResponse
 from opentelemetry import trace as otel_trace
 from pydantic import BaseModel, Field, SecretStr
 from rattler import MatchSpec
-
 from wt_invokers import (
     AbstractInvoker,
     CloudBatchInvoker,
     LocalSubprocessInvoker,
 )
+
 from wt_runner.tracing import (
     TraceContextHeaders,
     attach_context,
@@ -48,6 +48,8 @@ from wt_runner.tracing import (
 try:
     from ecoscope_eda_core.messages.commands import (
         InvokerType as EcoscopeInvokerType,
+    )
+    from ecoscope_eda_core.messages.commands import (
         RunWorkflow,
         RunWorkflowParams,
     )
@@ -170,9 +172,7 @@ async def lifespan(app: FastAPI):
                 "then OTEL_CONSOLE_EXPORTER_FILE_DST_TARGET_DIR must be set via the "
                 "env var 'ECOSCOPE_WORKFLOWS_OTEL_CONSOLE_EXPORTER_FILE_DST_TARGET_DIR'."
             )
-        otel_exporter_kws |= make_otel_console_exporter_file_dst_kws(
-            Path(file_dst_target_dir)
-        )
+        otel_exporter_kws |= make_otel_console_exporter_file_dst_kws(Path(file_dst_target_dir))
     configure_tracer(
         name=app.title,
         version=app.version,
@@ -212,9 +212,7 @@ class GCP(BaseModel):
     """Google Cloud Platform configuration."""
 
     region: str = "us-central1"
-    credentials_path: str = (
-        "placeholder"  # os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
-    )
+    credentials_path: str = "placeholder"  # os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
 
 
 class GCPCloudRun(BaseModel):
@@ -316,9 +314,7 @@ def resolve_results_url(
     if not urlparse(results_url).scheme:
         p = Path(results_url)
         if not p.is_absolute():
-            raise ValueError(
-                "Results URL must be an absolute local path or a URL with scheme."
-            )
+            raise ValueError("Results URL must be an absolute local path or a URL with scheme.")
         return p.as_uri()
     return results_url
 
@@ -340,9 +336,7 @@ async def run(
         None,
         description="Timeout for the workflow in seconds. Defaults to null; i.e., no timeout.",
     ),
-    docker_image_uri: str | None = Query(
-        None, description="Docker image URI for the workflow."
-    ),
+    docker_image_uri: str | None = Query(None, description="Docker image URI for the workflow."),
     traceparent: str | None = Header(
         None,
         description="Traceparent header; Cf. https://www.w3.org/TR/trace-context/.",
@@ -385,9 +379,7 @@ async def run(
         yaml = ruamel.yaml.YAML(typ="safe")
         extra_env = {}
         if data_connections_env_vars:
-            extra_env |= {
-                k: v.get_secret_value() for k, v in data_connections_env_vars.items()
-            }
+            extra_env |= {k: v.get_secret_value() for k, v in data_connections_env_vars.items()}
         trace_context = build_context_headers()
         extra_env |= {k.upper(): v for k, v in trace_context.items()}
         config_text_stream = StringIO()
@@ -416,9 +408,7 @@ async def run(
                 result = await get_results_json(results_url)
             else:
                 result = {"result": {}, "error": None, "trace": None}
-                return JSONResponse(
-                    content=result, status_code=status.HTTP_202_ACCEPTED
-                )
+                return JSONResponse(content=result, status_code=status.HTTP_202_ACCEPTED)
         except Exception as e:
             trace = traceback.format_exc()
             result = {"error": str(e), "trace": trace}
@@ -465,9 +455,7 @@ async def run_from_pubsub(
     except (base64.binascii.Error, json.JSONDecodeError, ValueError) as e:
         # handle invalid payload errors to avoid 500 errors, since it doesn't make sense let GCP retry those
         trace = traceback.format_exc()
-        error_msg = (
-            f"Error extracting data from PubSub message: {type(e).__name__}: {e}"
-        )
+        error_msg = f"Error extracting data from PubSub message: {type(e).__name__}: {e}"
         logging.exception(error_msg)
         return {
             "status": "error",
@@ -506,19 +494,13 @@ async def run_from_pubsub(
         try:
             await invoker.run(**invoker_params)
             if invoker.is_waitable:
-                timeout = command_payload.invoker_kwargs.get(
-                    "timeout", PUBSUB_ACK_MAX_TIMEOUT
-                )
+                timeout = command_payload.invoker_kwargs.get("timeout", PUBSUB_ACK_MAX_TIMEOUT)
                 # Maximum timeout when running from PubSub is 10 minutes.
                 # It's set to a little bit less to have time to cancel and handle the error
                 timeout = min(timeout, max(timeout, PUBSUB_ACK_MAX_TIMEOUT))
-                exit_code = await invoker.wait(
-                    timeout=timeout, error_msg=TIMEOUT_EXPIRED_ERROR_MSG
-                )
+                exit_code = await invoker.wait(timeout=timeout, error_msg=TIMEOUT_EXPIRED_ERROR_MSG)
                 if exit_code != 0:
-                    raise RuntimeError(
-                        f"Workflow invoker failed with exit code {exit_code}."
-                    )
+                    raise RuntimeError(f"Workflow invoker failed with exit code {exit_code}.")
         except Exception as e:
             trace = traceback.format_exc()
             error = {"error": f"{type(e).__name__}: {e}", "trace": trace}
@@ -555,7 +537,7 @@ async def extract_payload_from_pubsub_request(
 
 def prepare_invoker_parameters(
     command_payload: RunWorkflowParams,
-) -> tuple[Dict[str, Any], TraceContextHeaders]:
+) -> tuple[dict[str, Any], TraceContextHeaders]:
     """Prepare parameters for the invoker from the command payload.
 
     Args:
@@ -720,9 +702,7 @@ def _is_422(json_: list[dict]) -> bool:
 
 
 @app.post("/formdata-to-params", status_code=200)
-async def validate_formdata(
-    formdata: dict, invoker: AbstractInvoker = Depends(resolve_invoker)
-):
+async def validate_formdata(formdata: dict, invoker: AbstractInvoker = Depends(resolve_invoker)):
     """Convert and validate form data to workflow parameters.
 
     Args:
@@ -747,9 +727,7 @@ async def validate_formdata(
 
 
 @app.post("/params-to-formdata", status_code=200)
-async def generate_nested_params(
-    params: dict, invoker: AbstractInvoker = Depends(resolve_invoker)
-):
+async def generate_nested_params(params: dict, invoker: AbstractInvoker = Depends(resolve_invoker)):
     """Convert workflow parameters to form data format.
 
     Args:

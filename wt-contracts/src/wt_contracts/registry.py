@@ -121,7 +121,5 @@ class RegistryOutput(BaseModel):
         '1.0.0'
     """
 
-    entries: dict[str, RegistryEntry] = Field(
-        ..., description="Mapping from FQN to registry entry"
-    )
+    entries: dict[str, RegistryEntry] = Field(..., description="Mapping from FQN to registry entry")
     version: str = Field(default="1.0.0", description="Schema version")

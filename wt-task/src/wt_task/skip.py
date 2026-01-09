@@ -4,8 +4,9 @@ This module provides utilities for conditionally skipping task execution based
 on argument values. The SkipSentinel is returned when a task is skipped.
 """
 
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable
+from typing import Any
 
 from pydantic.functional_validators import BeforeValidator
 

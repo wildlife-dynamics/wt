@@ -1,8 +1,9 @@
 """JSON schema utilities for React JSON Schema Form integration."""
 
 import copy
+from collections.abc import Callable
 from inspect import signature
-from typing import Any, Callable, Literal, get_args
+from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, Field, TypeAdapter, model_serializer
 from pydantic.fields import FieldInfo
@@ -25,9 +26,7 @@ class SurfacesDescriptionSchema(GenerateJsonSchema):
             schema = schema["schema"]
         if "function" in schema and "properties" in json_schema:
             for p in json_schema["properties"].copy():
-                annotation_args = get_args(
-                    signature(schema["function"]).parameters[p].annotation
-                )
+                annotation_args = get_args(signature(schema["function"]).parameters[p].annotation)
                 if any([isinstance(arg, FieldInfo) for arg in annotation_args]):
                     field_info: FieldInfo = [
                         arg for arg in annotation_args if isinstance(arg, FieldInfo)
@@ -209,12 +208,8 @@ class ReactJSONSchemaFormFilters(BaseModel):
         """Generate the complete filter schema."""
         return {
             "type": "object",
-            "properties": {
-                opt: rjsf.property.model_dump() for opt, rjsf in self.options.items()
-            },
-            "uiSchema": {
-                opt: rjsf.uiSchema.model_dump() for opt, rjsf in self.options.items()
-            },
+            "properties": {opt: rjsf.property.model_dump() for opt, rjsf in self.options.items()},
+            "uiSchema": {opt: rjsf.uiSchema.model_dump() for opt, rjsf in self.options.items()},
         }
 
     @model_serializer
@@ -241,7 +236,9 @@ class ReactJSONSchemaFormConfiguration(BaseModel):
     additionalProperties: bool = False
 
 
-def _apply_dict_overrides(dotted_key_dict: dict[str, Any], target_dict: dict[str, Any]) -> dict[str, Any]:
+def _apply_dict_overrides(
+    dotted_key_dict: dict[str, Any], target_dict: dict[str, Any]
+) -> dict[str, Any]:
     """Replace the value of arbitrarily nested keys in a dictionary.
 
     Args:

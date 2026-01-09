@@ -11,7 +11,7 @@ from wt_registry.exceptions import SchemaGenerationError
 from wt_registry.validation import validate_function_signature
 
 # Re-export for backward compatibility
-__all__ = ["RegistryMetadata", "RegistryEntry"]
+__all__ = ["RegistryEntry", "RegistryMetadata"]
 
 
 class RegistryEntry(BaseModel):

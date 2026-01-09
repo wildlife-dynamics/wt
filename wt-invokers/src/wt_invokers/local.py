@@ -297,9 +297,7 @@ class LocalSubprocessInvoker(AbstractInvoker):
         except TimeoutExpired as e:
             raise InvocationTimeoutError(error_msg or str(e)) from e
 
-    async def check_output(
-        self, command: list[str], stdin: str | None = None
-    ) -> str:
+    async def check_output(self, command: list[str], stdin: str | None = None) -> str:
         """Get the output of a subprocess command.
 
         This is a utility method for running one-off commands in the workflow

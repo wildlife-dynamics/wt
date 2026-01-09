@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from rattler import Channel, MatchSpec
-from wt_contracts.registry import RegistryEntry, RegistryOutput
+from wt_contracts.registry import RegistryOutput
 
 from wt_compiler.spec import KnownTask, TaskTag, known_tasks
 
@@ -107,11 +107,7 @@ def discover_tasks_from_requirements(
             importable_reference = f"{module_path}.{function_name}"
 
             # Parse tags - filter to only known TaskTag values
-            tags = [
-                TaskTag(tag)
-                for tag in metadata.tags
-                if tag in [t.value for t in TaskTag]
-            ]
+            tags = [TaskTag(tag) for tag in metadata.tags if tag in [t.value for t in TaskTag]]
 
             # Create KnownTask from typed RegistryEntry
             known_task = KnownTask(
@@ -168,15 +164,19 @@ def _install_via_subprocess(
             req_args = [str(req) for req in requirements]
 
             # Create environment
-            create_cmd = [
-                cmd,
-                "create",
-                "-p",
-                str(env_path),
-                "-y",
-                "--platform",
-                platform,
-            ] + channel_args + req_args
+            create_cmd = (
+                [
+                    cmd,
+                    "create",
+                    "-p",
+                    str(env_path),
+                    "-y",
+                    "--platform",
+                    platform,
+                ]
+                + channel_args
+                + req_args
+            )
 
             subprocess.run(create_cmd, check=True, capture_output=True)
             return

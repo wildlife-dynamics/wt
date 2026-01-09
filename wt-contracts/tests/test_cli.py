@@ -39,17 +39,13 @@ class TestWorkflowCLIArgs:
 
     def test_args_with_output_dir(self) -> None:
         """Test CLI args with output directory."""
-        args = WorkflowCLIArgs(
-            params='{"key": "value"}', output_dir="/tmp/workflow-output"
-        )
+        args = WorkflowCLIArgs(params='{"key": "value"}', output_dir="/tmp/workflow-output")
 
         assert args.output_dir == "/tmp/workflow-output"
 
     def test_args_with_trace_file(self) -> None:
         """Test CLI args with trace file."""
-        args = WorkflowCLIArgs(
-            params='{"key": "value"}', trace_file="/tmp/trace.json"
-        )
+        args = WorkflowCLIArgs(params='{"key": "value"}', trace_file="/tmp/trace.json")
 
         assert args.trace_file == "/tmp/trace.json"
 
@@ -223,9 +219,7 @@ class TestWorkflowCLIEnv:
         """Test pattern for merging env with os.environ."""
         import os
 
-        env = WorkflowCLIEnv(
-            WORKFLOW_RUN_ID="run-merge-test", WORKFLOW_TRACE_ENABLED="true"
-        )
+        env = WorkflowCLIEnv(WORKFLOW_RUN_ID="run-merge-test", WORKFLOW_TRACE_ENABLED="true")
 
         # Pattern for subprocess.run(env=...)
         subprocess_env = {
@@ -251,9 +245,7 @@ class TestCLIIntegration:
         )
 
         # Environment variables
-        env = WorkflowCLIEnv(
-            WORKFLOW_RUN_ID="integration-test-123", WORKFLOW_TRACE_ENABLED="true"
-        )
+        env = WorkflowCLIEnv(WORKFLOW_RUN_ID="integration-test-123", WORKFLOW_TRACE_ENABLED="true")
 
         # Both should be independently configurable
         assert args.params == '{"input": "data.csv"}'
@@ -268,9 +260,7 @@ class TestCLIIntegration:
             log_level="INFO",
         )
 
-        env = WorkflowCLIEnv(
-            WORKFLOW_RUN_ID="subprocess-test", WORKFLOW_TRACE_ENABLED="true"
-        )
+        env = WorkflowCLIEnv(WORKFLOW_RUN_ID="subprocess-test", WORKFLOW_TRACE_ENABLED="true")
 
         # Build command line arguments (typical pattern)
         cmd_args = [

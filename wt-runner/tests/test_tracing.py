@@ -153,9 +153,7 @@ def test_attach_context_with_traceparent_and_tracestate():
             mock_ctx = MagicMock()
             mock_extract.return_value = mock_ctx
 
-            attach_context(
-                traceparent="00-test-trace-id-span-id-01", tracestate="vendor=value"
-            )
+            attach_context(traceparent="00-test-trace-id-span-id-01", tracestate="vendor=value")
 
             mock_extract.assert_called_once_with(
                 carrier={

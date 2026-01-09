@@ -1,14 +1,14 @@
 """Command-line interface for wt-registry."""
 
 import argparse
-import json
 import sys
 from types import MappingProxyType
-from typing import Any
 
 # Import shared contracts from wt-contracts
 from wt_contracts.registry import (
     RegistryEntry as ContractRegistryEntry,
+)
+from wt_contracts.registry import (
     RegistryOutput,
 )
 

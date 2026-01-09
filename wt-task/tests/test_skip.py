@@ -1,7 +1,5 @@
 """Tests for skip functionality."""
 
-import pytest
-
 from wt_task import SKIP_SENTINEL, SkipSentinel, task, unpack_listlike
 
 
@@ -153,18 +151,8 @@ def test_skipif_chaining():
     def is_negative(x: int) -> bool:
         return x < 0
 
-    result = (
-        multiply
-        .partial(factor=2)
-        .skipif([is_negative])
-        .call(x=10)
-    )
+    result = multiply.partial(factor=2).skipif([is_negative]).call(x=10)
     assert result == 20
 
-    result = (
-        multiply
-        .partial(factor=2)
-        .skipif([is_negative])
-        .call(x=-10)
-    )
+    result = multiply.partial(factor=2).skipif([is_negative]).call(x=-10)
     assert isinstance(result, SkipSentinel)

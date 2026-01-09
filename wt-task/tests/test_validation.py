@@ -157,8 +157,7 @@ def test_validate_chaining():
 
     # Need to validate first, then partial with strings
     result = (
-        add_three
-        .validate()
+        add_three.validate()
         .partial(a="1", b="2")  # type: ignore[arg-type]
         .call(c="3")  # type: ignore[arg-type]
     )

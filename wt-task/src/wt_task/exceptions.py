@@ -4,8 +4,9 @@ This module provides exception types and decorators for wrapping task errors
 with additional context like task instance IDs.
 """
 
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable
+from typing import Any
 
 
 class TaskInstanceError(Exception):

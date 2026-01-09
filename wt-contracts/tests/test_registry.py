@@ -13,9 +13,7 @@ class TestRegistryMetadata:
 
     def test_minimal_metadata(self) -> None:
         """Test creating metadata with only required fields."""
-        metadata = RegistryMetadata(
-            title="Test Function", description="A test function"
-        )
+        metadata = RegistryMetadata(title="Test Function", description="A test function")
 
         assert metadata.title == "Test Function"
         assert metadata.description == "A test function"
@@ -41,9 +39,7 @@ class TestRegistryMetadata:
 
     def test_metadata_serialization(self) -> None:
         """Test JSON serialization and deserialization."""
-        metadata = RegistryMetadata(
-            title="Test", description="Test desc", tags=["tag1", "tag2"]
-        )
+        metadata = RegistryMetadata(title="Test", description="Test desc", tags=["tag1", "tag2"])
 
         # Serialize to JSON
         json_str = metadata.model_dump_json()
@@ -101,9 +97,7 @@ class TestRegistryEntry:
         }
 
         entry = RegistryEntry(
-            metadata=RegistryMetadata(
-                title="Add Numbers", description="Add two integers"
-            ),
+            metadata=RegistryMetadata(title="Add Numbers", description="Add two integers"),
             module_path="math_utils",
             function_name="add",
             import_statement="from math_utils import add",
@@ -182,9 +176,7 @@ class TestRegistryOutput:
             json_schema={},
         )
 
-        output = RegistryOutput(
-            entries={"pkg.tasks.func1": entry1, "pkg.tasks.func2": entry2}
-        )
+        output = RegistryOutput(entries={"pkg.tasks.func1": entry1, "pkg.tasks.func2": entry2})
 
         assert len(output.entries) == 2
         assert "pkg.tasks.func1" in output.entries

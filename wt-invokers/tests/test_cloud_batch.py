@@ -39,7 +39,6 @@ def mock_gcp_modules():
         sys.modules["google.cloud.batch_v1"] = mock_batch
 
         # Force reimport with mocked modules and inject the mocked classes
-        import importlib
         import wt_invokers.cloud_batch
 
         # Inject all the mocked classes into the module namespace
@@ -231,9 +230,7 @@ async def test_run_sets_environment_variables(mock_gcp_modules) -> None:
 
     extra_env = {"CUSTOM_VAR": "custom_value"}
 
-    with patch.object(
-        invoker, "_create_container_job", new=AsyncMock()
-    ) as mock_create:
+    with patch.object(invoker, "_create_container_job", new=AsyncMock()) as mock_create:
         await invoker.run(
             workflow_run_id="test-run",
             config_text="param: value",
@@ -260,9 +257,7 @@ async def test_run_builds_correct_command(mock_gcp_modules) -> None:
     matchspec = MatchSpec("test-workflow>=1.0.0")
     invoker = CloudBatchInvoker(matchspec=matchspec)
 
-    with patch.object(
-        invoker, "_create_container_job", new=AsyncMock()
-    ) as mock_create:
+    with patch.object(invoker, "_create_container_job", new=AsyncMock()) as mock_create:
         await invoker.run(
             workflow_run_id="test-run",
             config_text="param: value",
@@ -297,9 +292,7 @@ async def test_run_generates_unique_job_name(mock_gcp_modules) -> None:
 
     job_names = []
 
-    with patch.object(
-        invoker, "_create_container_job", new=AsyncMock()
-    ) as mock_create:
+    with patch.object(invoker, "_create_container_job", new=AsyncMock()) as mock_create:
         # Run multiple times
         for i in range(3):
             await invoker.run(

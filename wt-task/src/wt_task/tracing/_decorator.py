@@ -4,8 +4,9 @@ This module provides a decorator that adds OpenTelemetry tracing spans to
 function execution.
 """
 
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 try:
     from opentelemetry import trace

@@ -1,7 +1,6 @@
 """Tests for FastAPI application endpoints."""
 
 import json
-from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -129,6 +128,7 @@ async def test_extract_payload_from_pubsub_request():
     import base64
 
     from fastapi import Request
+
     from wt_runner.app import extract_payload_from_pubsub_request
 
     # Create mock request with Pub/Sub message format

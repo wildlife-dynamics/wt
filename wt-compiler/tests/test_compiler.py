@@ -1,14 +1,13 @@
 """Tests for compiler.py - DagCompiler functionality."""
 
 import pytest
-from pathlib import Path
 
 from wt_compiler.compiler import (
     DagCompiler,
     Fingerprint,
     _remove_functionally_irrelevant_keys,
 )
-from wt_compiler.spec import Spec, KnownTask, TaskInstance, SpecRequirement
+from wt_compiler.spec import KnownTask, Spec, SpecRequirement, TaskInstance
 
 
 class TestRemoveFunctionallyIrrelevantKeys:
@@ -176,9 +175,7 @@ class TestDagCompiler:
                     "y": {"type": "string"},
                     "z": {"$ref": "#/$defs/MyType"},
                 },
-                "$defs": {
-                    "MyType": {"type": "object", "properties": {"a": {"type": "int"}}}
-                },
+                "$defs": {"MyType": {"type": "object", "properties": {"a": {"type": "int"}}}},
             },
         )
         instance = TaskInstance(
@@ -188,9 +185,7 @@ class TestDagCompiler:
             known_task=task,
         )
 
-        props, defs = DagCompiler._props_and_defs_from_task_instance(
-            instance, omit_args=["y"]
-        )
+        props, defs = DagCompiler._props_and_defs_from_task_instance(instance, omit_args=["y"])
 
         assert "my_task" in props
         assert "x" in props["my_task"]["properties"]
@@ -205,11 +200,11 @@ class TestFingerprint:
     def test_fingerprint_creation(self):
         """Test creating a fingerprint."""
         from wt_compiler.artifacts import (
-            WorkflowArtifacts,
-            PackageDirectory,
             Dags,
+            PackageDirectory,
             PixiToml,
             PixiWorkspace,
+            WorkflowArtifacts,
         )
 
         # Create minimal artifacts
@@ -266,11 +261,11 @@ class TestFingerprint:
     def test_fingerprint_to_yaml(self):
         """Test fingerprint YAML serialization."""
         from wt_compiler.artifacts import (
-            WorkflowArtifacts,
-            PackageDirectory,
             Dags,
+            PackageDirectory,
             PixiToml,
             PixiWorkspace,
+            WorkflowArtifacts,
         )
 
         spec = Spec(

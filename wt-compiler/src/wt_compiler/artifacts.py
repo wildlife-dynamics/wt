@@ -85,9 +85,7 @@ class PixiToml(_AllowArbitraryAndValidateAssignment):
     """
 
     workspace: PixiWorkspace
-    system_requirements: dict[str, str] = Field(
-        default_factory=dict, alias="system-requirements"
-    )
+    system_requirements: dict[str, str] = Field(default_factory=dict, alias="system-requirements")
     dependencies: dict[str, NamelessMatchSpecType]
     feature: dict[FeatureName, Feature] = Field(default_factory=dict)
     environments: dict[str, Environment] = Field(default_factory=dict)
@@ -138,9 +136,7 @@ class PixiToml(_AllowArbitraryAndValidateAssignment):
         """
         return cls(**tomllib.loads(text))
 
-    def add_dependency(
-        self, name: str, version: str, channel: str | None = None
-    ) -> None:
+    def add_dependency(self, name: str, version: str, channel: str | None = None) -> None:
         """Add a dependency to the `dependencies` section.
 
         Args:
@@ -157,9 +153,7 @@ class PixiToml(_AllowArbitraryAndValidateAssignment):
             >>> pixi.add_dependency("custom-pkg", ">=0.1.0", "mychannel")  # doctest: +SKIP
         """
         deps_copy = copy.deepcopy(self.model_dump()["dependencies"])
-        deps_copy[name] = {"version": version} | (
-            {"channel": channel} if channel else {}
-        )
+        deps_copy[name] = {"version": version} | ({"channel": channel} if channel else {})
         # we do not get assignment validation/parsing
         # unless we re-assign .dependencies, so do that
         self.dependencies = deps_copy
@@ -357,9 +351,7 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
         Returns:
             Path to the release directory
         """
-        return (
-            Path().cwd().joinpath(self.spec_relpath).parent.joinpath(self.release_name)
-        )
+        return Path().cwd().joinpath(self.spec_relpath).parent.joinpath(self.release_name)
 
     def install(self) -> None:
         """Install dependencies using pixi."""
@@ -374,9 +366,7 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
         )
 
     @classmethod
-    def from_disk(
-        cls, spec_relpath: str, artifacts_dir: str | Path
-    ) -> "WorkflowArtifacts":
+    def from_disk(cls, spec_relpath: str, artifacts_dir: str | Path) -> "WorkflowArtifacts":
         """Load workflow artifacts from disk.
 
         Args:
@@ -397,15 +387,11 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
         dockerfile = artifacts_dir.joinpath("Dockerfile").read_text()
         dockerignore = artifacts_dir.joinpath(".dockerignore").read_text()
         readme_md = artifacts_dir.joinpath("README.md").read_text()
-        tests = Tests(
-            **{f.name: f.read_text() for f in artifacts_dir.joinpath("tests").iterdir()}
-        )
+        tests = Tests(**{f.name: f.read_text() for f in artifacts_dir.joinpath("tests").iterdir()})
         package_name = artifacts_dir.name.replace("-", "_")
         package = PackageDirectory(
             **{
-                f.name: (
-                    f.read_text() if not f.suffix == ".json" else json.load(f.open())
-                )
+                f.name: (f.read_text() if not f.suffix == ".json" else json.load(f.open()))
                 for f in artifacts_dir.joinpath(package_name).iterdir()
                 if f.is_file()
             },
@@ -447,18 +433,14 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
             >>> # artifacts.dump(clobber=True)  # doctest: +SKIP
         """
         if not self.readme_md or not self.pydot_graph:
-            raise ValueError(
-                "README.md and graph.png must be set before dumping artifacts."
-            )
+            raise ValueError("README.md and graph.png must be set before dumping artifacts.")
 
         if self.release_dir.exists() and not clobber:
             raise FileExistsError(
                 f"Path '{self.release_dir}' already exists. Set clobber=True to overwrite."
             )
         if self.release_dir.exists() and clobber and not self.release_dir.is_dir():
-            raise FileExistsError(
-                f"Cannot clobber existing '{self.release_dir}'; not a directory."
-            )
+            raise FileExistsError(f"Cannot clobber existing '{self.release_dir}'; not a directory.")
         if self.release_dir.exists() and clobber:
             if update:
                 lockfile = self.release_dir.joinpath("pixi.lock")

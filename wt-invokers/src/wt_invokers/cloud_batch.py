@@ -222,17 +222,13 @@ class CloudBatchInvoker(AbstractInvoker):
         if not docker_image_uri:
             raise ValueError("docker_image_uri is required for Cloud Batch invoker")
         if not workflow_run_id:
-            raise ValueError(
-                "workflow_run_id cannot be blank for Cloud Batch invoker"
-            )
+            raise ValueError("workflow_run_id cannot be blank for Cloud Batch invoker")
 
         # Generate unique job name
         clean_workflow_run_id = (
             workflow_run_id.lower().strip().replace("_", "-").rstrip("-")
         )
-        unique_prefix = (
-            f"job-{uuid.uuid4().hex[:6].lower()}"  # Generate unique prefix
-        )
+        unique_prefix = f"job-{uuid.uuid4().hex[:6].lower()}"  # Generate unique prefix
         job_name_unique = f"{unique_prefix}-{clean_workflow_run_id}"[
             :61
         ]  # Max length for GCP job names
