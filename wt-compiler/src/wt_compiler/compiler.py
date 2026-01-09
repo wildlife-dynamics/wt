@@ -19,12 +19,12 @@ import json
 import pathlib
 import sys
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 if sys.version_info >= (3, 11):
-    import tomllib
+    pass
 else:
-    import tomli as tomllib
+    pass
 
 import pydot as dot  # type: ignore[import-untyped]
 import ruamel.yaml
@@ -39,9 +39,9 @@ from wt_compiler.artifacts import (
     Tests,
     WorkflowArtifacts,
 )
+from wt_compiler.discovery import populate_known_tasks
 from wt_compiler.formatting import ruff_formatted
 from wt_compiler.jsonschema import ReactJSONSchemaFormConfiguration, find_referenced_defs
-from wt_compiler.discovery import populate_known_tasks
 from wt_compiler.spec import (
     DagTypes,
     KnownTaskArgName,
@@ -57,7 +57,9 @@ yaml = ruamel.yaml.YAML(typ="safe")
 TEMPLATES = pathlib.Path(__file__).parent / "templates"
 
 
-def _remove_functionally_irrelevant_keys(data: dict[str, Any] | list[Any]) -> dict[str, Any] | list[Any] | Any:
+def _remove_functionally_irrelevant_keys(
+    data: dict[str, Any] | list[Any],
+) -> dict[str, Any] | list[Any] | Any:
     """Remove keys from JSON schema that are irrelevant to fingerprinting.
 
     This removes documentation-related keys like title, description, default, and uiSchema
@@ -190,12 +192,7 @@ class DagCompiler(BaseModel):
             Mapping of task ID to list of argument names to omit
         """
         return {
-            t.id: (
-                ["return"]
-                + [arg for arg in t.partial]
-                + [arg for arg in t.map.argnames]
-                + [arg for arg in t.mapvalues.argnames]
-            )
+            t.id: (["return"] + list(t.partial) + list(t.map.argnames) + list(t.mapvalues.argnames))
             for t in self.spec.flat_workflow
         }
 
@@ -222,9 +219,7 @@ class DagCompiler(BaseModel):
                 # bc we've omitted some args, some defs may be unused, so exclude them
                 assert isinstance(schema["$defs"], dict)
                 referenced_defs = find_referenced_defs(schema)
-                defs.update(
-                    {k: v for k, v in schema["$defs"].items() if k in referenced_defs}
-                )
+                defs.update({k: v for k, v in schema["$defs"].items() if k in referenced_defs})
                 del schema["$defs"]
         return props, defs
 
@@ -243,9 +238,7 @@ class DagCompiler(BaseModel):
         """
         # ui:order is redundant in the case of 0 or 1 prop
         if len(group_or_instance.get("properties", {})) > 1:
-            ui_schema[name] = {
-                "ui:order": [prop for prop in group_or_instance["properties"]]
-            }
+            ui_schema[name] = {"ui:order": list(group_or_instance["properties"])}
 
         if group_or_instance.get("ecoscope:task_group"):
             for task_name in group_or_instance.get("properties", {}):
@@ -255,13 +248,9 @@ class DagCompiler(BaseModel):
                     # and if so we would not have inited ui_schema[name] yet
                     if not ui_schema.get(name):
                         ui_schema[name] = {}
-                    ui_schema[name][task_name] = {
-                        "ui:order": [prop for prop in task["properties"]]
-                    }
+                    ui_schema[name][task_name] = {"ui:order": list(task["properties"])}
 
-    def get_params_jsonschema(
-        self, flat: bool = True
-    ) -> ReactJSONSchemaFormConfiguration:
+    def get_params_jsonschema(self, flat: bool = True) -> ReactJSONSchemaFormConfiguration:
         """Generate JSON schema for workflow parameters.
 
         Args:
@@ -296,9 +285,7 @@ class DagCompiler(BaseModel):
             # Hierarchical structure - preserve task groups
             for group_or_instance in self.spec.workflow:
                 match group_or_instance:
-                    case TaskGroup(
-                        title=title, description=description, tasks=task_instances
-                    ):
+                    case TaskGroup(title=title, description=description, tasks=task_instances):
                         grouped_props: dict[str, Any] = {
                             "type": "object",
                             "description": description,
@@ -307,9 +294,7 @@ class DagCompiler(BaseModel):
                         }
                         for t in task_instances:
                             omit_args = self.per_taskinstance_omit_args.get(t.id, [])
-                            props, defs = self._props_and_defs_from_task_instance(
-                                t, omit_args
-                            )
+                            props, defs = self._props_and_defs_from_task_instance(t, omit_args)
                             if props[t.id].get("properties"):
                                 grouped_props["properties"] |= props
                                 definitions |= defs
@@ -318,16 +303,14 @@ class DagCompiler(BaseModel):
                             self._maybe_add_ui_order(uiSchema, grouped_props, title)
                     case TaskInstance() as t:
                         omit_args = self.per_taskinstance_omit_args.get(t.id, [])
-                        props, defs = self._props_and_defs_from_task_instance(
-                            t, omit_args
-                        )
+                        props, defs = self._props_and_defs_from_task_instance(t, omit_args)
                         if props[t.id].get("properties"):
                             properties |= props
                             definitions |= defs
                             self._maybe_add_ui_order(uiSchema, props[t.id], t.id)
 
         # Set top-level ui:order
-        uiSchema["ui:order"] = [prop for prop in properties]
+        uiSchema["ui:order"] = list(properties)
 
         # Create base configuration
         config = ReactJSONSchemaFormConfiguration(
@@ -380,10 +363,7 @@ class DagCompiler(BaseModel):
         Returns:
             PixiToml model with all dependencies and configuration
         """
-        dependencies = {
-            req.name: req.version
-            for req in self.spec.requirements
-        }
+        dependencies = {req.name: req.version for req in self.spec.requirements}
 
         pixi_toml = PixiToml(
             workspace=PixiWorkspace(name=self.package_name),
@@ -457,9 +437,10 @@ class DagCompiler(BaseModel):
             >>> "class" in model  # doctest: +SKIP
             True
         """
+        import tempfile
+
         import datamodel_code_generator as dcg
         import datamodel_code_generator.format as dcg_format
-        import tempfile
 
         with tempfile.NamedTemporaryFile(suffix=".py", mode="w+", delete=False) as tmp:
             output = Path(tmp.name)
@@ -541,9 +522,7 @@ class DagCompiler(BaseModel):
             for arg in t.all_dependencies_dict:
                 label += f"<tr><td port='{arg}' border='1'>{arg}</td></tr>"
             # Add return port
-            label += (
-                "<tr><td port='return' border='1'><i>return</i></td></tr>" "</table>>"
-            )
+            label += "<tr><td port='return' border='1'><i>return</i></td></tr>" "</table>>"
             node = dot.Node(t.id, shape="none", label=label)
             graph.add_node(node)
 
@@ -772,7 +751,7 @@ def compile_workflow_from_yaml(
 
     Examples:
         >>> # Compile a workflow with automatic discovery:
-        >>> # artifacts = compile_workflow_from_yaml("workflows/my-workflow/spec.yaml")  # doctest: +SKIP
+        >>> # artifacts = compile_workflow_from_yaml("spec.yaml")  # doctest: +SKIP
         >>> # artifacts.dump("output/")  # doctest: +SKIP
     """
     from rattler import MatchSpec

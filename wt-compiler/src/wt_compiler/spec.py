@@ -8,7 +8,7 @@ import builtins
 import hashlib
 import keyword
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Any, Literal, TypeAlias, Union
+from typing import TYPE_CHECKING, Annotated, Any, Literal, TypeAlias
 
 from pydantic import (
     BaseModel,
@@ -244,9 +244,7 @@ class InlineValue(BaseModel):
     def serialize(self) -> dict[str, str | bool]:
         """Serialize inline value for template use."""
         return {
-            "asstr": (
-                f"'{self.value}'" if isinstance(self.value, str) else f"{self.value}"
-            ),
+            "asstr": (f"'{self.value}'" if isinstance(self.value, str) else f"{self.value}"),
             "is_inline_value": True,
         }
 
@@ -330,9 +328,7 @@ def _is_valid_spec_name(s: str) -> str:
 
 # Workflow variable type annotations
 
-WorkflowVariable = Annotated[
-    TaskIdVariable | EnvVariable, BeforeValidator(_parse_variables)
-]
+WorkflowVariable = Annotated[TaskIdVariable | EnvVariable, BeforeValidator(_parse_variables)]
 
 
 def _serialize_variables(v: list[WorkflowVariable]) -> dict[str, str | list[str]]:
@@ -351,9 +347,7 @@ def _serialize_variables(v: list[WorkflowVariable]) -> dict[str, str | list[str]
     """
     return {
         "asstr": (
-            v[0].model_dump()
-            if len(v) == 1
-            else f"[{', '.join(var.model_dump() for var in v)}]"
+            v[0].model_dump() if len(v) == 1 else f"[{', '.join(var.model_dump() for var in v)}]"
         ),
         "aslist": [var.model_dump() for var in v],
     }
@@ -403,14 +397,9 @@ def _serialize_variables_or_inline_value(
     return _serialize_variables(v)
 
 
-InlineValueType = Annotated[
-    InlineValue, BeforeValidator(lambda v: InlineValue(value=v))
-]
+InlineValueType = Annotated[InlineValue, BeforeValidator(lambda v: InlineValue(value=v))]
 VarsOrInlineValue = Annotated[
-    Union[
-        Annotated[InlineValueType, PydanticTag("inline_value")],
-        Annotated[Vars, PydanticTag("vars")],
-    ],
+    Annotated[InlineValueType, PydanticTag("inline_value")] | Annotated[Vars, PydanticTag("vars")],
     Discriminator(_vars_or_inline_value),
     PlainSerializer(
         _serialize_variables_or_inline_value,
@@ -422,9 +411,7 @@ VarsOrInlineValue = Annotated[
 def _variable_values_dict_or_vars_or_inline_value(v: Any) -> str:
     """Discriminator for DictOrVarsOrInlineValue union."""
     match v:
-        case dict() if (
-            any(isinstance(i, str) and (_is_wrapped_variable(i)) for i in v.values())
-        ):
+        case dict() if (any(isinstance(i, str) and (_is_wrapped_variable(i)) for i in v.values())):
             return "inline_dict"
         case _:
             return "vars_or_inline_value"
@@ -449,12 +436,7 @@ class VariableValuesDict(BaseModel):
                 )
                 + "}"
             ),
-            "asdict": (
-                {
-                    k: _serialize_variables_or_inline_value(v)
-                    for k, v in self.value.items()
-                }
-            ),
+            "asdict": ({k: _serialize_variables_or_inline_value(v) for k, v in self.value.items()}),
             "has_variable_values": True,
         }
 
@@ -472,10 +454,8 @@ VariableValuesDictType = Annotated[
     VariableValuesDict, BeforeValidator(lambda v: VariableValuesDict(value=v))
 ]
 DictOrVarsOrInlineValue = Annotated[
-    Union[
-        Annotated[VariableValuesDictType, PydanticTag("inline_dict")],
-        Annotated[VarsOrInlineValue, PydanticTag("vars_or_inline_value")],
-    ],
+    Annotated[VariableValuesDictType, PydanticTag("inline_dict")]
+    | Annotated[VarsOrInlineValue, PydanticTag("vars_or_inline_value")],
     Discriminator(_variable_values_dict_or_vars_or_inline_value),
     PlainSerializer(
         _serialize_dict_or_variables_or_inline_value,
@@ -485,12 +465,8 @@ DictOrVarsOrInlineValue = Annotated[
     ),
 ]
 PartialKwargs: TypeAlias = dict[KnownTaskArgName, DictOrVarsOrInlineValue]
-SpecId = Annotated[
-    str, AfterValidator(_is_not_reserved), AfterValidator(_is_valid_spec_name)
-]
-ParallelOpArgNames = Annotated[
-    list[KnownTaskArgName], BeforeValidator(_singleton_or_list_aslist)
-]
+SpecId = Annotated[str, AfterValidator(_is_not_reserved), AfterValidator(_is_valid_spec_name)]
+ParallelOpArgNames = Annotated[list[KnownTaskArgName], BeforeValidator(_singleton_or_list_aslist)]
 
 
 class _ParallelOperation(_ForbidExtra):
@@ -503,9 +479,7 @@ class _ParallelOperation(_ForbidExtra):
     def both_fields_required_if_either_given(self) -> "_ParallelOperation":
         """Validate that both argnames and argvalues are provided together."""
         if bool(self.argnames) != bool(self.argvalues):
-            raise ValueError(
-                "Both `argnames` and `argvalues` must be provided if either is given."
-            )
+            raise ValueError("Both `argnames` and `argvalues` must be provided if either is given.")
         return self
 
     def __bool__(self) -> bool:
@@ -520,9 +494,7 @@ class _ParallelOperation(_ForbidExtra):
     def all_dependencies_dict(self) -> dict[str, list[str]]:
         """Get all dependencies as a dictionary."""
         return {
-            arg: [
-                var.value for var in self.argvalues if isinstance(var, TaskIdVariable)
-            ]
+            arg: [var.value for var in self.argvalues if isinstance(var, TaskIdVariable)]
             for arg in self.argnames
         }
 
@@ -558,7 +530,7 @@ class SkipIf(_ForbidExtra):
     def ensure_known_tasks(self) -> "SkipIf":
         """Validate that all tasks in conditions can be resolved."""
         try:
-            self.known_tasks_list
+            _ = self.known_tasks_list
         except ValueError as e:
             raise e
         return self
@@ -629,11 +601,11 @@ class TaskInstance(_ForbidExtra):
     mapvalues: MapValuesOperation = Field(
         default_factory=MapValuesOperation,
         description="""\
-        A `mapvalues` operation to apply the task to an iterable of key-value pairs. The `argnames`
-        must be a single string, or a single-element list of strings, which correspond to the name
-        of an argument on the task function signature. The `argvalues` must be a list of tuples where
-        the first element of each tuple is the key to passthrough, and the second element is the value
-        to transform.
+        A `mapvalues` operation to apply the task to an iterable of key-value pairs.
+        The `argnames` must be a single string, or a single-element list of strings,
+        which correspond to the name of an argument on the task function signature.
+        The `argvalues` must be a list of tuples where the first element of each tuple
+        is the key to passthrough, and the second element is the value to transform.
 
         For more details, see `Task.mapvalues` in the `decorators` module.
         """,
@@ -661,11 +633,7 @@ class TaskInstance(_ForbidExtra):
     @property
     def all_dependencies(self) -> list[Any | WorkflowVariable]:
         """Get all dependencies including partial, map, and mapvalues."""
-        return (
-            self.flattened_partial_values
-            + self.map.argvalues
-            + self.mapvalues.argvalues
-        )
+        return self.flattened_partial_values + self.map.argvalues + self.mapvalues.argvalues
 
     @property
     def all_dependencies_dict(self) -> dict[str, list[str]]:
@@ -724,7 +692,7 @@ class TaskInstance(_ForbidExtra):
     def ensure_known_task(self) -> "TaskInstance":
         """Validate that the known task can be resolved."""
         try:
-            self.known_task
+            _ = self.known_task
         except ValueError as e:
             raise e
         return self
@@ -733,13 +701,7 @@ class TaskInstance(_ForbidExtra):
     @property
     def method(self) -> str:
         """Get the execution method: 'map', 'mapvalues', or 'call'."""
-        return (
-            "map"
-            if self.map
-            else None or "mapvalues"
-            if self.mapvalues
-            else None or "call"
-        )
+        return "map" if self.map else None or "mapvalues" if self.mapvalues else None or "call"
 
 
 class TaskGroup(_ForbidExtra):
@@ -808,10 +770,8 @@ class Spec(_ForbidExtra):
     )
     workflow: list[
         Annotated[
-            Union[
-                Annotated[TaskInstance, PydanticTag("instance")],
-                Annotated[TaskGroup, PydanticTag("group")],
-            ],
+            Annotated[TaskInstance, PydanticTag("instance")]
+            | Annotated[TaskGroup, PydanticTag("group")],
             Discriminator(_group_or_instance),
         ]
     ] = Field(
@@ -821,9 +781,7 @@ class Spec(_ForbidExtra):
     @property
     def sha256(self) -> str:
         """Generate SHA256 hash of the workflow (excluding requirements)."""
-        return hashlib.sha256(
-            self.model_dump_json(exclude={"requirements"}).encode()
-        ).hexdigest()
+        return hashlib.sha256(self.model_dump_json(exclude={"requirements"}).encode()).hexdigest()
 
     @property
     def requires_local_release_artifacts(self) -> bool:
@@ -856,9 +814,7 @@ class Spec(_ForbidExtra):
     @property
     def all_task_ids(self) -> dict[str, str]:
         """Get mapping of all task IDs to task names."""
-        return {
-            task_instance.id: task_instance.name for task_instance in self.flat_workflow
-        }
+        return {task_instance.id: task_instance.name for task_instance in self.flat_workflow}
 
     @model_validator(mode="after")
     def check_task_ids_dont_collide_with_spec_id(self) -> "Spec":
@@ -882,7 +838,7 @@ class Spec(_ForbidExtra):
         if dupes:
             raise ValueError(
                 "All task instance `id`s must be unique in the workflow. "
-                f"Found duplicate ids: {','.join([id for id in dupes.keys()])}"
+                f"Found duplicate ids: {','.join(dupes.keys())}"
             )
         return self
 
@@ -905,9 +861,7 @@ class Spec(_ForbidExtra):
         """Get all task dependencies as a dictionary."""
         return {
             task_instance.id: [
-                d.value
-                for d in task_instance.all_dependencies
-                if isinstance(d, TaskIdVariable)
+                d.value for d in task_instance.all_dependencies if isinstance(d, TaskIdVariable)
             ]
             for task_instance in self.flat_workflow
         }
@@ -920,13 +874,9 @@ class Spec(_ForbidExtra):
             seen_task_instance_ids.add(task_instance_id)
             for dep_id in deps:
                 if dep_id not in seen_task_instance_ids:
-                    dep_name = next(
-                        ti.name for ti in self.flat_workflow if ti.id == dep_id
-                    )
+                    dep_name = next(ti.name for ti in self.flat_workflow if ti.id == dep_id)
                     task_instance_name = next(
-                        ti.name
-                        for ti in self.flat_workflow
-                        if ti.id == task_instance_id
+                        ti.name for ti in self.flat_workflow if ti.id == task_instance_id
                     )
                     raise ValueError(
                         f"Task instances are not in topological order. "

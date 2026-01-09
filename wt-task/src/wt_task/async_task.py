@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TypeVar
 
 try:
     from opentelemetry import trace
@@ -17,7 +16,7 @@ try:
 except ImportError:
     TRACING_AVAILABLE = False
 
-from .base import K, V, P, R, _Task
+from .base import K, P, R, V, _Task
 from .executors import AsyncExecutor, Future, FutureSequence
 from .sync_task import (
     _create_kwargs_iterable,

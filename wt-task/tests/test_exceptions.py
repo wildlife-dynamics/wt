@@ -104,23 +104,11 @@ def test_handle_errors_chaining():
             raise ValueError("x must be positive")
         return x * factor
 
-    result = (
-        multiply
-        .partial(factor=2)
-        .set_task_instance_id("mult-1")
-        .handle_errors()
-        .call(x=5)
-    )
+    result = multiply.partial(factor=2).set_task_instance_id("mult-1").handle_errors().call(x=5)
     assert result == 10
 
     with pytest.raises(TaskInstanceError) as exc_info:
-        (
-            multiply
-            .partial(factor=2)
-            .set_task_instance_id("mult-2")
-            .handle_errors()
-            .call(x=-5)
-        )
+        (multiply.partial(factor=2).set_task_instance_id("mult-2").handle_errors().call(x=-5))
 
     assert exc_info.value.task_instance_id == "mult-2"
 
@@ -132,11 +120,7 @@ def test_handle_errors_with_map():
     def inverse(x: int) -> float:
         return 1.0 / x
 
-    task_with_handler = (
-        inverse
-        .set_task_instance_id("inv-1")
-        .handle_errors()
-    )
+    task_with_handler = inverse.set_task_instance_id("inv-1").handle_errors()
 
     # Successful map
     results = task_with_handler.map("x", [1, 2, 4])

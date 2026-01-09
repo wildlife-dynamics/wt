@@ -1,16 +1,16 @@
 """Tests for jsonschema.py - JSON schema utilities and RJSF support."""
 
-import pytest
 from typing import Annotated
 
+import pytest
 from pydantic import Field
 
 from wt_compiler.jsonschema import (
-    find_referenced_defs,
-    jsonschema_from_task_func,
-    _apply_dict_overrides,
     ReactJSONSchemaFormConfiguration,
     ReactJSONSchemaFormOverrides,
+    _apply_dict_overrides,
+    find_referenced_defs,
+    jsonschema_from_task_func,
 )
 
 
@@ -38,9 +38,7 @@ class TestFindReferencedDefs:
                 "field1": {"$ref": "#/$defs/MyModel"},
             },
             "$defs": {
-                "MyModel": {
-                    "properties": {"nested": {"$ref": "#/$defs/NestedModel"}}
-                },
+                "MyModel": {"properties": {"nested": {"$ref": "#/$defs/NestedModel"}}},
                 "NestedModel": {"properties": {"value": {"type": "integer"}}},
                 "UnusedModel": {"properties": {"unused": {"type": "string"}}},
             },
@@ -77,16 +75,12 @@ class TestApplyDictOverrides:
 
     def test_nested_override(self):
         """Test nested key override with dotted notation."""
-        result = _apply_dict_overrides(
-            {"a.b": 1}, {"a": {"b": 2, "c": 3}, "d": 4}
-        )
+        result = _apply_dict_overrides({"a.b": 1}, {"a": {"b": 2, "c": 3}, "d": 4})
         assert result == {"a": {"b": 1, "c": 3}, "d": 4}
 
     def test_deep_nested_override(self):
         """Test deeply nested override."""
-        result = _apply_dict_overrides(
-            {"a.b.c": 99}, {"a": {"b": {"c": 1, "d": 2}}}
-        )
+        result = _apply_dict_overrides({"a.b.c": 99}, {"a": {"b": {"c": 1, "d": 2}}})
         assert result == {"a": {"b": {"c": 99, "d": 2}}}
 
     def test_create_new_key(self):
@@ -171,9 +165,7 @@ class TestReactJSONSchemaFormOverrides:
 
     def test_property_override(self):
         """Test overriding properties."""
-        overrides = ReactJSONSchemaFormOverrides(
-            properties={"task1.x.type": "number"}
-        )
+        overrides = ReactJSONSchemaFormOverrides(properties={"task1.x.type": "number"})
         config = ReactJSONSchemaFormConfiguration(
             title="Original",
             properties={"task1": {"x": {"type": "string"}}},
@@ -184,9 +176,7 @@ class TestReactJSONSchemaFormOverrides:
 
     def test_uischema_override(self):
         """Test overriding uiSchema."""
-        overrides = ReactJSONSchemaFormOverrides(
-            uiSchema={"task1.ui:widget": "textarea"}
-        )
+        overrides = ReactJSONSchemaFormOverrides(uiSchema={"task1.ui:widget": "textarea"})
         config = ReactJSONSchemaFormConfiguration(
             title="Original",
             properties={"task1": {"type": "string"}},

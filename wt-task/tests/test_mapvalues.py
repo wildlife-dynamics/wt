@@ -1,7 +1,5 @@
 """Tests for mapvalues functionality."""
 
-import pytest
-
 from wt_task import SKIP_SENTINEL, task
 
 

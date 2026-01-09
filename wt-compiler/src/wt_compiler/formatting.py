@@ -3,7 +3,7 @@
 import functools
 import subprocess
 import sys
-from typing import Callable
+from collections.abc import Callable
 
 
 def ruff_formatted(returns_str_func: Callable[..., str]) -> Callable[..., str]:

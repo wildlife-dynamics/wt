@@ -7,14 +7,14 @@ from __future__ import annotations
 
 import inspect
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Callable, ParamSpec, TypeVar, cast, overload
+from typing import Any, cast, overload
 
 if sys.version_info >= (3, 11):
-    from typing import Self
+    pass
 else:
-    from typing_extensions import Self
+    pass
 
 try:
     from opentelemetry import trace
@@ -23,7 +23,7 @@ try:
 except ImportError:
     TRACING_AVAILABLE = False
 
-from .base import K, V, R, P, _Task
+from .base import K, P, R, V, _Task
 from .executors import SyncExecutor, mapvalues_wrapper
 from .executors.python import PythonExecutor
 from .skip import SkipSentinel

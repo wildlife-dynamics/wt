@@ -30,9 +30,7 @@ CUSTOM_RELEASE_CHANNEL = Channel(
     ChannelConfig(channel_alias="https://repo.prefix.dev/"),
 )
 CONDA_FORGE_CHANNEL = Channel("conda-forge")
-MICROSOFT_CHANNEL = Channel(
-    "microsoft", ChannelConfig(channel_alias="https://conda.anaconda.org/")
-)
+MICROSOFT_CHANNEL = Channel("microsoft", ChannelConfig(channel_alias="https://conda.anaconda.org/"))
 CHANNELS: list[Channel] = [
     LOCAL_CHANNEL,
     CUSTOM_LOCAL_CHANNEL,
@@ -177,9 +175,7 @@ def _namelessmatchspec_from_dict(
         _base_url = value["channel"]
     channel = next((c.base_url for c in CHANNELS if c.base_url == _base_url), None)
     if not channel:
-        raise ValueError(
-            f"Unknown channel {value['channel']}; only {CHANNELS} are supported"
-        )
+        raise ValueError(f"Unknown channel {value['channel']}; only {CHANNELS} are supported")
     foo_pkg = "foo"  # placeholder to use from_match_spec constructor
     m = MatchSpec(f"{channel}::{foo_pkg} {value['version']}")
     return NamelessMatchSpec.from_match_spec(m)

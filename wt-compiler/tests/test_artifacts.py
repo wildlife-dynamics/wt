@@ -1,16 +1,16 @@
 """Tests for artifacts.py - artifact generation models."""
 
-import pytest
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from wt_compiler.artifacts import (
     Dags,
+    Feature,
+    PackageDirectory,
     PixiToml,
     PixiWorkspace,
-    Feature,
-    Environment,
-    PackageDirectory,
     WorkflowArtifacts,
 )
 

@@ -1,22 +1,20 @@
 """Tests for discovery.py and its integration with compiler.py."""
 
 import json
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
-
 from wt_contracts.registry import RegistryEntry, RegistryMetadata, RegistryOutput
-from wt_compiler.discovery import (
-    discover_tasks_from_requirements,
-    populate_known_tasks,
-)
+
 from wt_compiler.compiler import (
     _parse_requirements_from_yaml,
     compile_workflow_from_yaml,
 )
-from wt_compiler.spec import KnownTask, known_tasks, SpecRequirement
+from wt_compiler.discovery import (
+    discover_tasks_from_requirements,
+)
+from wt_compiler.spec import KnownTask, known_tasks
 
 
 class TestRegistryOutputParsing:
@@ -204,10 +202,12 @@ class TestPopulateKnownTasks:
     def test_populate_clears_and_updates(self):
         """Test that populate_known_tasks clears existing entries."""
         # Pre-populate with some data
-        known_tasks["old_task"] = {"module": KnownTask(
-            importable_reference="old.module.old_task",
-            json_schema={},
-        )}
+        known_tasks["old_task"] = {
+            "module": KnownTask(
+                importable_reference="old.module.old_task",
+                json_schema={},
+            )
+        }
 
         # populate_known_tasks should clear this
         # Note: This would fail without mocking since we need real env

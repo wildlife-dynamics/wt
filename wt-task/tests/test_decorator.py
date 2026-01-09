@@ -1,7 +1,5 @@
 """Tests for the task decorator."""
 
-import pytest
-
 from wt_task import SyncTask, task
 
 

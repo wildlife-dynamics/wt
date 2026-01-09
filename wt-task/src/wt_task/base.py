@@ -9,9 +9,9 @@ from __future__ import annotations
 import functools
 import sys
 import warnings
-from abc import ABC
+from collections.abc import Callable
 from dataclasses import dataclass, replace
-from typing import Any, Callable, Generic, Literal, ParamSpec, TypeVar, overload
+from typing import Generic, Literal, ParamSpec, TypeVar, overload
 
 if sys.version_info >= (3, 11):
     from typing import Self

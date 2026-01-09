@@ -47,9 +47,9 @@ def validate_importable_reference(reference: str) -> str:
     assert (
         len(parts) == 2
     ), f"{reference} is not a valid importable reference, must be a dotted string."
-    assert (
-        parts[1].isidentifier()
-    ), f"{parts[1]} is not a valid Python identifier, it will not be importable."
+    assert parts[
+        1
+    ].isidentifier(), f"{parts[1]} is not a valid Python identifier, it will not be importable."
     assert all(
         [module_part.isidentifier() for module_part in parts[0].split(".")]
     ), f"{parts[0]} is not a valid Python module path, it will not be importable."

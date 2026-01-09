@@ -1,15 +1,14 @@
 """Tests for spec.py - Spec and TaskInstance models."""
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 from wt_compiler.spec import (
     KnownTask,
-    Spec,
-    TaskInstance,
-    TaskInstanceId,
-    TaskTag,
     SpecRequirement,
+    TaskInstance,
+    TaskTag,
 )
 
 
@@ -142,6 +141,7 @@ class TestSpec:
         # In real usage, discovery.py would populate known_task
         # For now, we'll test basic YAML parsing
         import ruamel.yaml
+
         yaml = ruamel.yaml.YAML(typ="safe")
         with open(fixture_path) as f:
             data = yaml.load(f)
@@ -153,7 +153,6 @@ class TestSpec:
     def test_spec_sha256(self):
         """Test that Spec generates consistent SHA256 hash."""
         # Create a minimal spec
-        from wt_compiler._models import _ForbidExtra
 
         # We'll create a simple spec manually
         spec_data = {

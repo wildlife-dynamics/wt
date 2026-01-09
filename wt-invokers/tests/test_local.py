@@ -42,9 +42,7 @@ def test_local_invoker_with_env_cwd() -> None:
     matchspec = MatchSpec("test-workflow>=1.0.0")
     cwd = "/env/path"
 
-    with patch.dict(
-        os.environ, {"WT_INVOKERS__LOCAL_SUBPROCESS_INVOKER__CWD": cwd}
-    ):
+    with patch.dict(os.environ, {"WT_INVOKERS__LOCAL_SUBPROCESS_INVOKER__CWD": cwd}):
         invoker = LocalSubprocessInvoker(matchspec=matchspec)
         assert invoker.cwd == cwd
 
