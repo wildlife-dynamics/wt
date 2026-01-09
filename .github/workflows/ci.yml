@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - wt-contracts
+          - wt-registry
+          - wt-task
+          - wt-compiler
+          - wt-invokers
+          - wt-runner
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.10
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.package }}
+        run: uv sync --all-extras --dev
+
+      - name: Run ruff check
+        working-directory: ${{ matrix.package }}
+        run: uv run ruff check src/
+
+      - name: Run ruff format check
+        working-directory: ${{ matrix.package }}
+        run: uv run ruff format --check src/
+
+      - name: Run mypy
+        working-directory: ${{ matrix.package }}
+        run: uv run mypy src/
+
+      - name: Run pytest
+        working-directory: ${{ matrix.package }}
+        run: uv run pytest
