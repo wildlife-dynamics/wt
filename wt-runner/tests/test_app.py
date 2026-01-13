@@ -75,6 +75,7 @@ def test_prepare_invoker_parameters():
 
     payload = RunWorkflowParams(
         match_spec="test-workflow>=1.0",
+        command="run",
         invoker_type="BlockingLocalSubprocessInvoker",
         invoker_kwargs={
             "workflow_run_id": "test-123",
@@ -105,6 +106,7 @@ def test_prepare_invoker_parameters_with_async_mode():
 
     payload = RunWorkflowParams(
         match_spec="test-workflow>=1.0",
+        command="run",
         invoker_type="BlockingLocalSubprocessInvoker",
         invoker_kwargs={
             "workflow_run_id": "test-123",
@@ -134,6 +136,7 @@ async def test_extract_payload_from_pubsub_request():
     # Create mock request with Pub/Sub message format
     payload_data = {
         "match_spec": "test-workflow>=1.0",
+        "command": "run",
         "invoker_type": "BlockingLocalSubprocessInvoker",
         "invoker_kwargs": {
             "workflow_run_id": "test-123",
