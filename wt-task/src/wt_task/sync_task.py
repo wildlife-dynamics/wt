@@ -65,7 +65,7 @@ def _create_kwargs_iterable(
     if isinstance(argnames, str):
         argnames = [argnames]
     if isinstance(argvalues, SkipSentinel):
-        return [defaults | {argname: argvalues for argname in argnames}]
+        return [defaults | dict.fromkeys(argnames, argvalues)]
     # Handle empty list
     if not argvalues:
         return []
@@ -75,9 +75,9 @@ def _create_kwargs_iterable(
         if not isinstance(argvalues[0], tuple)
         else cast(list[tuple[Any, ...]], argvalues)
     )
-    assert all(
-        len(v) == len(argnames) for v in argvalues_list
-    ), "All values in `argvalues` must have the same length as `argnames`."
+    assert all(len(v) == len(argnames) for v in argvalues_list), (
+        "All values in `argvalues` must have the same length as `argnames`."
+    )
     return [
         defaults | {argnames[i]: argvalues_list[j][i] for i in range(len(argnames))}
         for j in range(len(argvalues_list))
@@ -105,7 +105,7 @@ def _create_mapvalues_kwargs_iterable(
         return [
             (
                 None,
-                defaults | {argname: argvalues for argname in argnames},
+                defaults | dict.fromkeys(argnames, argvalues),
             )
         ]
     kwargs_iterable: list[tuple[K, dict[str, Any]]] = []

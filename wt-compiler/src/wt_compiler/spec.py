@@ -258,7 +258,7 @@ def _parse_variable(s: str) -> TaskIdVariable | EnvVariable:
     """Parse a variable string into the appropriate variable type."""
     if not _is_wrapped_variable(s):
         raise ValueError(
-            f"`{s}` is not a valid variable. " "Variables must be wrapped in `${{ }}`."
+            f"`{s}` is not a valid variable. Variables must be wrapped in `${{{{ }}}}`."
         )
     inner = s.replace("${{", "").replace("}}", "").strip()
     match inner.split("."):
@@ -411,7 +411,7 @@ VarsOrInlineValue = Annotated[
 def _variable_values_dict_or_vars_or_inline_value(v: Any) -> str:
     """Discriminator for DictOrVarsOrInlineValue union."""
     match v:
-        case dict() if (any(isinstance(i, str) and (_is_wrapped_variable(i)) for i in v.values())):
+        case dict() if any(isinstance(i, str) and (_is_wrapped_variable(i)) for i in v.values()):
             return "inline_dict"
         case _:
             return "vars_or_inline_value"
@@ -831,7 +831,7 @@ class Spec(_ForbidExtra):
     @model_validator(mode="after")
     def check_task_ids_unique(self) -> "Spec":
         """Validate that all task IDs are unique."""
-        id_keyed_dict: dict[str, int] = {id: 0 for id in self.all_task_ids.keys()}
+        id_keyed_dict: dict[str, int] = dict.fromkeys(self.all_task_ids.keys(), 0)
         for ti in self.flat_workflow:
             id_keyed_dict[ti.id] += 1
         dupes = {id: count for id, count in id_keyed_dict.items() if count > 1}
