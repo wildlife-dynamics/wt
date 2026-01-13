@@ -1,6 +1,52 @@
 # Development Guidelines for Claude Code
 
-This document provides best practices and guidelines for developing the wt-registry package with Claude Code assistance.
+This document provides best practices and guidelines for developing the wt (Workflow Template) monorepo with Claude Code assistance.
+
+## Repository Structure
+
+This is a **monorepo with 6 packages** that together provide a workflow compilation and execution framework.
+
+### Package Architecture
+
+```
+wt-contracts (foundation - shared type contracts)
+    ↓
+    ├→ wt-registry (function registration & discovery)
+    ├→ wt-task (task execution framework)
+    ├→ wt-compiler (workflow YAML → executable DAG)
+    ├→ wt-invokers (execution backends)
+    └→ wt-runner → wt-invokers (FastAPI web server)
+```
+
+### Packages
+
+| Package | Purpose | Key Modules | CLI |
+|---------|---------|-------------|-----|
+| **wt-contracts** | Shared Pydantic models for inter-package compatibility | `registry.py`, `task.py`, `cli.py` | — |
+| **wt-registry** | `@register` decorator for function discovery with JSON schema generation | `decorator.py`, `registry.py`, `validation.py` | `wt-registry` |
+| **wt-task** | `@task` decorator with `.call()`, `.map()`, `.partial()`, `.validate()` methods | `decorator.py`, `base.py`, `sync_task.py`, `async_task.py` | — |
+| **wt-compiler** | Compiles workflow YAML specs into executable DAG artifacts | `compiler.py`, `spec.py`, `discovery.py`, `templates/` | `wt-compiler` |
+| **wt-invokers** | Abstract invoker interface + implementations (local subprocess, Cloud Batch) | `abstract.py`, `local.py`, `cloud_batch.py` | — |
+| **wt-runner** | FastAPI server for workflow execution with multi-backend support | `app.py`, `tracing.py` | uvicorn |
+
+### Directory Layout
+
+Each package follows this structure:
+```
+packages/<package-name>/
+├── src/<package_name>/    # Source code
+│   ├── __init__.py
+│   └── *.py
+├── tests/                 # Unit tests (test_*.py)
+├── pyproject.toml         # Package config (setuptools-scm versioning)
+└── README.md
+```
+
+### Key Design Decisions
+
+- **Subprocess-based discovery**: wt-compiler discovers tasks via `wt-registry` CLI (no direct imports), avoiding dependency conflicts
+- **No circular dependencies**: wt-contracts is the foundation; all other packages depend on it
+- **Pydantic v2**: All packages use Pydantic for data validation and JSON schema generation
 
 ## Core Principles
 
