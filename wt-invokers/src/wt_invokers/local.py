@@ -229,7 +229,7 @@ class LocalSubprocessInvoker(AbstractInvoker):
                 f"{self.entrypoint} run "
                 f"--config-file {config_tmpfile.name} "
                 f"--execution-mode {execution_mode} "
-                f'{("--mock-io" if mock_io else "--no-mock-io")}'
+                f"{('--mock-io' if mock_io else '--no-mock-io')}"
                 f"{otel_exp_arg}{otel_dst_arg}"
             ).split()
 

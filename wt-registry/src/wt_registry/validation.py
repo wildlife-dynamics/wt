@@ -70,7 +70,7 @@ def validate_function_signature(func: Callable[..., Any]) -> None:
     # Check it's not a class
     if inspect.isclass(func):
         raise ValidationError(
-            f"Classes are not supported: {fqn}. " f"Only functions can be registered."
+            f"Classes are not supported: {fqn}. Only functions can be registered."
         )
 
     # Get signature
@@ -94,5 +94,5 @@ def validate_function_signature(func: Callable[..., Any]) -> None:
     # Check return type is annotated
     if sig.return_annotation is inspect.Signature.empty:
         raise ValidationError(
-            f"Function {fqn} has no return type annotation. " f"Return type must be annotated."
+            f"Function {fqn} has no return type annotation. Return type must be annotated."
         )

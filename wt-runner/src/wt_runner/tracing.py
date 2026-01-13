@@ -106,8 +106,8 @@ def configure_tracer(
             case "gcp":
                 if not HAS_GCP_EXPORTER:
                     raise RuntimeError(
-                        "GCP exporter requested but opentelemetry-exporter-gcp-trace is not installed. "
-                        "Install with: pip install wt-runner[tracing]"
+                        "GCP exporter requested but opentelemetry-exporter-gcp-trace "
+                        "is not installed. Install with: pip install wt-runner[tracing]"
                     )
                 _exporter = CloudTraceSpanExporter(**_exporter_kws)
             case _:

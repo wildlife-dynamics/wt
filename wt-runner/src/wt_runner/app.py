@@ -87,7 +87,7 @@ INVOKERS: dict[str, type[AbstractInvoker]] = {
 
 TITLE = "wt-runner"
 TIMEOUT_EXPIRED_ERROR_MSG = (
-    "The workflow timed out. " "Consider reducing the amount of data being processed."
+    "The workflow timed out. Consider reducing the amount of data being processed."
 )
 PUBSUB_ACK_MAX_TIMEOUT = 570  # seconds
 
@@ -453,7 +453,8 @@ async def run_from_pubsub(
         command_payload = await extract_payload_from_pubsub_request(request)
         invoker_params, trace_context = prepare_invoker_parameters(command_payload)
     except (base64.binascii.Error, json.JSONDecodeError, ValueError) as e:
-        # handle invalid payload errors to avoid 500 errors, since it doesn't make sense let GCP retry those
+        # handle invalid payload errors to avoid 500 errors,
+        # since it doesn't make sense to let GCP retry those
         trace = traceback.format_exc()
         error_msg = f"Error extracting data from PubSub message: {type(e).__name__}: {e}"
         logging.exception(error_msg)

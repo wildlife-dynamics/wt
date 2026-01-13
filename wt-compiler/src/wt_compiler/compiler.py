@@ -522,7 +522,7 @@ class DagCompiler(BaseModel):
             for arg in t.all_dependencies_dict:
                 label += f"<tr><td port='{arg}' border='1'>{arg}</td></tr>"
             # Add return port
-            label += "<tr><td port='return' border='1'><i>return</i></td></tr>" "</table>>"
+            label += "<tr><td port='return' border='1'><i>return</i></td></tr></table>>"
             node = dot.Node(t.id, shape="none", label=label)
             graph.add_node(node)
 

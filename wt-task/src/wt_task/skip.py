@@ -72,7 +72,7 @@ def unpack_listlike(
     """
     unpacked: list[Any] = []
     for arg in argvalues:
-        if isinstance(arg, (list, tuple)) and unpack_depth > 0:
+        if isinstance(arg, list | tuple) and unpack_depth > 0:
             unpacked.extend(unpack_listlike(arg, unpack_depth - 1))
         else:
             unpacked.append(arg)
