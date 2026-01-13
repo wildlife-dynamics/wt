@@ -52,6 +52,7 @@ def yaml_to_json(text: str) -> str:
         data = yaml.load(text)
         return json.dumps(data)
     except Exception as e:  # ruamel.yaml.YAMLError not accessible via type system
-        if e.__class__.__name__ == "YAMLError":
+        # Check if exception is YAMLError or any of its subclasses
+        if any("YAMLError" in cls.__name__ for cls in type(e).__mro__):
             raise ValueError(f"Invalid YAML: {e}") from e
         raise
