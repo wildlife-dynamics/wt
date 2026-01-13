@@ -45,7 +45,8 @@ def otel_span_formatter(span: "ReadableSpan") -> str:
     """
     if not TRACING_AVAILABLE:
         return ""
-    return span.to_json(indent=None) + os.linesep
+    result: str = span.to_json(indent=None) + os.linesep
+    return result
 
 
 def make_otel_console_exporter_file_dst_kws(target_dir: Path) -> dict[str, object]:
@@ -125,7 +126,7 @@ def configure_tracer(
             case "console":
                 _exporter = ConsoleSpanExporter(**_exporter_kws)  # type: ignore[arg-type]
             case "gcp":
-                _exporter = CloudTraceSpanExporter(**_exporter_kws)  # type: ignore[arg-type]
+                _exporter = CloudTraceSpanExporter(**_exporter_kws)  # type: ignore[no-untyped-call]
             case _:
                 raise ValueError(f"Unknown exporter: {exporter}")
 

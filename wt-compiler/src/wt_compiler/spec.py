@@ -805,7 +805,7 @@ class Spec(_ForbidExtra):
                 ti.skipif = self.task_instance_defaults.skipif
         return all_task_instances
 
-    @computed_field  # type: ignore[misc]
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def flat_workflow(self) -> list[TaskInstance]:
         """Get all task instances as a flat list."""

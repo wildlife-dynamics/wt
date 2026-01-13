@@ -418,7 +418,7 @@ class CloudBatchInvoker(AbstractInvoker):
         job.task_groups = [group]
         job.allocation_policy = allocation_policy
         job.logs_policy = LogsPolicy()
-        job.logs_policy.destination = LogsPolicy.Destination.CLOUD_LOGGING
+        job.logs_policy.destination = LogsPolicy.Destination.CLOUD_LOGGING  # type: ignore[assignment]
 
         create_request = CreateJobRequest()
         create_request.job = job

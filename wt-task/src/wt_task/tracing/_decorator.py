@@ -44,14 +44,14 @@ def with_tracing(func: F) -> F:
 
     @wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        span_kws = {
-            "name": func.__name__,
-            "attributes": {
+        tracer = trace.get_tracer(__name__)
+        with tracer.start_as_current_span(
+            func.__name__,
+            attributes={
                 "func.__module__": func.__module__,
                 "func.__name__": func.__name__,
             },
-        }
-        tracer = trace.get_tracer(__name__)
-        return tracer.start_as_current_span(**span_kws)(func)(*args, **kwargs)
+        ):
+            return func(*args, **kwargs)
 
     return wrapper  # type: ignore[return-value]

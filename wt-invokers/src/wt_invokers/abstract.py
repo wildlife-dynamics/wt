@@ -197,3 +197,34 @@ class AbstractInvoker(ABC):
             >>> # False
         """
         pass
+
+    async def check_output(self, command: list[str], stdin: str | None = None) -> str:
+        """Get the output of a subprocess command.
+
+        This is a utility method for running one-off commands in the workflow
+        environment and capturing their output. Not all invokers support this.
+
+        Args:
+            command: List of command arguments to pass to the workflow entrypoint
+            stdin: Optional stdin input for the command
+
+        Returns:
+            Stripped stdout from the command
+
+        Raises:
+            NotImplementedError: If the invoker does not support this operation
+            RuntimeError: If the command fails (non-zero exit code)
+
+        Examples:
+            Running a command and capturing output:
+
+            >>> import asyncio
+            >>> from rattler import MatchSpec
+            >>> # invoker = MyInvoker(matchspec=MatchSpec("my-workflow>=1.0.0"))
+            >>> # output = asyncio.run(invoker.check_output(["--version"]))
+            >>> # output
+            >>> # '1.2.3'
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support check_output"
+        )

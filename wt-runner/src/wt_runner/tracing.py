@@ -5,7 +5,7 @@ Note this is adapted from https://github.com/PADAS/cdip-routing.
 
 import os
 from pathlib import Path
-from typing import Literal, TypedDict
+from typing import Any, Literal, TypedDict
 
 from opentelemetry import context, propagate, trace
 from opentelemetry.propagate import set_global_textmap
@@ -40,10 +40,11 @@ def otel_span_formatter(span: ReadableSpan) -> str:
     Returns:
         Formatted span as JSON line with newline
     """
-    return span.to_json(indent=None) + os.linesep
+    result: str = span.to_json(indent=None) + os.linesep
+    return result
 
 
-def make_otel_console_exporter_file_dst_kws(target_dir: Path) -> dict:
+def make_otel_console_exporter_file_dst_kws(target_dir: Path) -> dict[str, Any]:
     """Create kwargs for console exporter writing to a file.
 
     This opinionated configuration:
@@ -76,7 +77,7 @@ def configure_tracer(
     name: str,
     version: str = "",
     exporter: OtelExporterChoice | None = None,
-    exporter_kws: dict | None = None,
+    exporter_kws: dict[str, Any] | None = None,
 ) -> None:
     """Configure OpenTelemetry tracer with specified exporter.
 
@@ -109,7 +110,7 @@ def configure_tracer(
                         "GCP exporter requested but opentelemetry-exporter-gcp-trace "
                         "is not installed. Install with: pip install wt-runner[tracing]"
                     )
-                _exporter = CloudTraceSpanExporter(**_exporter_kws)
+                _exporter = CloudTraceSpanExporter(**_exporter_kws)  # type: ignore[no-untyped-call]
             case _:
                 raise ValueError(f"Unknown exporter: {exporter}")
 

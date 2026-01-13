@@ -11,12 +11,16 @@ import sys
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass, replace
-from typing import Generic, Literal, ParamSpec, TypeVar, overload
+from typing import TYPE_CHECKING, Generic, Literal, ParamSpec, TypeVar, overload
 
 if sys.version_info >= (3, 11):
     from typing import Self
 else:
     from typing_extensions import Self
+
+if TYPE_CHECKING:
+    from .async_task import AsyncTask
+    from .sync_task import SyncTask
 
 from pydantic import validate_call
 
@@ -320,16 +324,3 @@ class _Task(Generic[P, R, K, V]):
                     "Executor must be 'python' or an instance of `AsyncExecutor` or "
                     f"`SyncExecutor`, not {name_or_executor}."
                 )
-
-
-# Forward declarations for type checking
-if sys.version_info >= (3, 11):
-    from typing import TYPE_CHECKING
-
-    if TYPE_CHECKING:
-        from .async_task import AsyncTask
-        from .sync_task import SyncTask
-else:
-    # For Python 3.10, we can't use TYPE_CHECKING with forward references in match statements
-    # The imports in set_executor will handle the actual classes
-    pass

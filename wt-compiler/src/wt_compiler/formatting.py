@@ -4,6 +4,7 @@ import functools
 import subprocess
 import sys
 from collections.abc import Callable
+from typing import Any
 
 
 def ruff_formatted(returns_str_func: Callable[..., str]) -> Callable[..., str]:
@@ -30,7 +31,7 @@ def ruff_formatted(returns_str_func: Callable[..., str]) -> Callable[..., str]:
     """
 
     @functools.wraps(returns_str_func)
-    def wrapper(*args: any, **kwargs: any) -> str:
+    def wrapper(*args: Any, **kwargs: Any) -> str:
         unformatted = returns_str_func(*args, **kwargs)
         # Format with ruff
         # https://github.com/astral-sh/ruff/issues/8401#issuecomment-1788806462

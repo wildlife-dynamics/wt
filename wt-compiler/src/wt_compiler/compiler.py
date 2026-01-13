@@ -26,7 +26,7 @@ if sys.version_info >= (3, 11):
 else:
     pass
 
-import pydot as dot  # type: ignore[import-untyped]
+import pydot as dot
 import ruamel.yaml
 from jinja2 import Environment, FileSystemLoader
 from pydantic import BaseModel, computed_field
@@ -317,7 +317,7 @@ class DagCompiler(BaseModel):
             title=None,
             properties=properties,
             uiSchema=uiSchema,
-            **{"$defs": definitions},
+            **{"$defs": definitions},  # type: ignore[arg-type]
         )
 
         # Apply RJSF overrides from spec
@@ -566,7 +566,8 @@ class DagCompiler(BaseModel):
         formdata_mod = params_schema_hierarchical.model_copy(update={"title": "FormData"})
 
         def _mdump(j: Any) -> dict[str, Any]:
-            return j.model_dump(by_alias=True, exclude_none=True)
+            result: dict[str, Any] = j.model_dump(by_alias=True, exclude_none=True)
+            return result
 
         # Generate DAGs
         dags = Dags(
@@ -583,7 +584,7 @@ class DagCompiler(BaseModel):
         # Generate package files
         package = PackageDirectory(
             dags=dags,
-            **{
+            **{  # type: ignore[arg-type]
                 "rjsf.json": _mdump(params_schema_hierarchical),
                 "params.json": _mdump(params_schema_flat),
                 "params.py": self.generate_params_model(_mdump(params_mod), self.file_header),
@@ -638,8 +639,8 @@ class DagCompiler(BaseModel):
             package_name=self.package_name,
             package=package,
             tests=tests,
-            pydot_graph=pydot_graph,
-            **{
+            pydot_graph=pydot_graph,  # type: ignore[call-arg]
+            **{  # type: ignore[arg-type]
                 "pixi.toml": pixi_toml,
                 "Dockerfile": dockerfile,
                 ".dockerignore": dockerignore,

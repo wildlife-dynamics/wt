@@ -1,10 +1,12 @@
 """FastAPI application for workflow execution."""
 
 import base64
+import binascii
 import json
 import logging
 import os
 import traceback
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
 from importlib.metadata import PackageNotFoundError, version
@@ -46,14 +48,16 @@ from wt_runner.tracing import (
 
 # Optional imports for ecoscope integration
 try:
-    from ecoscope_eda_core.messages.commands import (
+    from ecoscope_eda_core.messages.commands import (  # type: ignore[import-untyped]
         InvokerType as EcoscopeInvokerType,
     )
     from ecoscope_eda_core.messages.commands import (
         RunWorkflow,
         RunWorkflowParams,
     )
-    from ecoscope_eda_core.workflows import get_results_json as ecoscope_get_results_json
+    from ecoscope_eda_core.workflows import (  # type: ignore[import-untyped]
+        get_results_json as ecoscope_get_results_json,
+    )
 
     HAS_ECOSCOPE = True
     InvokerType = EcoscopeInvokerType
@@ -65,9 +69,9 @@ except ImportError:
         "AsyncLocalSubprocessInvoker",
         "CloudBatchInvoker",
     ]
-    RunWorkflow = None  # type: ignore
-    RunWorkflowParams = None  # type: ignore
-    ecoscope_get_results_json = None  # type: ignore
+    RunWorkflow = None
+    RunWorkflowParams = None
+    ecoscope_get_results_json = None
 
 # Optional import for storage
 try:
@@ -76,7 +80,7 @@ try:
     HAS_OBSTORE = True
 except ImportError:
     HAS_OBSTORE = False
-    obstore = None  # type: ignore
+    obstore = None  # type: ignore[assignment]
 
 # Invoker registry mapping invoker names to classes
 INVOKERS: dict[str, type[AbstractInvoker]] = {
@@ -92,7 +96,7 @@ TIMEOUT_EXPIRED_ERROR_MSG = (
 PUBSUB_ACK_MAX_TIMEOUT = 570  # seconds
 
 
-async def get_results_json(results_url: str) -> dict:
+async def get_results_json(results_url: str) -> dict[str, Any]:
     """Get workflow results from results URL.
 
     Args:
@@ -105,7 +109,8 @@ async def get_results_json(results_url: str) -> dict:
         RuntimeError: If results cannot be retrieved
     """
     if HAS_ECOSCOPE and ecoscope_get_results_json is not None:
-        return await ecoscope_get_results_json(results_url)
+        result: dict[str, Any] = await ecoscope_get_results_json(results_url)
+        return result
 
     # Fallback implementation for when ecoscope_eda_core is not available
     if not HAS_OBSTORE:
@@ -114,8 +119,11 @@ async def get_results_json(results_url: str) -> dict:
         )
 
     store = obstore.store.from_url(results_url)
-    result_bytes = await store.get_async("result.json")
-    return json.loads(result_bytes.decode("utf-8"))
+    get_result = await store.get_async("result.json")
+    result_json: dict[str, Any] = json.loads(
+        bytes(get_result).decode("utf-8")  # type: ignore[arg-type]
+    )
+    return result_json
 
 
 def get_otel_exporter() -> Literal["console", "gcp"] | None:
@@ -124,7 +132,12 @@ def get_otel_exporter() -> Literal["console", "gcp"] | None:
     Returns:
         Exporter type or None
     """
-    return os.environ.get("ECOSCOPE_WORKFLOWS_OTEL_EXPORTER")
+    value = os.environ.get("ECOSCOPE_WORKFLOWS_OTEL_EXPORTER")
+    if value == "console":
+        return "console"
+    if value == "gcp":
+        return "gcp"
+    return None
 
 
 def get_otel_console_exporter_dst() -> Literal["stdout", "file"]:
@@ -133,7 +146,10 @@ def get_otel_console_exporter_dst() -> Literal["stdout", "file"]:
     Returns:
         Destination type (stdout or file)
     """
-    return os.environ.get("ECOSCOPE_WORKFLOWS_OTEL_CONSOLE_EXPORTER_DST", "file")
+    value = os.environ.get("ECOSCOPE_WORKFLOWS_OTEL_CONSOLE_EXPORTER_DST", "file")
+    if value == "stdout":
+        return "stdout"
+    return "file"
 
 
 def get_otel_console_exporter_file_dst_target_dir() -> str | None:
@@ -154,7 +170,7 @@ class SpanAttributes:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """FastAPI lifespan context manager for startup/shutdown.
 
     Configures OpenTelemetry tracer on startup.
@@ -163,7 +179,7 @@ async def lifespan(app: FastAPI):
         app: FastAPI application instance
     """
     # on app startup
-    otel_exporter_kws: dict = {}
+    otel_exporter_kws: dict[str, Any] = {}
     otel_exporter = get_otel_exporter()
     if otel_exporter == "console" and get_otel_console_exporter_dst() == "file":
         if not (file_dst_target_dir := get_otel_console_exporter_file_dst_target_dir()):
@@ -234,13 +250,13 @@ class LithopsConfig(BaseModel):
 class ResponseModel(BaseModel):
     """Standard response model for workflow execution."""
 
-    result: dict | None = None
+    result: dict[str, Any] | None = None
     error: str | None = None
     trace: str | None = None
 
 
 @app.get("/", status_code=200)
-def health_check():
+def health_check() -> dict[str, str]:
     """Health check endpoint.
 
     Returns:
@@ -271,7 +287,7 @@ def resolve_matchspec(
 
 
 async def resolve_invoker(
-    invoker_type: InvokerType = Query("BlockingLocalSubprocessInvoker"),
+    invoker_type: str = Query("BlockingLocalSubprocessInvoker"),
     matchspec: MatchSpec = Depends(resolve_matchspec),
 ) -> AbstractInvoker:
     """Resolves the invoker name to the corresponding invoker class.
@@ -324,7 +340,7 @@ async def run(
     # service response
     response: Response,
     # user (http) inputs
-    params: dict,
+    params: dict[str, Any],
     execution_mode: Literal["async", "sequential"],
     mock_io: bool,
     results_url: str = Depends(resolve_results_url),
@@ -344,7 +360,7 @@ async def run(
     tracestate: str | None = Header(
         None, description="Tracestate header; Cf. https://www.w3.org/TR/trace-context/."
     ),
-):
+) -> dict[str, Any] | JSONResponse:
     """Run a workflow with the specified parameters.
 
     Args:
@@ -377,11 +393,12 @@ async def run(
         attributes=asdict(span_attributes),
     ):
         yaml = ruamel.yaml.YAML(typ="safe")
-        extra_env = {}
+        extra_env: dict[str, str] = {}
         if data_connections_env_vars:
             extra_env |= {k: v.get_secret_value() for k, v in data_connections_env_vars.items()}
         trace_context = build_context_headers()
-        extra_env |= {k.upper(): v for k, v in trace_context.items()}
+        for k, v in trace_context.items():
+            extra_env[k.upper()] = str(v)
         config_text_stream = StringIO()
         yaml.dump(params, config_text_stream)
         lithops_kws = {}
@@ -429,7 +446,7 @@ async def run(
 )
 async def run_from_pubsub(
     request: Request,
-):
+) -> dict[str, Any]:
     """Process RunWorkflow messages from Google Cloud Pub/Sub.
 
     Note: Requires ecoscope_eda_core to be installed.
@@ -452,7 +469,7 @@ async def run_from_pubsub(
     try:  # Extract the payload from the PubSub message
         command_payload = await extract_payload_from_pubsub_request(request)
         invoker_params, trace_context = prepare_invoker_parameters(command_payload)
-    except (base64.binascii.Error, json.JSONDecodeError, ValueError) as e:
+    except (binascii.Error, json.JSONDecodeError, ValueError) as e:
         # handle invalid payload errors to avoid 500 errors,
         # since it doesn't make sense to let GCP retry those
         trace = traceback.format_exc()
@@ -581,7 +598,7 @@ def prepare_invoker_parameters(
     )  # Extra kwargs are passed to the invoker
 
 
-async def upload_error_to_gcs(error_details: dict, results_url: str) -> None:
+async def upload_error_to_gcs(error_details: dict[str, Any], results_url: str) -> None:
     """Upload error details to Google Cloud Storage.
 
     Args:
@@ -603,7 +620,7 @@ async def upload_error_to_gcs(error_details: dict, results_url: str) -> None:
 async def _get_metadata_attribute(
     attr: str,
     invoker: AbstractInvoker,
-) -> dict:
+) -> dict[str, Any]:
     """Get a metadata attribute for the workflow.
 
     Args:
@@ -620,14 +637,14 @@ async def _get_metadata_attribute(
     if not out:
         raise RuntimeError(f"Failed to get {attr}.")
     try:
-        as_json = json.loads(out)
+        as_json: dict[str, Any] = json.loads(out)
     except json.JSONDecodeError as e:
         raise RuntimeError(f"Failed to parse rjsf from str: {out}") from e
     return as_json
 
 
 @app.get("/rjsf", status_code=200)
-async def rjsf(invoker: AbstractInvoker = Depends(resolve_invoker)):
+async def rjsf(invoker: AbstractInvoker = Depends(resolve_invoker)) -> dict[str, Any]:
     """Get the React JSON Schema Form schema for the workflow.
 
     Args:
@@ -642,7 +659,7 @@ async def rjsf(invoker: AbstractInvoker = Depends(resolve_invoker)):
 @app.get("/data-connection-property-names", status_code=200)
 async def data_connection_property_names(
     invoker: AbstractInvoker = Depends(resolve_invoker),
-):
+) -> dict[str, Any]:
     """Get the data connection property names for the workflow.
 
     Args:
@@ -659,7 +676,7 @@ async def _convert(
     to: str,
     json_: str,
     invoker: AbstractInvoker,
-) -> dict:
+) -> dict[str, Any] | list[dict[str, Any]]:
     """Convert between params and formdata, and visa-versa.
 
     Args:
@@ -669,7 +686,7 @@ async def _convert(
         invoker: Invoker instance
 
     Returns:
-        Converted data as dictionary
+        Converted data as dictionary, or list of dicts for validation errors
 
     Raises:
         RuntimeError: If conversion or parsing fails
@@ -679,13 +696,13 @@ async def _convert(
     if not out:
         raise RuntimeError(f"Failed to convert {from_} to {to} for '{json_}'.")
     try:
-        as_json = json.loads(out)
+        as_json: dict[str, Any] | list[dict[str, Any]] = json.loads(out)
     except json.JSONDecodeError as e:
         raise RuntimeError(f"Failed to parse rjsf from str: {out}") from e
     return as_json
 
 
-def _is_422(json_: list[dict]) -> bool:
+def _is_422(json_: dict[str, Any] | list[dict[str, Any]]) -> bool:
     """Check if the json is a 422 validation error.
 
     Args:
@@ -703,7 +720,9 @@ def _is_422(json_: list[dict]) -> bool:
 
 
 @app.post("/formdata-to-params", status_code=200)
-async def validate_formdata(formdata: dict, invoker: AbstractInvoker = Depends(resolve_invoker)):
+async def validate_formdata(
+    formdata: dict[str, Any], invoker: AbstractInvoker = Depends(resolve_invoker)
+) -> dict[str, Any]:
     """Convert and validate form data to workflow parameters.
 
     Args:
@@ -724,11 +743,15 @@ async def validate_formdata(formdata: dict, invoker: AbstractInvoker = Depends(r
     )
     if _is_422(outjson):
         raise HTTPException(status_code=422, detail=outjson)
+    # At this point, outjson is not a 422 error list, so it's a dict
+    assert isinstance(outjson, dict)
     return outjson
 
 
 @app.post("/params-to-formdata", status_code=200)
-async def generate_nested_params(params: dict, invoker: AbstractInvoker = Depends(resolve_invoker)):
+async def generate_nested_params(
+    params: dict[str, Any], invoker: AbstractInvoker = Depends(resolve_invoker)
+) -> dict[str, Any]:
     """Convert workflow parameters to form data format.
 
     Args:
@@ -749,4 +772,6 @@ async def generate_nested_params(params: dict, invoker: AbstractInvoker = Depend
     )
     if _is_422(outjson):
         raise HTTPException(status_code=422, detail=outjson)
+    # At this point, outjson is not a 422 error list, so it's a dict
+    assert isinstance(outjson, dict)
     return outjson

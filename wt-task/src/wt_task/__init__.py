@@ -41,7 +41,7 @@ __all__ = [
 
 # Version will be set by setuptools-scm
 try:
-    from ._version import __version__, __version_tuple__  # type: ignore[import-not-found]
+    from ._version import __version__, __version_tuple__
 except ImportError:
     __version__ = "0.0.0.dev0"
     __version_tuple__ = (0, 0, 0, "dev0")

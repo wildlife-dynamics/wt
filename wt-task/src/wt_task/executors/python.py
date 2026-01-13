@@ -5,8 +5,11 @@ current thread using standard Python function calls.
 """
 
 from collections.abc import Callable, Iterable, Sequence
+from typing import TypeVar
 
 from .base import P, R, SyncExecutor
+
+T = TypeVar("T")
 
 
 class PythonExecutor(SyncExecutor[P, R]):
@@ -38,7 +41,7 @@ class PythonExecutor(SyncExecutor[P, R]):
         """
         return func(*args, **kwargs)
 
-    def map(self, func: Callable[..., R], iterable: Iterable[R]) -> Sequence[R]:
+    def map(self, func: Callable[..., R], iterable: Iterable[T]) -> Sequence[R]:
         """Map function over iterable using built-in map.
 
         Args:

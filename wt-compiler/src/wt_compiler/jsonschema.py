@@ -19,7 +19,9 @@ class SurfacesDescriptionSchema(GenerateJsonSchema):
     from Annotated types are not properly surfaced in the JSON schema.
     """
 
-    def generate(self, schema: Any, mode: str = "validation") -> dict[str, Any]:  # type: ignore[override]
+    def generate(
+        self, schema: Any, mode: Literal["validation", "serialization"] = "validation"
+    ) -> dict[str, Any]:
         """Generate JSON schema with proper field descriptions."""
         json_schema = super().generate(schema, mode=mode)
         if "schema" in schema:

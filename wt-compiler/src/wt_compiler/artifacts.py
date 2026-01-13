@@ -12,9 +12,9 @@ from typing import Any
 if sys.version_info >= (3, 11):
     import tomllib
 else:
-    import tomli as tomllib
+    import tomli as tomllib  # type: ignore[import-not-found]
 
-import pydot as dot  # type: ignore[import-untyped]
+import pydot as dot
 import ruamel.yaml
 import tomli_w
 from pydantic import BaseModel, Field
@@ -214,8 +214,8 @@ class PackageDirectory(BaseModel):
     """Package directory structure for the workflow."""
 
     dags: Dags
-    rjsf: dict[str, Any] = Field(..., alias="rjsf.json")  # type: ignore[name-defined]
-    params_json: dict[str, Any] = Field(..., alias="params.json")  # type: ignore[name-defined]
+    rjsf: dict[str, Any] = Field(..., alias="rjsf.json")
+    params_json: dict[str, Any] = Field(..., alias="params.json")
     params_model: str = Field(..., alias="params.py")
     formdata_model: str = Field(..., alias="formdata.py")
     cli: str = Field(..., alias="cli.py")
@@ -322,7 +322,7 @@ def _params_sha256_from_readme(readme_md: str) -> str:
         AssertionError: If params_sha256 is invalid
     """
     fingerprint_text = readme_md.split("```yaml")[-1].split("```")[0]
-    fingerprint_yaml: dict[str, Any] = yaml.load(fingerprint_text)  # type: ignore[assignment]
+    fingerprint_yaml: dict[str, Any] = yaml.load(fingerprint_text)
     params_sha256 = fingerprint_yaml.get("params_sha256", None)
     assert isinstance(params_sha256, str), "params_sha256 must be a string."
     assert SHA256.match(params_sha256), "params_sha256 must be a valid SHA256 hash."
@@ -392,7 +392,7 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
         tests = Tests(**{f.name: f.read_text() for f in artifacts_dir.joinpath("tests").iterdir()})
         package_name = artifacts_dir.name.replace("-", "_")
         package = PackageDirectory(
-            **{
+            **{  # type: ignore[arg-type]
                 f.name: (f.read_text() if not f.suffix == ".json" else json.load(f.open()))
                 for f in artifacts_dir.joinpath(package_name).iterdir()
                 if f.is_file()
@@ -410,7 +410,7 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
             package_name=package_name,
             package=package,
             tests=tests,
-            **{
+            **{  # type: ignore[arg-type]
                 "pixi.toml": pixi_toml,
                 "Dockerfile": dockerfile,
                 ".dockerignore": dockerignore,
@@ -453,7 +453,7 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
                         f"To update, all of {(lockfile, version_yaml, readme_md_file)} must exist."
                     )
                 prior_lockfile = lockfile.read_text()
-                prior_version_yaml = VersionYaml(**yaml.load(version_yaml.read_text()))  # type: ignore[arg-type]
+                prior_version_yaml = VersionYaml(**yaml.load(version_yaml.read_text()))
                 prior_params_sha256 = _params_sha256_from_readme(readme_md_file.read_text())
                 new_params_sha256 = _params_sha256_from_readme(self.readme_md)
                 new_version = VersionYaml.bump_from(
@@ -478,7 +478,7 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
             ".dockerignore": self.dockerignore,
             "README.md": self.readme_md,
         }.items():
-            self.release_dir.joinpath(k).write_text(v)  # type: ignore[arg-type]
+            self.release_dir.joinpath(k).write_text(v)
         # tests
         self.tests.dump(self.release_dir)
         # package artifacts

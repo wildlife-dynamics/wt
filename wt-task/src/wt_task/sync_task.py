@@ -123,7 +123,9 @@ def _create_mapvalues_kwargs_iterable(
     return kwargs_iterable
 
 
-def _wrap_for_mapvalues(func: Callable[P, R]) -> Callable[[tuple[K, V]], tuple[K, R]]:
+def _wrap_for_mapvalues(
+    func: Callable[..., R],
+) -> Callable[[tuple[Any, dict[str, Any]]], tuple[Any, R]]:
     """Wrap function for mapvalues operation.
 
     Args:
@@ -134,7 +136,7 @@ def _wrap_for_mapvalues(func: Callable[P, R]) -> Callable[[tuple[K, V]], tuple[K
     """
     import functools
 
-    wrapper: mapvalues_wrapper[K, V, R] = mapvalues_wrapper(func)
+    wrapper: mapvalues_wrapper[Any, dict[str, Any], R] = mapvalues_wrapper(func)
     functools.update_wrapper(wrapper, func)
     return wrapper
 
@@ -195,7 +197,7 @@ class SyncTask(_Task[P, R, K, V]):
         [3, 4]
     """
 
-    executor: SyncExecutor[P, R] = field(default_factory=PythonExecutor)  # type: ignore[assignment]
+    executor: SyncExecutor[P, R] = field(default_factory=PythonExecutor)
 
     def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
         """Execute the task with given arguments.
@@ -318,9 +320,9 @@ class SyncTask(_Task[P, R, K, V]):
                     "method": "map",
                 },
             ):
-                return self.executor.map(lambda kw: self.func(**kw), kwargs_iterable)  # type: ignore[arg-type, call-arg]
+                return self.executor.map(lambda kw: self.func(**kw), kwargs_iterable)  # type: ignore[call-arg]
         else:
-            return self.executor.map(lambda kw: self.func(**kw), kwargs_iterable)  # type: ignore[arg-type, call-arg]
+            return self.executor.map(lambda kw: self.func(**kw), kwargs_iterable)  # type: ignore[call-arg]
 
     @overload
     def mapvalues(
@@ -374,7 +376,7 @@ class SyncTask(_Task[P, R, K, V]):
         """
         # Special handling for SkipSentinel - return it with None key
         if isinstance(argvalues, SkipSentinel):
-            return [(None, argvalues)]  # type: ignore[list-item]
+            return [(None, argvalues)]
 
         defaults = _get_defaults(self.func)
         kwargs_iterable = _create_mapvalues_kwargs_iterable(argnames, argvalues, defaults)
@@ -388,6 +390,6 @@ class SyncTask(_Task[P, R, K, V]):
                     "method": "mapvalues",
                 },
             ):
-                return self.executor.map(_wrap_for_mapvalues(self.func), kwargs_iterable)
+                return self.executor.map(_wrap_for_mapvalues(self.func), kwargs_iterable)  # type: ignore[return-value, arg-type]
         else:
-            return self.executor.map(_wrap_for_mapvalues(self.func), kwargs_iterable)
+            return self.executor.map(_wrap_for_mapvalues(self.func), kwargs_iterable)  # type: ignore[return-value, arg-type]

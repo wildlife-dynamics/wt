@@ -54,7 +54,7 @@ class AsyncTask(_Task[P, R, K, V]):
         >>> # Examples here are conceptual as we'd need a concrete AsyncExecutor
     """
 
-    executor: AsyncExecutor[P, R]  # type: ignore[type-arg]
+    executor: AsyncExecutor[P, R]
 
     def __call__(self, *args: P.args, **kwargs: P.kwargs) -> Future[R]:
         """Execute the task asynchronously.
@@ -121,9 +121,9 @@ class AsyncTask(_Task[P, R, K, V]):
                     "method": "map",
                 },
             ):
-                return self.executor.map(self.func, kwargs_iterable)  # type: ignore[arg-type]
+                return self.executor.map(self.func, kwargs_iterable)
         else:
-            return self.executor.map(self.func, kwargs_iterable)  # type: ignore[arg-type]
+            return self.executor.map(self.func, kwargs_iterable)
 
     def mapvalues(
         self, argnames: str | Sequence[str], argvalues: Sequence[tuple[K, V]]
@@ -153,6 +153,6 @@ class AsyncTask(_Task[P, R, K, V]):
                     "method": "mapvalues",
                 },
             ):
-                return self.executor.map(_wrap_for_mapvalues(self.func), kwargs_iterable)
+                return self.executor.map(_wrap_for_mapvalues(self.func), kwargs_iterable)  # type: ignore[return-value, arg-type]
         else:
-            return self.executor.map(_wrap_for_mapvalues(self.func), kwargs_iterable)
+            return self.executor.map(_wrap_for_mapvalues(self.func), kwargs_iterable)  # type: ignore[return-value, arg-type]
