@@ -26,6 +26,7 @@ uv run pytest src/test_recompile.py -v
 
 | Option | Description |
 |--------|-------------|
+| `--manifest-item ID` | Test a specific manifest item by ID (e.g., `events@main`) |
 | `--repo-url URL` | Test a single repo (overrides manifest) |
 | `--repo-ref REF` | Override git ref (`main`, `v1.0.0`, `latest-release`) |
 | `--repo-auth token:TOKEN` | Auth token for private repos |
@@ -35,6 +36,9 @@ uv run pytest src/test_recompile.py -v
 ## Examples
 
 ```bash
+# Test a specific manifest item (used by CI matrix jobs)
+uv run pytest src/test_recompile.py -v --manifest-item=events@main
+
 # Test against a specific version
 uv run pytest src/test_recompile.py -v --repo-ref=v1.0.0
 
@@ -47,6 +51,15 @@ uv run pytest src/test_generated.py -v --cases=example-case
 # Test a private repo
 uv run pytest -v --repo-url=https://github.com/org/private-repo --repo-auth=token:ghp_xxx
 ```
+
+### Manifest Item IDs
+
+Each repo in the manifest gets an ID in the format `{repo-name}@{ref}`:
+- `events@main` - the "events" repo at ref "main"
+- `events@latest-release` - the "events" repo at the latest release tag
+
+For monorepos with multiple specs, the ID includes the spec name:
+- `workflows-monorepo/etl@main` - the "etl" spec in "workflows-monorepo"
 
 ## Configuration
 
@@ -70,5 +83,16 @@ diff_allowlist:
 Tests run automatically on:
 - Push to `main`
 - PRs with the `run-reverse-integration` label
+
+The CI workflow uses a **dynamic matrix** generated from `manifest.yaml`:
+1. The `generate-matrix` job reads the manifest and outputs matrix entries
+2. Each repo×ref combination runs as a parallel job (e.g., "events @ main", "events @ latest-release")
+3. Job names in the GitHub Checks UI match the manifest item IDs
+
+To generate the matrix locally:
+```bash
+uv run python src/generate_matrix.py
+# Output: {"include": [{"id": "events@main", "name": "events @ main"}, ...]}
+```
 
 See `.github/workflows/reverse-integration.yml` for details.

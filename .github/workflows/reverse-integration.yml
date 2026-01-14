@@ -32,14 +32,39 @@ jobs:
             echo "should_run=false" >> $GITHUB_OUTPUT
           fi
 
-  reverse-integration:
+  generate-matrix:
     needs: check-trigger
+    if: needs.check-trigger.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.parse.outputs.matrix }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Generate matrix from manifest
+        id: parse
+        working-directory: tests/reverse_integration/src
+        run: |
+          matrix=$(python generate_matrix.py)
+          echo "matrix=$matrix" >> $GITHUB_OUTPUT
+
+  reverse-integration:
+    needs: [check-trigger, generate-matrix]
     if: needs.check-trigger.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        ref: [main, latest-release]
+      matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
+    name: ${{ matrix.name }}
     defaults:
       run:
         working-directory: tests/reverse_integration
@@ -62,25 +87,15 @@ jobs:
         run: uv sync --all-extras --dev
 
       - name: Run reverse-integration tests (recompilation only)
-        run: |
-          if [[ "${{ matrix.ref }}" == "latest-release" ]]; then
-            uv run pytest src/test_recompile.py -v --repo-ref=latest-release
-          else
-            uv run pytest src/test_recompile.py -v
-          fi
+        run: uv run pytest src/test_recompile.py -v --manifest-item="${{ matrix.id }}"
 
       - name: Run reverse-integration tests (generated tests)
-        run: |
-          if [[ "${{ matrix.ref }}" == "latest-release" ]]; then
-            uv run pytest src/test_generated.py -v --repo-ref=latest-release
-          else
-            uv run pytest src/test_generated.py -v
-          fi
+        run: uv run pytest src/test_generated.py -v --manifest-item="${{ matrix.id }}"
 
   # Summary job for branch protection
   reverse-integration-complete:
     runs-on: ubuntu-latest
-    needs: [check-trigger, reverse-integration]
+    needs: [check-trigger, generate-matrix, reverse-integration]
     if: always()
     steps:
       - name: Check results

@@ -32,12 +32,15 @@ class RepoConfig:
     ref: str
     spec_path: str
     generated_path: str
+    spec_name: str | None = None  # For monorepos: identifies which spec (e.g., "etl")
 
     @property
     def id(self) -> str:
         """Return a unique identifier for this config."""
         # Extract repo name from URL
         repo_name = self.url.rstrip("/").split("/")[-1]
+        if self.spec_name:
+            return f"{repo_name}/{self.spec_name}@{self.ref}"
         return f"{repo_name}@{self.ref}"
 
 
@@ -55,6 +58,18 @@ def load_manifest() -> dict[str, Any]:
     """Load the manifest.yaml file."""
     with open(MANIFEST_PATH) as f:
         return yaml.safe_load(f)
+
+
+def _derive_spec_name(spec_path: str) -> str:
+    """Derive a spec name from the spec path for monorepo entries.
+
+    For a path like 'workflows/etl/spec.yaml', returns 'etl'.
+    """
+    from pathlib import PurePosixPath
+
+    path = PurePosixPath(spec_path)
+    # Use the parent directory name as the spec name
+    return path.parent.name or path.stem
 
 
 def get_repo_configs(
@@ -92,6 +107,7 @@ def get_repo_configs(
                         ref=ref_override or repo.get("ref", "main"),
                         spec_path=spec_config["spec_path"],
                         generated_path=spec_config["generated_path"],
+                        spec_name=_derive_spec_name(spec_config["spec_path"]),
                     )
                 )
         else:
@@ -147,6 +163,13 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Skip running the generated workflow tests",
     )
 
+    group.addoption(
+        "--manifest-item",
+        action="store",
+        default=None,
+        help="Run tests for a specific manifest item by ID (e.g., 'events@main')",
+    )
+
 
 @pytest.fixture(scope="session")
 def manifest() -> dict[str, Any]:
@@ -188,12 +211,14 @@ def get_repo_configs_for_session(config: pytest.Config) -> list[RepoConfig]:
     Handles:
     - --repo-url for ad-hoc single repo testing
     - --repo-ref for ref overrides
+    - --manifest-item for filtering to a specific item by ID
     - 'latest-release' special ref value
     """
     manifest = load_manifest()
 
     repo_url = config.getoption("--repo-url")
     ref_override = config.getoption("--repo-ref")
+    manifest_item = config.getoption("--manifest-item")
 
     if repo_url:
         # Ad-hoc single repo testing
@@ -206,7 +231,20 @@ def get_repo_configs_for_session(config: pytest.Config) -> list[RepoConfig]:
             )
         ]
 
-    return get_repo_configs(manifest, ref_override=ref_override)
+    configs = get_repo_configs(manifest, ref_override=ref_override)
+
+    # Filter to specific manifest item if requested
+    if manifest_item:
+        matching = [c for c in configs if c.id == manifest_item]
+        if not matching:
+            available_ids = [c.id for c in configs]
+            raise pytest.UsageError(
+                f"Manifest item '{manifest_item}' not found. "
+                f"Available items: {', '.join(available_ids)}"
+            )
+        return matching
+
+    return configs
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
