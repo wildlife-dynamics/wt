@@ -180,6 +180,31 @@ class PixiToml(_AllowArbitraryAndValidateAssignment):
             f.write(b"\n")
             tomli_w.dump(self.model_dump(by_alias=True), f)
 
+    def to_toml(self) -> str:
+        """Serialize to TOML string.
+
+        Returns:
+            TOML-formatted string representation
+
+        Examples:
+            >>> pixi = PixiToml(
+            ...     workspace=PixiWorkspace(name="test"),
+            ...     dependencies={"python": ">=3.10"}
+            ... )
+            >>> toml_str = pixi.to_toml()  # doctest: +SKIP
+            >>> "test" in toml_str  # doctest: +SKIP
+            True
+        """
+        import io
+
+        buffer = io.BytesIO()
+        if self.file_header:
+            buffer.write(self.file_header.encode("utf-8"))
+            buffer.write(b"\n")
+        # Use mode="json" to ensure proper serialization of complex types
+        tomli_w.dump(self.model_dump(by_alias=True, mode="json"), buffer)
+        return buffer.getvalue().decode("utf-8")
+
 
 class Tests(BaseModel):
     """Test artifacts for the workflow."""

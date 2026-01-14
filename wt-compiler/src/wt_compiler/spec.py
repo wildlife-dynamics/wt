@@ -22,10 +22,11 @@ from pydantic import (
 )
 from pydantic import Tag as PydanticTag
 from pydantic.functional_validators import AfterValidator, BeforeValidator
+from rattler import MatchSpec
 
 from wt_compiler._models import _AllowArbitraryAndForbidExtra, _ForbidExtra
 from wt_compiler.jsonschema import ReactJSONSchemaFormOverrides
-from wt_compiler.requirements import ChannelType, NamelessMatchSpecType
+from wt_compiler.requirements import CONDA_FORGE_CHANNEL, ChannelType, NamelessMatchSpecType
 from wt_compiler.util import rsplit_importable_reference, validate_importable_reference
 
 # Type aliases
@@ -716,6 +717,11 @@ class TaskGroup(_ForbidExtra):
 def _group_or_instance(v: Any) -> str:
     """Discriminator function to determine if entry is a group or instance."""
     msg = "The `workflow` field must be a list of task instances or task groups."
+    # Handle already-validated model instances
+    if isinstance(v, TaskInstance):
+        return "instance"
+    if isinstance(v, TaskGroup):
+        return "group"
     if not isinstance(v, dict):
         raise ValueError(msg)
     match v:
@@ -728,11 +734,30 @@ def _group_or_instance(v: Any) -> str:
 
 
 class SpecRequirement(_AllowArbitraryAndForbidExtra):
-    """A requirement specification for the workflow."""
+    """A requirement specification for the workflow.
+
+    Can be constructed with separate fields or a single requirement string:
+        SpecRequirement(name="package", version=">=1.0", channel="conda-forge")
+        SpecRequirement(requirement="package>=1.0.0")
+    """
 
     name: str
     version: NamelessMatchSpecType
-    channel: ChannelType
+    channel: ChannelType = Field(default_factory=lambda: CONDA_FORGE_CHANNEL)
+
+    @model_validator(mode="before")
+    @classmethod
+    def parse_requirement_string(cls, values: Any) -> Any:
+        """Parse a requirement string like 'package>=1.0.0' into name/version/channel."""
+        if isinstance(values, dict) and "requirement" in values:
+            req_str = values.pop("requirement")
+            match_spec = MatchSpec(req_str)
+            # match_spec.name returns PackageNameMatcher, use .normalized to get string
+            values["name"] = match_spec.name.normalized
+            values["version"] = str(match_spec.version) if match_spec.version else "*"
+            if match_spec.channel:
+                values["channel"] = match_spec.channel.name or match_spec.channel.base_url
+        return values
 
 
 class TaskInstanceDefaults(_ForbidExtra):

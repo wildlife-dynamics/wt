@@ -7,7 +7,7 @@ from wt_compiler.compiler import (
     Fingerprint,
     _remove_functionally_irrelevant_keys,
 )
-from wt_compiler.spec import KnownTask, Spec, SpecRequirement, TaskInstance
+from wt_compiler.spec import KnownTask, Spec, SpecRequirement, TaskInstance, known_tasks
 
 
 class TestRemoveFunctionallyIrrelevantKeys:
@@ -61,22 +61,19 @@ class TestDagCompiler:
 
     def test_package_name_generation(self):
         """Test package name generation from spec ID."""
-        # Create a minimal spec
+        # Create a minimal spec (spec ID must be valid Python identifier)
         spec = Spec(
-            id="my-workflow",
-            name="My Workflow",
-            description="Test",
+            id="my_workflow",
             requirements=[],
-            channels=[],
             workflow=[],
         )
         compiler = DagCompiler(spec=spec)
-        assert compiler.release_name == "wf-my-workflow"
+        assert compiler.release_name == "wf-my_workflow"
         assert compiler.package_name == "wf_my_workflow"
 
     def test_per_taskinstance_omit_args(self):
         """Test omit_args calculation for task instances."""
-        # Create tasks with dependencies
+        # Register tasks in the global registry
         task1 = KnownTask(
             importable_reference="mod.func1",
             json_schema={"properties": {"x": {"type": "integer"}}},
@@ -85,36 +82,36 @@ class TestDagCompiler:
             importable_reference="mod.func2",
             json_schema={"properties": {"y": {"type": "integer"}}},
         )
+        known_tasks["func1"] = {"mod": task1}
+        known_tasks["func2"] = {"mod": task2}
 
-        instance1 = TaskInstance(
-            id="task1",
-            name="Task 1",
-            task="mod.func1",
-            known_task=task1,
-            partial={"x": 10},
-        )
-        instance2 = TaskInstance(
-            id="task2",
-            name="Task 2",
-            task="mod.func2",
-            known_task=task2,
-            partial={},
-        )
+        try:
+            instance1 = TaskInstance(
+                id="task1",
+                name="Task 1",
+                task="mod.func1",
+                partial={"x": 10},
+            )
+            instance2 = TaskInstance(
+                id="task2",
+                name="Task 2",
+                task="mod.func2",
+                partial={},
+            )
 
-        spec = Spec(
-            id="test-spec",
-            name="Test",
-            description="Test",
-            requirements=[],
-            channels=[],
-            workflow=[instance1, instance2],
-        )
-        compiler = DagCompiler(spec=spec)
+            spec = Spec(
+                id="test_spec",
+                requirements=[],
+                workflow=[instance1, instance2],
+            )
+            compiler = DagCompiler(spec=spec)
 
-        omit_args = compiler.per_taskinstance_omit_args
-        assert "task1" in omit_args
-        assert "return" in omit_args["task1"]
-        assert "x" in omit_args["task1"]  # x is in partial
+            omit_args = compiler.per_taskinstance_omit_args
+            assert "task1" in omit_args
+            assert "return" in omit_args["task1"]
+            assert "x" in omit_args["task1"]  # x is in partial
+        finally:
+            known_tasks.clear()
 
     def test_build_pydot_graph(self):
         """Test building a pydot graph from spec."""
@@ -122,40 +119,38 @@ class TestDagCompiler:
             importable_reference="mod.func1",
             json_schema={"properties": {}},
         )
-        instance1 = TaskInstance(
-            id="task1",
-            name="Task 1",
-            task="mod.func1",
-            known_task=task1,
-        )
+        known_tasks["func1"] = {"mod": task1}
 
-        spec = Spec(
-            id="test-spec",
-            name="Test",
-            description="Test",
-            requirements=[],
-            channels=[],
-            workflow=[instance1],
-        )
-        compiler = DagCompiler(spec=spec)
+        try:
+            instance1 = TaskInstance(
+                id="task1",
+                name="Task 1",
+                task="mod.func1",
+            )
 
-        graph = compiler.build_pydot_graph()
-        assert graph.get_name() == "test-spec"
-        # Check that nodes were created
-        nodes = graph.get_nodes()
-        assert len(nodes) > 0
+            spec = Spec(
+                id="test_spec",
+                requirements=[],
+                workflow=[instance1],
+            )
+            compiler = DagCompiler(spec=spec)
+
+            graph = compiler.build_pydot_graph()
+            assert graph.get_name() == "test_spec"
+            # Check that nodes were created
+            nodes = graph.get_nodes()
+            assert len(nodes) > 0
+        finally:
+            known_tasks.clear()
 
     def test_get_pixi_toml(self):
         """Test pixi.toml generation."""
         spec = Spec(
-            id="test-spec",
-            name="Test",
-            description="Test",
+            id="test_spec",
             requirements=[
                 SpecRequirement(requirement="python>=3.10"),
                 SpecRequirement(requirement="pandas>=2.0"),
             ],
-            channels=["conda-forge"],
             workflow=[],
         )
         compiler = DagCompiler(spec=spec)
@@ -178,20 +173,24 @@ class TestDagCompiler:
                 "$defs": {"MyType": {"type": "object", "properties": {"a": {"type": "int"}}}},
             },
         )
-        instance = TaskInstance(
-            id="my_task",
-            name="My Task",
-            task="mod.func",
-            known_task=task,
-        )
+        known_tasks["func"] = {"mod": task}
 
-        props, defs = DagCompiler._props_and_defs_from_task_instance(instance, omit_args=["y"])
+        try:
+            instance = TaskInstance(
+                id="my_task",
+                name="My Task",
+                task="mod.func",
+            )
 
-        assert "my_task" in props
-        assert "x" in props["my_task"]["properties"]
-        assert "y" not in props["my_task"]["properties"]  # Omitted
-        assert "z" in props["my_task"]["properties"]
-        assert "MyType" in defs
+            props, defs = DagCompiler._props_and_defs_from_task_instance(instance, omit_args=["y"])
+
+            assert "my_task" in props
+            assert "x" in props["my_task"]["properties"]
+            assert "y" not in props["my_task"]["properties"]  # Omitted
+            assert "z" in props["my_task"]["properties"]
+            assert "MyType" in defs
+        finally:
+            known_tasks.clear()
 
 
 class TestFingerprint:
@@ -204,16 +203,14 @@ class TestFingerprint:
             PackageDirectory,
             PixiToml,
             PixiWorkspace,
+            Tests,
             WorkflowArtifacts,
         )
 
         # Create minimal artifacts
         spec = Spec(
             id="test",
-            name="Test",
-            description="Test",
             requirements=[],
-            channels=[],
             workflow=[],
         )
 
@@ -242,14 +239,19 @@ class TestFingerprint:
             },
         )
         pixi_toml = PixiToml(workspace=PixiWorkspace(name="test"), dependencies={})
+        tests = Tests(**{
+            "conftest.py": "",
+            "test_metadata.py": "",
+            "test_results.py": "",
+        })
 
         artifacts = WorkflowArtifacts(
             spec_relpath="spec.yaml",
             release_name="wf-test",
             package_name="wf_test",
             package=package,
-            tests=None,  # type: ignore[arg-type]
-            pydot_graph=None,  # type: ignore[arg-type]
+            tests=tests,
+            pydot_graph=None,
             **{"pixi.toml": pixi_toml, "Dockerfile": "", ".dockerignore": ""},
         )
 
@@ -265,15 +267,13 @@ class TestFingerprint:
             PackageDirectory,
             PixiToml,
             PixiWorkspace,
+            Tests,
             WorkflowArtifacts,
         )
 
         spec = Spec(
             id="test",
-            name="Test",
-            description="Test",
             requirements=[],
-            channels=[],
             workflow=[],
         )
 
@@ -302,14 +302,19 @@ class TestFingerprint:
             },
         )
         pixi_toml = PixiToml(workspace=PixiWorkspace(name="test"), dependencies={})
+        tests = Tests(**{
+            "conftest.py": "",
+            "test_metadata.py": "",
+            "test_results.py": "",
+        })
 
         artifacts = WorkflowArtifacts(
             spec_relpath="spec.yaml",
             release_name="wf-test",
             package_name="wf_test",
             package=package,
-            tests=None,  # type: ignore[arg-type]
-            pydot_graph=None,  # type: ignore[arg-type]
+            tests=tests,
+            pydot_graph=None,
             **{"pixi.toml": pixi_toml, "Dockerfile": "", ".dockerignore": ""},
         )
 
