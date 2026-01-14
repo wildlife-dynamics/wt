@@ -42,19 +42,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: pip install pyyaml
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
 
       - name: Generate matrix from manifest
         id: parse
-        working-directory: tests/reverse_integration/src
+        working-directory: tests/reverse_integration
         run: |
-          matrix=$(python generate_matrix.py)
+          matrix=$(uv run python src/generate_matrix.py)
           echo "matrix=$matrix" >> $GITHUB_OUTPUT
 
   reverse-integration:
