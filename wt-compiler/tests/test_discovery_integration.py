@@ -1,7 +1,7 @@
 """Tests for discovery.py and its integration with compiler.py."""
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
@@ -111,10 +111,11 @@ class TestKnownTaskCreation:
 class TestDiscoverTasksMocked:
     """Tests for discover_tasks_from_requirements with mocked subprocess."""
 
+    @pytest.mark.asyncio
     @patch("wt_compiler.discovery.subprocess.run")
-    @patch("wt_compiler.discovery._install_via_subprocess")
+    @patch("wt_compiler.discovery._create_environment", new_callable=AsyncMock)
     @patch("wt_compiler.discovery.tempfile.TemporaryDirectory")
-    def test_discover_parses_registry_output(self, mock_tmpdir, mock_install, mock_run):
+    async def test_discover_parses_registry_output(self, mock_tmpdir, mock_install, mock_run):
         """Test that discover_tasks_from_requirements correctly parses CLI output."""
         from rattler import MatchSpec
 
@@ -145,11 +146,10 @@ class TestDiscoverTasksMocked:
             returncode=0,
         )
 
-        # Skip actual installation
-        mock_install.return_value = None
+        # Skip actual installation (async mock returns None by default)
 
         # Call discover_tasks_from_requirements with mocked subprocess
-        result = discover_tasks_from_requirements([MatchSpec("mypackage>=1.0.0")])
+        result = await discover_tasks_from_requirements([MatchSpec("mypackage>=1.0.0")])
 
         # Verify the result
         assert "calculate" in result
@@ -221,16 +221,18 @@ class TestPopulateKnownTasks:
 class TestCompileWorkflowFromYaml:
     """Tests for compile_workflow_from_yaml function."""
 
-    def test_compile_workflow_from_yaml_calls_discovery(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_compile_workflow_from_yaml_calls_discovery(self, tmp_path):
         """Test that compile_workflow_from_yaml triggers discovery."""
         # This is an integration test that would require mocking
         # the entire discovery chain
         pass  # Placeholder for full integration test
 
-    def test_compile_workflow_from_yaml_invalid_path(self):
+    @pytest.mark.asyncio
+    async def test_compile_workflow_from_yaml_invalid_path(self):
         """Test that invalid path raises FileNotFoundError."""
         with pytest.raises(FileNotFoundError):
-            compile_workflow_from_yaml("/nonexistent/path/spec.yaml")
+            await compile_workflow_from_yaml("/nonexistent/path/spec.yaml")
 
 
 # Marker for slow/integration tests that require real environments
@@ -242,14 +244,16 @@ class TestDiscoveryIntegration:
     Run with: pytest -m slow
     """
 
+    @pytest.mark.asyncio
     @pytest.mark.skip(reason="Requires wt-registry installed in environment")
-    def test_end_to_end_discovery(self):
+    async def test_end_to_end_discovery(self):
         """Test full discovery with real environment creation."""
         # Would test with real wt-registry installation
         pass
 
+    @pytest.mark.asyncio
     @pytest.mark.skip(reason="Requires wt-registry installed in environment")
-    def test_end_to_end_compilation(self, tmp_path):
+    async def test_end_to_end_compilation(self, tmp_path):
         """Test full compilation from YAML with real discovery."""
         # Would test the complete compile_workflow_from_yaml flow
         pass

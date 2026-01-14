@@ -1,8 +1,9 @@
-"""Task discovery via wt-registry CLI subprocess calls.
+"""Task discovery via py-rattler and wt-registry CLI.
 
 This module provides the core innovation of the wt-compiler package:
-discovering tasks by creating ephemeral rattler environments and calling
-the wt-registry CLI, avoiding direct Python import dependencies on task libraries.
+discovering tasks by creating ephemeral rattler environments using py-rattler's
+native async API (solve + install) and calling the wt-registry CLI, avoiding
+direct Python import dependencies on task libraries.
 """
 
 import subprocess
@@ -11,22 +12,22 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from rattler import Channel, MatchSpec
+from rattler import Channel, MatchSpec, Platform, install, solve
 from wt_contracts.registry import RegistryOutput
 
 from wt_compiler.spec import KnownTask, TaskTag, known_tasks
 
 
-def discover_tasks_from_requirements(
+async def discover_tasks_from_requirements(
     requirements: list[MatchSpec],
     channels: list[Channel] | None = None,
-    platform: str | None = None,
+    platform: Platform | None = None,
 ) -> dict[str, dict[str, KnownTask]]:
     """Discover tasks by creating an ephemeral rattler environment.
 
-    This function:
+    This async function:
     1. Creates a temporary directory
-    2. Uses rattler to solve and install the requirements
+    2. Uses py-rattler to solve and install the requirements
     3. Calls wt-registry CLI in that environment
     4. Parses the JSON output
     5. Returns a dictionary of task name -> {module -> KnownTask}
@@ -34,7 +35,7 @@ def discover_tasks_from_requirements(
     Args:
         requirements: List of package requirements to install
         channels: Optional list of channels (defaults to conda-forge)
-        platform: Optional platform string (defaults to current platform)
+        platform: Optional Platform object (defaults to current platform)
 
     Returns:
         Dictionary mapping task names to {module: KnownTask} dicts
@@ -47,7 +48,7 @@ def discover_tasks_from_requirements(
     Examples:
         >>> from rattler import MatchSpec
         >>> reqs = [MatchSpec("wt-registry>=0.1.0")]
-        >>> # tasks = discover_tasks_from_requirements(reqs)  # doctest: +SKIP
+        >>> # tasks = await discover_tasks_from_requirements(reqs)  # doctest: +SKIP
         >>> # "my_task" in tasks  # doctest: +SKIP
         True
     """
@@ -59,22 +60,19 @@ def discover_tasks_from_requirements(
         if sys.platform == "darwin":
             import platform as plat
 
-            platform = "osx-arm64" if plat.machine() == "arm64" else "osx-64"
+            platform = Platform("osx-arm64") if plat.machine() == "arm64" else Platform("osx-64")
         elif sys.platform == "linux":
-            platform = "linux-64"
+            platform = Platform("linux-64")
         elif sys.platform == "win32":
-            platform = "win-64"
+            platform = Platform("win-64")
         else:
-            platform = "linux-64"  # fallback
+            platform = Platform("linux-64")  # fallback
 
     with tempfile.TemporaryDirectory() as tmpdir:
         env_path = Path(tmpdir) / "env"
 
-        # NOTE: The rattler-py API for solve/install may vary between versions.
-        # Some versions have async APIs (solve/install are coroutines).
-        # For reliability, we use the subprocess fallback with pixi/mamba/conda.
-        # TODO: Update to use rattler-py native API when stable and well-documented
-        _install_via_subprocess(env_path, requirements, channels, platform)
+        # Use py-rattler native API to solve and install packages
+        await _create_environment(env_path, requirements, channels, platform)
 
         # Determine the executable path based on platform
         if sys.platform == "win32":
@@ -132,85 +130,42 @@ def discover_tasks_from_requirements(
         return discovered_tasks
 
 
-def _install_via_subprocess(
+async def _create_environment(
     env_path: Path,
     requirements: list[MatchSpec],
     channels: list[Channel],
-    platform: str,
+    platform: Platform,
 ) -> None:
-    """Fallback installation via subprocess using pixi or mamba.
-
-    This is used when rattler-py native API is not available or fails.
+    """Create conda environment using py-rattler native API.
 
     Args:
         env_path: Path to create the environment
-        requirements: List of package requirements
+        requirements: List of package requirements (MatchSpec)
         channels: List of channels
-        platform: Platform string
+        platform: Target platform
 
     Raises:
-        RuntimeError: If no suitable package manager is found
-        subprocess.CalledProcessError: If installation fails
+        Exception: If solving or installation fails
     """
-    # Try to find a suitable package manager
-    for cmd in ["pixi", "mamba", "conda"]:
-        if _command_exists(cmd):
-            # Build channel args
-            channel_args = []
-            for channel in channels:
-                channel_args.extend(["-c", channel.name or str(channel)])
+    # Solve dependencies
+    records = await solve(
+        channels=channels,
+        specs=requirements,
+        platforms=[platform, Platform("noarch")],
+    )
 
-            # Build requirement args
-            req_args = [str(req) for req in requirements]
-
-            # Create environment
-            create_cmd = (
-                [
-                    cmd,
-                    "create",
-                    "-p",
-                    str(env_path),
-                    "-y",
-                    "--platform",
-                    platform,
-                ]
-                + channel_args
-                + req_args
-            )
-
-            subprocess.run(create_cmd, check=True, capture_output=True)
-            return
-
-    raise RuntimeError(
-        "No suitable package manager found (pixi, mamba, or conda required). "
-        "Please install one to use task discovery."
+    # Install solved packages to target prefix
+    await install(
+        records=records,
+        target_prefix=str(env_path),
+        platform=platform,
     )
 
 
-def _command_exists(command: str) -> bool:
-    """Check if a command exists in PATH.
-
-    Args:
-        command: Command name to check
-
-    Returns:
-        True if command exists, False otherwise
-    """
-    try:
-        subprocess.run(
-            [command, "--version"],
-            capture_output=True,
-            check=True,
-        )
-        return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return False
-
-
-def populate_known_tasks(requirements: list[MatchSpec], **kwargs: Any) -> None:
+async def populate_known_tasks(requirements: list[MatchSpec], **kwargs: Any) -> None:
     """Discover tasks and populate the global known_tasks dictionary.
 
-    This is a convenience function that calls discover_tasks_from_requirements
+    This async convenience function calls discover_tasks_from_requirements
     and updates the global known_tasks dict in spec.py.
 
     Args:
@@ -221,16 +176,16 @@ def populate_known_tasks(requirements: list[MatchSpec], **kwargs: Any) -> None:
         >>> from rattler import MatchSpec
         >>> from wt_compiler.spec import known_tasks
         >>> reqs = [MatchSpec("my-task-library>=1.0.0")]
-        >>> # populate_known_tasks(reqs)  # doctest: +SKIP
+        >>> # await populate_known_tasks(reqs)  # doctest: +SKIP
         >>> # len(known_tasks) > 0  # doctest: +SKIP
         True
     """
-    discovered = discover_tasks_from_requirements(requirements, **kwargs)
+    discovered = await discover_tasks_from_requirements(requirements, **kwargs)
     known_tasks.clear()
     known_tasks.update(discovered)
 
 
-def discover_tasks_from_spec_requirements(
+async def discover_tasks_from_spec_requirements(
     spec_requirements: list[Any],  # SpecRequirement from spec.py
     **kwargs: Any,
 ) -> dict[str, dict[str, KnownTask]]:
@@ -248,7 +203,7 @@ def discover_tasks_from_spec_requirements(
     Examples:
         >>> # from wt_compiler.spec import SpecRequirement  # doctest: +SKIP
         >>> # reqs = [SpecRequirement(name="lib", version=">=1.0")]  # doctest: +SKIP
-        >>> # tasks = discover_tasks_from_spec_requirements(reqs)  # doctest: +SKIP
+        >>> # tasks = await discover_tasks_from_spec_requirements(reqs)  # doctest: +SKIP
     """
     # Convert SpecRequirements to MatchSpec
     match_specs = []
@@ -267,7 +222,7 @@ def discover_tasks_from_spec_requirements(
     # Remove duplicate channels
     unique_channels = list({c.name or c.base_url: c for c in channels}.values())
 
-    return discover_tasks_from_requirements(
+    return await discover_tasks_from_requirements(
         match_specs,
         channels=unique_channels,
         **kwargs,

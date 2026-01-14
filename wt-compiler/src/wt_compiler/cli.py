@@ -1,6 +1,7 @@
 """Command-line interface for wt-compiler."""
 
 import argparse
+import asyncio
 import sys
 from pathlib import Path
 
@@ -71,7 +72,7 @@ def _compile(args: argparse.Namespace) -> None:
 
     try:
         # compile_workflow_from_yaml handles discovery automatically
-        artifacts = compile_workflow_from_yaml(str(spec_path))
+        artifacts = asyncio.run(compile_workflow_from_yaml(str(spec_path)))
 
         # Write artifacts to disk
         artifacts.dump(clobber=args.clobber, update=args.update)

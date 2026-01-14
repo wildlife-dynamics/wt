@@ -725,14 +725,14 @@ def _parse_requirements_from_yaml(yaml_path: Path) -> list[SpecRequirement]:
     return requirements
 
 
-def compile_workflow_from_yaml(
+async def compile_workflow_from_yaml(
     yaml_path: str | Path,
     **compiler_kwargs: Any,
 ) -> WorkflowArtifacts:
     """Compile a workflow from a spec.yaml file with automatic task discovery.
 
-    This is the recommended entry point for compilation. It handles the complete
-    workflow:
+    This async function is the recommended entry point for compilation. It handles
+    the complete workflow:
     1. Parse requirements from YAML (without full Spec validation)
     2. Discover tasks via wt-registry CLI in ephemeral rattler environment
     3. Validate full Spec (now works because known_tasks is populated)
@@ -752,7 +752,7 @@ def compile_workflow_from_yaml(
 
     Examples:
         >>> # Compile a workflow with automatic discovery:
-        >>> # artifacts = compile_workflow_from_yaml("spec.yaml")  # doctest: +SKIP
+        >>> # artifacts = await compile_workflow_from_yaml("spec.yaml")  # doctest: +SKIP
         >>> # artifacts.dump("output/")  # doctest: +SKIP
     """
     from rattler import MatchSpec
@@ -772,7 +772,7 @@ def compile_workflow_from_yaml(
         match_specs.append(MatchSpec(matchspec_str))
 
     # Discover tasks and populate global known_tasks
-    populate_known_tasks(match_specs)
+    await populate_known_tasks(match_specs)
 
     # Phase 3: Now we can safely validate the full Spec
     with open(yaml_path) as f:
