@@ -192,13 +192,20 @@ def test_is_422_with_invalid_data():
 async def test_upload_error_to_gcs():
     """Test error upload to GCS."""
     pytest.importorskip("obstore", reason="obstore not installed")
+    import sys
+
     from wt_runner.app import upload_error_to_gcs
+
+    # Get the actual module from sys.modules to avoid namespace collision
+    # between wt_runner.app (module) and wt_runner.app (FastAPI instance
+    # imported in __init__.py)
+    app_module = sys.modules["wt_runner.app"]
 
     error_details = {"error": "Test error", "trace": "Stack trace"}
     results_url = "gs://test-bucket/results"
 
-    with patch("wt_runner.app.obstore") as mock_obstore_module:
-        with patch("wt_runner.app.HAS_OBSTORE", True):
+    with patch.object(app_module, "obstore") as mock_obstore_module:
+        with patch.object(app_module, "HAS_OBSTORE", True):
             mock_store = AsyncMock()
             mock_obstore_module.store.from_url.return_value = mock_store
 
