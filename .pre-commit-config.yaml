@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.10
+    rev: v0.14.11
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
@@ -16,3 +16,7 @@ repos:
         types: [python]
         pass_filenames: false
         files: ^wt-[^/]+/src/
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.9.25
+    hooks:
+      - id: uv-lock
