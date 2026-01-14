@@ -31,10 +31,10 @@ wt-contracts (foundation - shared type contracts)
 
 ### Directory Layout
 
-Each package follows this structure:
+Each package is at the repository root and follows this structure:
 ```
-packages/<package-name>/
-├── src/<package_name>/    # Source code
+<package-name>/            # e.g., wt-registry/, wt-compiler/
+├── src/<package_name>/    # Source code (underscores, e.g., wt_registry/)
 │   ├── __init__.py
 │   └── *.py
 ├── tests/                 # Unit tests (test_*.py)
