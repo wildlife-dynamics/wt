@@ -57,8 +57,11 @@ def _channel_from_str(value: str) -> Channel:
     raise ValueError(f"Unknown channel {value}; only {CHANNELS} are supported")
 
 
-def _serialize_channel(value: Channel) -> str:
+def _serialize_channel(value: Channel | str) -> str:
     """Serialize a Channel object to a string."""
+    # Handle strings that might have been stored in defaults
+    if isinstance(value, str):
+        return value
     if value in [
         LOCAL_CHANNEL,
         RELEASE_CHANNEL,
@@ -187,11 +190,18 @@ def _namelessmatchspec_from_str(value: str) -> NamelessMatchSpec:
 
 
 def _parse_namelessmatchspec(
-    value: str | SerializedNamelessMatchSpecDict,
+    value: str | SerializedNamelessMatchSpecDict | NamelessMatchSpec,
 ) -> NamelessMatchSpec:
-    """Parse a NamelessMatchSpec from either a string or dictionary."""
+    """Parse a NamelessMatchSpec from string, dictionary, or pass through if already parsed."""
+    # Pass through already-validated NamelessMatchSpec objects
+    if isinstance(value, NamelessMatchSpec):
+        return value
     if isinstance(value, str):
         return _namelessmatchspec_from_str(value)
+    # Handle dict with or without channel key
+    if "channel" not in value:
+        # No channel specified, use simple string parser
+        return _namelessmatchspec_from_str(value.get("version", "*"))
     return _namelessmatchspec_from_dict(value)
 
 
