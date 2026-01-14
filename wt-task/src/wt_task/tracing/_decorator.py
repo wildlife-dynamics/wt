@@ -9,11 +9,12 @@ from functools import wraps
 from typing import Any, TypeVar
 
 try:
-    from opentelemetry import trace
+    from opentelemetry.trace import get_tracer
 
     TRACING_AVAILABLE = True
 except ImportError:
     TRACING_AVAILABLE = False
+    get_tracer = None  # type: ignore[assignment]
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -44,7 +45,7 @@ def with_tracing(func: F) -> F:
 
     @wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        tracer = trace.get_tracer(__name__)
+        tracer = get_tracer(__name__)
         with tracer.start_as_current_span(
             func.__name__,
             attributes={

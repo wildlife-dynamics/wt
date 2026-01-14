@@ -10,7 +10,7 @@ for pkg in "${packages[@]}"; do
         # Convert wt-foo to wt_foo for the source path
         src_name="${pkg//-/_}"
         echo "Checking $pkg..."
-        (cd "$pkg" && uv run mypy "src/$src_name") || failed=1
+        (cd "$pkg" && uv run --all-extras mypy "src/$src_name") || failed=1
     fi
 done
 

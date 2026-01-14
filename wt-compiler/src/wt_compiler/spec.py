@@ -753,7 +753,7 @@ class SpecRequirement(_AllowArbitraryAndForbidExtra):
             req_str = values.pop("requirement")
             match_spec = MatchSpec(req_str)
             # match_spec.name returns PackageNameMatcher, use .normalized to get string
-            values["name"] = match_spec.name.normalized
+            values["name"] = match_spec.name.normalized if match_spec.name else None
             values["version"] = str(match_spec.version) if match_spec.version else "*"
             if match_spec.channel:
                 values["channel"] = match_spec.channel.name or match_spec.channel.base_url
