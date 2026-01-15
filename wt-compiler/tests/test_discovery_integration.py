@@ -14,6 +14,7 @@ from wt_compiler.compiler import (
 from wt_compiler.discovery import (
     discover_tasks_from_requirements,
 )
+from wt_compiler.exceptions import RegistryExecutionError, RegistryNotFoundError
 from wt_compiler.spec import KnownTask, known_tasks
 
 
@@ -115,12 +116,21 @@ class TestDiscoverTasksMocked:
     @patch("wt_compiler.discovery.subprocess.run")
     @patch("wt_compiler.discovery._create_environment", new_callable=AsyncMock)
     @patch("wt_compiler.discovery.tempfile.TemporaryDirectory")
-    async def test_discover_parses_registry_output(self, mock_tmpdir, mock_install, mock_run):
+    async def test_discover_parses_registry_output(
+        self, mock_tmpdir, mock_install, mock_run, tmp_path
+    ):
         """Test that discover_tasks_from_requirements correctly parses CLI output."""
         from rattler import MatchSpec
 
-        # Mock TemporaryDirectory context manager
-        mock_tmpdir.return_value.__enter__ = MagicMock(return_value="/fake/tmpdir")
+        # Create a real temp directory with a fake executable
+        env_path = tmp_path / "env"
+        bin_path = env_path / "bin"
+        bin_path.mkdir(parents=True)
+        fake_exe = bin_path / "wt-registry"
+        fake_exe.touch()  # Create the file so exists() returns True
+
+        # Mock TemporaryDirectory to use our tmp_path
+        mock_tmpdir.return_value.__enter__ = MagicMock(return_value=str(tmp_path))
         mock_tmpdir.return_value.__exit__ = MagicMock(return_value=False)
 
         # Mock the CLI output
@@ -288,6 +298,73 @@ workflow: []
         assert any(
             "conda-forge" in str(ch) for ch in channel_identifiers
         ), f"conda-forge not found in {channel_identifiers}"
+
+
+class TestDiscoveryErrors:
+    """Tests for discovery error handling."""
+
+    @pytest.mark.asyncio
+    @patch("wt_compiler.discovery._create_environment", new_callable=AsyncMock)
+    @patch("wt_compiler.discovery.tempfile.TemporaryDirectory")
+    async def test_registry_not_found_raises_descriptive_error(
+        self, mock_tmpdir, mock_install
+    ):
+        """Test that missing wt-registry raises RegistryNotFoundError with helpful message."""
+        from pathlib import Path
+
+        from rattler import MatchSpec
+
+        # Mock TemporaryDirectory context manager
+        mock_tmpdir.return_value.__enter__ = MagicMock(return_value="/fake/tmpdir")
+        mock_tmpdir.return_value.__exit__ = MagicMock(return_value=False)
+
+        # _create_environment succeeds but doesn't install wt-registry
+        # The executable path won't exist since it's a fake directory
+
+        with pytest.raises(RegistryNotFoundError) as exc_info:
+            await discover_tasks_from_requirements([MatchSpec("some-package>=1.0.0")])
+
+        error = exc_info.value
+        error_msg = str(error)
+        assert "wt-registry executable not found" in error_msg
+        assert "some-package" in error_msg
+        assert "wt-registry" in error_msg  # Fix suggestion mentioned
+
+    @pytest.mark.asyncio
+    @patch("wt_compiler.discovery.subprocess.run")
+    @patch("wt_compiler.discovery._create_environment", new_callable=AsyncMock)
+    @patch("wt_compiler.discovery.tempfile.TemporaryDirectory")
+    async def test_registry_execution_failure_raises_descriptive_error(
+        self, mock_tmpdir, mock_install, mock_run, tmp_path
+    ):
+        """Test that wt-registry failure raises RegistryExecutionError with stderr."""
+        from rattler import MatchSpec
+
+        # Create a real temp directory with a fake executable
+        env_path = tmp_path / "env"
+        bin_path = env_path / "bin"
+        bin_path.mkdir(parents=True)
+        fake_exe = bin_path / "wt-registry"
+        fake_exe.touch()  # Create the file so exists() returns True
+
+        # Mock TemporaryDirectory to use our tmp_path
+        mock_tmpdir.return_value.__enter__ = MagicMock(return_value=str(tmp_path))
+        mock_tmpdir.return_value.__exit__ = MagicMock(return_value=False)
+
+        # wt-registry exists but fails
+        mock_run.return_value = MagicMock(
+            returncode=1,
+            stdout="",
+            stderr="ImportError: No module named 'some_dep'",
+        )
+
+        with pytest.raises(RegistryExecutionError) as exc_info:
+            await discover_tasks_from_requirements([MatchSpec("my-package>=1.0.0")])
+
+        error = exc_info.value
+        error_msg = str(error)
+        assert "exit code 1" in error_msg
+        assert "ImportError" in error_msg
 
 
 # Marker for slow/integration tests that require real environments

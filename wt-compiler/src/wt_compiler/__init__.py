@@ -23,6 +23,11 @@ from wt_compiler.discovery import (
     discover_tasks_from_spec_requirements,
     populate_known_tasks,
 )
+from wt_compiler.exceptions import (
+    DiscoveryError,
+    RegistryExecutionError,
+    RegistryNotFoundError,
+)
 from wt_compiler.spec import (
     KnownTask,
     Spec,
@@ -42,6 +47,10 @@ __all__ = [
     "discover_tasks_from_requirements",
     "discover_tasks_from_spec_requirements",
     "populate_known_tasks",
+    # Exceptions
+    "DiscoveryError",
+    "RegistryNotFoundError",
+    "RegistryExecutionError",
     # Spec models
     "Spec",
     "SpecRequirement",

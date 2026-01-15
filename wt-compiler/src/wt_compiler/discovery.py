@@ -15,6 +15,7 @@ from typing import Any
 from rattler import Channel, MatchSpec, Platform, VirtualPackage, install, solve
 from wt_contracts.registry import RegistryOutput
 
+from wt_compiler.exceptions import RegistryExecutionError, RegistryNotFoundError
 from wt_compiler.spec import KnownTask, TaskTag, known_tasks
 
 
@@ -41,7 +42,8 @@ async def discover_tasks_from_requirements(
         Dictionary mapping task names to {module: KnownTask} dicts
 
     Raises:
-        subprocess.CalledProcessError: If wt-registry CLI fails
+        RegistryNotFoundError: If wt-registry is not installed in the environment
+        RegistryExecutionError: If wt-registry CLI returns non-zero exit code
         json.JSONDecodeError: If CLI output is not valid JSON
         ValueError: If CLI output doesn't match expected schema
 
@@ -80,13 +82,29 @@ async def discover_tasks_from_requirements(
         else:
             wt_registry_exe = env_path / "bin" / "wt-registry"
 
+        # Check if wt-registry executable exists
+        if not wt_registry_exe.exists():
+            raise RegistryNotFoundError(
+                executable_path=wt_registry_exe,
+                requirements=requirements,
+            )
+
         # Call wt-registry CLI in the environment
         result = subprocess.run(
             [str(wt_registry_exe), "--format", "json"],
             capture_output=True,
             text=True,
-            check=True,
+            check=False,  # Handle errors explicitly
         )
+
+        if result.returncode != 0:
+            raise RegistryExecutionError(
+                executable_path=wt_registry_exe,
+                returncode=result.returncode,
+                stdout=result.stdout,
+                stderr=result.stderr,
+                requirements=requirements,
+            )
 
         # Parse and validate JSON output using wt-contracts schema
         registry_output = RegistryOutput.model_validate_json(result.stdout)
