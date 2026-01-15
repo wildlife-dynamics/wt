@@ -10,10 +10,28 @@ from wt_registry.registry import register_entry
 F = TypeVar("F", bound=Callable[..., Any])
 
 
+def _snake_to_title(name: str) -> str:
+    """Convert snake_case function name to Title Case.
+
+    Args:
+        name: Function name in snake_case
+
+    Returns:
+        Title Case version of the name
+
+    Examples:
+        >>> _snake_to_title("get_patrol_observations")
+        'Get Patrol Observations'
+        >>> _snake_to_title("calculate_mean")
+        'Calculate Mean'
+    """
+    return name.replace("_", " ").title()
+
+
 def register(
     *,
-    title: str,
-    description: str,
+    title: str | None = None,
+    description: str = "",
     tags: list[str] | None = None,
     deprecated: bool = False,
     deprecation_message: str | None = None,
@@ -26,9 +44,14 @@ def register(
     when the decorator is applied (at import time), and the original
     function is returned unchanged.
 
+    If title is not provided, it is auto-generated from the function name
+    by converting snake_case to Title Case (e.g., "get_events" -> "Get Events").
+
     Args:
-        title: Human-readable title for the function
-        description: Detailed description of what the function does
+        title: Human-readable title for the function. If None, auto-generated
+            from the function name.
+        description: Detailed description of what the function does. Defaults
+            to empty string.
         tags: Optional list of categorization tags
         deprecated: Whether this function is deprecated (default: False)
         deprecation_message: Optional message explaining the deprecation
@@ -42,35 +65,42 @@ def register(
         SchemaGenerationError: If JSON schema generation fails
 
     Examples:
-        Basic registration:
+        Minimal registration (title auto-generated from function name):
 
         >>> from wt_registry.decorator import register
         >>> from wt_registry.registry import get_registry, clear_registry
         >>> clear_registry()  # Start fresh
+        >>> @register()
+        ... def get_patrol_observations(x: int) -> str:
+        ...     return str(x)
+        >>> entry = list(get_registry().values())[0]
+        >>> entry.metadata.title
+        'Get Patrol Observations'
+        >>> entry.metadata.description
+        ''
+
+        With explicit title and description:
+
         >>> @register(
         ...     title="Add Numbers",
         ...     description="Add two integers together"
         ... )
         ... def add(a: int, b: int) -> int:
         ...     return a + b
-        >>> registry = get_registry()
-        >>> len(registry)
-        1
-        >>> "add" in str(list(registry.keys())[0])
-        True
-
-        With tags:
-
-        >>> @register(
-        ...     title="Calculate Mean",
-        ...     description="Calculate arithmetic mean",
-        ...     tags=["statistics", "math"]
-        ... )
-        ... def mean(values: list[float]) -> float:
-        ...     return sum(values) / len(values)
         >>> entry = list(get_registry().values())[-1]
+        >>> entry.metadata.title
+        'Add Numbers'
+
+        With tags only (title auto-generated):
+
+        >>> @register(tags=["io"])
+        ... def fetch_data(url: str) -> dict:
+        ...     return {}
+        >>> entry = list(get_registry().values())[-1]
+        >>> entry.metadata.title
+        'Fetch Data'
         >>> entry.metadata.tags
-        ['statistics', 'math']
+        ['io']
 
         Deprecated function:
 
@@ -92,10 +122,13 @@ def register(
         module_path = func.__module__
         function_name = func.__qualname__
 
-        # 2. Create registry entry with metadata and function reference
+        # 2. Auto-generate title from function name if not provided
+        effective_title = title if title is not None else _snake_to_title(func.__name__)
+
+        # 3. Create registry entry with metadata and function reference
         # NO validation or schema generation at this point (lazy)
         metadata = RegistryMetadata(
-            title=title,
+            title=effective_title,
             description=description,
             tags=tags or [],
             deprecated=deprecated,
@@ -109,10 +142,10 @@ def register(
         )
         entry._func_ref = func
 
-        # 3. Register in global registry
+        # 4. Register in global registry
         register_entry(entry)
 
-        # 4. Return original function unchanged
+        # 5. Return original function unchanged
         return func
 
     return decorator

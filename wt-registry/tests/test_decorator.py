@@ -307,3 +307,84 @@ def test_register_class_method_fails() -> None:
         _ = entry.json_schema
 
     assert "Classes are not supported" in str(exc_info.value)
+
+
+def test_register_no_arguments() -> None:
+    """Test registering a function with @register() and no arguments."""
+
+    @register()
+    def simple_func(x: int) -> str:
+        return str(x)
+
+    registry = get_registry()
+    assert len(registry) == 1
+
+    fqn = next(iter(registry.keys()))
+    entry = registry[fqn]
+
+    # Title should be auto-generated from function name
+    assert entry.metadata.title == "Simple Func"
+    # Description should default to empty string
+    assert entry.metadata.description == ""
+
+
+def test_register_auto_generated_title() -> None:
+    """Test that title is auto-generated from snake_case function name."""
+
+    @register()
+    def get_patrol_observations_from_params(x: int) -> str:
+        return str(x)
+
+    registry = get_registry()
+    fqn = next(iter(registry.keys()))
+    entry = registry[fqn]
+
+    assert entry.metadata.title == "Get Patrol Observations From Params"
+
+
+def test_register_explicit_title_takes_precedence() -> None:
+    """Test that an explicit title overrides auto-generation."""
+
+    @register(title="Custom Title")
+    def my_function_name(x: int) -> str:
+        return str(x)
+
+    registry = get_registry()
+    fqn = next(iter(registry.keys()))
+    entry = registry[fqn]
+
+    # Explicit title should be used, not auto-generated
+    assert entry.metadata.title == "Custom Title"
+
+
+def test_register_empty_description_default() -> None:
+    """Test that description defaults to empty string."""
+
+    @register(title="Test")
+    def func_with_default_description(x: int) -> str:
+        return str(x)
+
+    registry = get_registry()
+    fqn = next(iter(registry.keys()))
+    entry = registry[fqn]
+
+    assert entry.metadata.description == ""
+
+
+def test_register_with_tags_only() -> None:
+    """Test registering with only tags (title auto-generated)."""
+
+    @register(tags=["io", "earthranger"])
+    def fetch_events(url: str) -> dict:
+        return {}
+
+    registry = get_registry()
+    fqn = next(iter(registry.keys()))
+    entry = registry[fqn]
+
+    # Title auto-generated
+    assert entry.metadata.title == "Fetch Events"
+    # Tags set
+    assert entry.metadata.tags == ["io", "earthranger"]
+    # Description defaults to empty
+    assert entry.metadata.description == ""

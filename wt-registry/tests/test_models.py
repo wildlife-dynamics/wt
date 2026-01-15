@@ -60,22 +60,28 @@ def test_registry_metadata_all_fields() -> None:
     assert metadata.deprecation_message == "Deprecated"
 
 
-def test_registry_metadata_validation_missing_title() -> None:
-    """Test that RegistryMetadata requires title field."""
-    with pytest.raises(PydanticValidationError) as exc_info:
-        RegistryMetadata(description="Missing title")  # type: ignore
-
-    errors = exc_info.value.errors()
-    assert any(error["loc"] == ("title",) for error in errors)
+def test_registry_metadata_title_defaults_to_none() -> None:
+    """Test that RegistryMetadata title defaults to None when not provided."""
+    metadata = RegistryMetadata(description="Has description")
+    assert metadata.title is None
+    assert metadata.description == "Has description"
 
 
-def test_registry_metadata_validation_missing_description() -> None:
-    """Test that RegistryMetadata requires description field."""
-    with pytest.raises(PydanticValidationError) as exc_info:
-        RegistryMetadata(title="Missing description")  # type: ignore
+def test_registry_metadata_description_defaults_to_empty_string() -> None:
+    """Test that RegistryMetadata description defaults to empty string."""
+    metadata = RegistryMetadata(title="Has title")
+    assert metadata.title == "Has title"
+    assert metadata.description == ""
 
-    errors = exc_info.value.errors()
-    assert any(error["loc"] == ("description",) for error in errors)
+
+def test_registry_metadata_minimal_creation() -> None:
+    """Test that RegistryMetadata can be created with no arguments."""
+    metadata = RegistryMetadata()
+    assert metadata.title is None
+    assert metadata.description == ""
+    assert metadata.tags == []
+    assert metadata.deprecated is False
+    assert metadata.deprecation_message is None
 
 
 def test_registry_metadata_serialization() -> None:

@@ -14,13 +14,15 @@ class RegistryMetadata(BaseModel):
     """Metadata for a registered function.
 
     Attributes:
-        title: Human-readable title for the function
+        title: Human-readable title for the function (auto-generated if not provided)
         description: Detailed description of what the function does
         tags: List of categorization tags (e.g., ["statistics", "dataframe"])
         deprecated: Whether this function is deprecated
         deprecation_message: Optional message explaining the deprecation
 
     Examples:
+        With all fields:
+
         >>> metadata = RegistryMetadata(
         ...     title="Calculate Mean",
         ...     description="Calculate arithmetic mean of values",
@@ -31,10 +33,20 @@ class RegistryMetadata(BaseModel):
         'Calculate Mean'
         >>> metadata.tags
         ['statistics', 'math']
+
+        With defaults (title and description optional):
+
+        >>> minimal = RegistryMetadata()
+        >>> minimal.title is None
+        True
+        >>> minimal.description
+        ''
     """
 
-    title: str = Field(..., description="Human-readable title")
-    description: str = Field(..., description="Detailed description")
+    title: str | None = Field(
+        default=None, description="Human-readable title (auto-generated if not provided)"
+    )
+    description: str = Field(default="", description="Detailed description")
     tags: list[str] = Field(default_factory=list, description="Categorization tags")
     deprecated: bool = Field(default=False, description="Whether function is deprecated")
     deprecation_message: str | None = Field(
