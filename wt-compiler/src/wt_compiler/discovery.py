@@ -12,7 +12,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from rattler import Channel, MatchSpec, Platform, install, solve
+from rattler import Channel, MatchSpec, Platform, VirtualPackage, install, solve
 from wt_contracts.registry import RegistryOutput
 
 from wt_compiler.spec import KnownTask, TaskTag, known_tasks
@@ -147,11 +147,16 @@ async def _create_environment(
     Raises:
         Exception: If solving or installation fails
     """
+    # Detect virtual packages for the current system (e.g., __osx, __glibc)
+    # These are needed for packages with platform-specific requirements
+    virtual_packages = VirtualPackage.detect()
+
     # Solve dependencies
     records = await solve(
         channels=channels,
         specs=requirements,
         platforms=[platform, Platform("noarch")],
+        virtual_packages=virtual_packages,
     )
 
     # Install solved packages to target prefix
@@ -162,7 +167,11 @@ async def _create_environment(
     )
 
 
-async def populate_known_tasks(requirements: list[MatchSpec], **kwargs: Any) -> None:
+async def populate_known_tasks(
+    requirements: list[MatchSpec],
+    channels: list[Channel] | None = None,
+    **kwargs: Any,
+) -> None:
     """Discover tasks and populate the global known_tasks dictionary.
 
     This async convenience function calls discover_tasks_from_requirements
@@ -170,6 +179,9 @@ async def populate_known_tasks(requirements: list[MatchSpec], **kwargs: Any) -> 
 
     Args:
         requirements: List of package requirements to install
+        channels: Optional list of channels to search for packages.
+            If not provided, defaults to conda-forge in discover_tasks_from_requirements.
+            For custom package channels, this parameter must be provided.
         **kwargs: Additional arguments to pass to discover_tasks_from_requirements
 
     Examples:
@@ -180,7 +192,7 @@ async def populate_known_tasks(requirements: list[MatchSpec], **kwargs: Any) -> 
         >>> # len(known_tasks) > 0  # doctest: +SKIP
         True
     """
-    discovered = await discover_tasks_from_requirements(requirements, **kwargs)
+    discovered = await discover_tasks_from_requirements(requirements, channels=channels, **kwargs)
     known_tasks.clear()
     known_tasks.update(discovered)
 

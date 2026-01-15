@@ -234,6 +234,61 @@ class TestCompileWorkflowFromYaml:
         with pytest.raises(FileNotFoundError):
             await compile_workflow_from_yaml("/nonexistent/path/spec.yaml")
 
+    @pytest.mark.asyncio
+    @patch("wt_compiler.compiler.populate_known_tasks", new_callable=AsyncMock)
+    async def test_compile_workflow_from_yaml_passes_custom_channels(
+        self, mock_populate, tmp_path
+    ):
+        """Test that custom channels from spec.yaml are passed to populate_known_tasks.
+
+        This verifies the fix for the bug where custom package channels were not
+        being propagated to the discovery phase, causing packages on custom
+        channels (like https://repo.prefix.dev/ecoscope-workflows/) to fail
+        with "No candidates found" errors.
+        """
+        spec_yaml = tmp_path / "spec.yaml"
+        # Use valid channels from the channel whitelist: ecoscope-workflows and conda-forge
+        spec_yaml.write_text(
+            """
+id: test-workflow
+requirements:
+  - name: ecoscope-workflows-core
+    version: ">=0.1.0"
+    channel: https://repo.prefix.dev/ecoscope-workflows/
+  - name: python
+    version: ">=3.10"
+    channel: conda-forge
+workflow: []
+"""
+        )
+
+        # Attempt compilation - will fail later in the flow but we just want to
+        # verify populate_known_tasks was called with the right channels
+        try:
+            await compile_workflow_from_yaml(spec_yaml)
+        except Exception:
+            pass  # Expected to fail since we mocked populate_known_tasks
+
+        # Verify populate_known_tasks was called
+        mock_populate.assert_called_once()
+
+        # Get the call arguments
+        call_args = mock_populate.call_args
+        channels = call_args.kwargs.get("channels", [])
+
+        # Verify channels were passed (not None or empty)
+        assert channels is not None, "channels parameter should be passed"
+        assert len(channels) == 2, f"Expected 2 unique channels, got {len(channels)}"
+
+        # Verify both ecoscope-workflows channel and conda-forge are present
+        channel_identifiers = [c.name or c.base_url for c in channels]
+        assert any(
+            "ecoscope-workflows" in str(ch) for ch in channel_identifiers
+        ), f"ecoscope-workflows channel not found in {channel_identifiers}"
+        assert any(
+            "conda-forge" in str(ch) for ch in channel_identifiers
+        ), f"conda-forge not found in {channel_identifiers}"
+
 
 # Marker for slow/integration tests that require real environments
 @pytest.mark.slow

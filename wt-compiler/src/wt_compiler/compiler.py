@@ -764,15 +764,31 @@ async def compile_workflow_from_yaml(
 
     # Phase 2: Convert SpecRequirements to MatchSpecs and discover tasks
     # Build MatchSpec strings: "{channel}::{name} {version}"
+    # Use base_url (not name) to ensure custom channels are correctly identified
+    # Also collect channels to pass to the discovery function
     match_specs = []
+    channels = []
     for req in requirements:
-        channel_str = req.channel.name or req.channel.base_url
+        # Use base_url for the matchspec to correctly identify custom channels
+        # (using just the name would default to conda.anaconda.org)
+        channel_str = req.channel.base_url
+        channels.append(req.channel)
         version_str = str(req.version.version) if req.version.version else ""
         matchspec_str = f"{channel_str}::{req.name} {version_str}".strip()
         match_specs.append(MatchSpec(matchspec_str))
 
+    # Deduplicate channels while preserving order, keyed by base_url
+    unique_channels = list({c.base_url: c for c in channels}.values())
+
+    # Always include conda-forge for base dependencies (e.g., python, libffi)
+    from rattler import Channel
+
+    conda_forge = Channel("conda-forge")
+    if not any(c.base_url == conda_forge.base_url for c in unique_channels):
+        unique_channels.append(conda_forge)
+
     # Discover tasks and populate global known_tasks
-    await populate_known_tasks(match_specs)
+    await populate_known_tasks(match_specs, channels=unique_channels)
 
     # Phase 3: Now we can safely validate the full Spec
     with open(yaml_path) as f:
