@@ -104,3 +104,35 @@ extend-immutable-calls = [
     "fastapi.Query",
     "fastapi.Depends",
 ]
+
+# ============================================================================
+# Pixi Build Configuration (conda package building)
+# ============================================================================
+
+[tool.pixi.package]
+name = "wt-runner"
+version = "0.1.0"
+
+[tool.pixi.package.build]
+backend = { name = "pixi-build-python", version = "*", channels = ["conda-forge", "https://prefix.dev/pixi-build-backends"] }
+
+[tool.pixi.package.build.config]
+noarch = true
+
+[tool.pixi.package.host-dependencies]
+python = ">=3.10,<3.13"
+setuptools = ">=64"
+setuptools-scm = ">=8"
+pip = "*"
+
+[tool.pixi.package.run-dependencies]
+python = ">=3.10,<3.13"
+fastapi = ">=0.100.0"
+uvicorn = ">=0.20.0"
+pydantic = ">=2.0.0,<3.0.0"
+rattler = ">=0.8.0"
+ruamel-yaml = ">=0.18.0"
+opentelemetry-api = ">=1.0.0"
+opentelemetry-sdk = ">=1.0.0"
+wt-contracts = ">=0.1.0,<1.0.0"
+wt-invokers = ">=0.1.0,<1.0.0"

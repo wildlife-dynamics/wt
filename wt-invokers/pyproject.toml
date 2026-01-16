@@ -132,3 +132,29 @@ exclude_lines = [
     "if TYPE_CHECKING:",
     "pass",
 ]
+
+# ============================================================================
+# Pixi Build Configuration (conda package building)
+# ============================================================================
+
+[tool.pixi.package]
+name = "wt-invokers"
+version = "0.1.0"
+
+[tool.pixi.package.build]
+backend = { name = "pixi-build-python", version = "*", channels = ["conda-forge", "https://prefix.dev/pixi-build-backends"] }
+
+[tool.pixi.package.build.config]
+noarch = true
+
+[tool.pixi.package.host-dependencies]
+python = ">=3.10,<3.13"
+setuptools = ">=64"
+setuptools-scm = ">=8"
+pip = "*"
+
+[tool.pixi.package.run-dependencies]
+python = ">=3.10,<3.13"
+py-rattler = ">=0.8.0"
+ruamel-yaml = ">=0.17.0"
+wt-contracts = ">=0.1.0,<1.0.0"
