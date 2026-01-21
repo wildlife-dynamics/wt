@@ -56,15 +56,21 @@ class TestRegistryMetadata:
         assert metadata2.title == metadata.title
         assert metadata2.tags == metadata.tags
 
-    def test_metadata_validation_error(self) -> None:
-        """Test validation fails with missing required fields."""
-        with pytest.raises(ValidationError) as exc_info:
-            RegistryMetadata(title="Test")  # Missing description
+    def test_metadata_accepts_defaults(self) -> None:
+        """Test that metadata can be created with defaults for all fields."""
+        # All fields have defaults, so empty constructor should work
+        metadata = RegistryMetadata()
 
-        errors = exc_info.value.errors()
-        assert len(errors) == 1
-        assert errors[0]["loc"] == ("description",)
-        assert errors[0]["type"] == "missing"
+        assert metadata.title is None
+        assert metadata.description == ""
+        assert metadata.tags == []
+        assert metadata.deprecated is False
+        assert metadata.deprecation_message is None
+
+        # Title-only should work (description defaults to "")
+        metadata_with_title = RegistryMetadata(title="Test")
+        assert metadata_with_title.title == "Test"
+        assert metadata_with_title.description == ""
 
 
 class TestRegistryEntry:

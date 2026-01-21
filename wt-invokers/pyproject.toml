@@ -156,5 +156,5 @@ pip = "*"
 [tool.pixi.package.run-dependencies]
 python = ">=3.10,<3.13"
 py-rattler = ">=0.8.0"
-ruamel-yaml = ">=0.17.0"
+"ruamel.yaml" = ">=0.17.0"
 wt-contracts = ">=0.1.0,<1.0.0"
