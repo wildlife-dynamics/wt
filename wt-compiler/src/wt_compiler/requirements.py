@@ -21,19 +21,24 @@ CUSTOM_LOCAL_CHANNEL = Channel(
     "ecoscope-workflows-custom/release/artifacts",
     ChannelConfig(channel_alias="file:///tmp/"),
 )
+WT_LOCAL_CHANNEL = Channel(
+    "wt-conda-channel",
+    ChannelConfig(channel_alias="file:///tmp/"),
+)
 RELEASE_CHANNEL = Channel(
     "ecoscope-workflows",
-    ChannelConfig(channel_alias="https://repo.prefix.dev/"),
+    ChannelConfig(channel_alias="https://prefix.dev/"),
 )
 CUSTOM_RELEASE_CHANNEL = Channel(
     "ecoscope-workflows-custom",
-    ChannelConfig(channel_alias="https://repo.prefix.dev/"),
+    ChannelConfig(channel_alias="https://prefix.dev/"),
 )
 CONDA_FORGE_CHANNEL = Channel("conda-forge")
 MICROSOFT_CHANNEL = Channel("microsoft", ChannelConfig(channel_alias="https://conda.anaconda.org/"))
 CHANNELS: list[Channel] = [
     LOCAL_CHANNEL,
     CUSTOM_LOCAL_CHANNEL,
+    WT_LOCAL_CHANNEL,
     RELEASE_CHANNEL,
     CUSTOM_RELEASE_CHANNEL,
     CONDA_FORGE_CHANNEL,
@@ -67,6 +72,7 @@ def _serialize_channel(value: Channel | str) -> str:
         RELEASE_CHANNEL,
         CUSTOM_LOCAL_CHANNEL,
         CUSTOM_RELEASE_CHANNEL,
+        WT_LOCAL_CHANNEL,
     ]:
         return value.base_url
     assert value.name is not None, f"Expected name to be set for {value}"

@@ -16,6 +16,7 @@ from rattler import Channel, MatchSpec, Platform, VirtualPackage, install, solve
 from wt_contracts.registry import RegistryOutput
 
 from wt_compiler.exceptions import RegistryExecutionError, RegistryNotFoundError
+from wt_compiler.requirements import CHANNELS
 from wt_compiler.spec import KnownTask, TaskTag, known_tasks
 
 
@@ -89,9 +90,26 @@ async def discover_tasks_from_requirements(
                 requirements=requirements,
             )
 
+        # Derive task module paths from requirements
+        # Convention: package 'foo-bar' has tasks in 'foo_bar.tasks'
+        task_modules = []
+        for req in requirements:
+            # Extract package name from MatchSpec (convert to string)
+            pkg_name = str(req.name.normalized) if req.name else None
+            # Skip wt-registry itself and other non-task packages
+            if pkg_name and not pkg_name.startswith("wt-"):
+                # Convert package name to module path: foo-bar -> foo_bar.tasks
+                module_path = pkg_name.replace("-", "_") + ".tasks"
+                task_modules.append(module_path)
+
+        # Build CLI command with --package arguments
+        cli_args = [str(wt_registry_exe), "--format", "json"]
+        for module in task_modules:
+            cli_args.extend(["--package", module])
+
         # Call wt-registry CLI in the environment
         result = subprocess.run(
-            [str(wt_registry_exe), "--format", "json"],
+            cli_args,
             capture_output=True,
             text=True,
             check=False,  # Handle errors explicitly
@@ -249,8 +267,15 @@ async def discover_tasks_from_spec_requirements(
         matchspec_str = f"{channel.name or channel.base_url}::{req.name} {req.version.version}"
         match_specs.append(MatchSpec(matchspec_str))
 
-    # Remove duplicate channels
+    # Remove duplicate channels from spec requirements
     unique_channels = list({c.name or c.base_url: c for c in channels}.values())
+
+    # Add all known channels for transitive dependency resolution
+    # This uses CHANNELS from requirements.py as the single source of truth
+    for known_channel in CHANNELS:
+        key = known_channel.name or known_channel.base_url
+        if key not in {c.name or c.base_url for c in unique_channels}:
+            unique_channels.append(known_channel)
 
     return await discover_tasks_from_requirements(
         match_specs,
