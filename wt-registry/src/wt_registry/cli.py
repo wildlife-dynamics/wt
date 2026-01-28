@@ -205,8 +205,26 @@ def main() -> None:
         metavar="NAME",
         help="Filter by function name (can be specified multiple times)",
     )
+    parser.add_argument(
+        "--package",
+        action="append",
+        dest="packages",
+        metavar="PACKAGE",
+        help="Package to import for task registration (can be specified multiple times). "
+        "Use dotted module paths like 'mypackage.tasks' to import specific submodules.",
+    )
 
     args = parser.parse_args()
+
+    # Import specified packages to trigger task registration
+    if args.packages:
+        import importlib
+
+        for package in args.packages:
+            try:
+                importlib.import_module(package)
+            except ImportError as e:
+                print(f"Warning: Could not import {package}: {e}", file=sys.stderr)
 
     try:
         # Get registry

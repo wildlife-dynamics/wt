@@ -122,7 +122,9 @@ class RegistryEntry(BaseModel):
 
         # Step 2: Generate JSON schema
         try:
-            type_adapter: TypeAdapter[Any] = TypeAdapter(self._func_ref)
+            type_adapter: TypeAdapter[Any] = TypeAdapter(
+                self._func_ref, config={"arbitrary_types_allowed": True}
+            )
             schema = type_adapter.json_schema()
         except Exception as e:
             raise SchemaGenerationError(
