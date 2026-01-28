@@ -71,6 +71,17 @@ class TestDagCompiler:
         assert compiler.release_name == "wf-my_workflow"
         assert compiler.package_name == "wf_my_workflow"
 
+    def test_custom_pkg_name_prefix(self):
+        """Test custom package name prefix."""
+        spec = Spec(
+            id="my_workflow",
+            requirements=[],
+            workflow=[],
+        )
+        compiler = DagCompiler(spec=spec, pkg_name_prefix="custom")
+        assert compiler.release_name == "custom-my_workflow"
+        assert compiler.package_name == "custom_my_workflow"
+
     def test_per_taskinstance_omit_args(self):
         """Test omit_args calculation for task instances."""
         # Register tasks in the global registry

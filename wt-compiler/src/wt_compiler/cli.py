@@ -46,6 +46,13 @@ def main() -> None:
         action="store_true",
         help="Carry over lockfile from existing build and bump version",
     )
+    compile_parser.add_argument(
+        "--pkg-name-prefix",
+        type=str,
+        default="wf",
+        metavar="PREFIX",
+        help="Package name prefix for generated artifacts (default: wf)",
+    )
 
     args = parser.parse_args()
 
@@ -72,7 +79,9 @@ def _compile(args: argparse.Namespace) -> None:
 
     try:
         # compile_workflow_from_yaml handles discovery automatically
-        artifacts = asyncio.run(compile_workflow_from_yaml(str(spec_path)))
+        artifacts = asyncio.run(
+            compile_workflow_from_yaml(str(spec_path), pkg_name_prefix=args.pkg_name_prefix)
+        )
 
         # Write artifacts to disk
         artifacts.dump(clobber=args.clobber, update=args.update)

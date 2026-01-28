@@ -159,6 +159,7 @@ class DagCompiler(BaseModel):
 
     spec: Spec
     jinja_templates_dir: pathlib.Path = TEMPLATES
+    pkg_name_prefix: str = "wf"
 
     def get_dag_config(self, dag_type: DagTypes, mock_io: bool) -> dict[str, Any]:
         """Get configuration dict for rendering a DAG.
@@ -372,11 +373,6 @@ class DagCompiler(BaseModel):
         )
 
         return pixi_toml
-
-    @property
-    def pkg_name_prefix(self) -> str:
-        """Get package name prefix."""
-        return "wf"
 
     @property
     def release_name(self) -> str:
