@@ -1837,12 +1837,6 @@ wheels = [
 ]
 
 [[package]]
-name = "rattler"
-version = "1.0.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/1f/d3/bf2c8c3a6c7edac7954ba8178ceeea41f0460b06aa659c276d43eeaa6a7e/rattler-1.0.2.tar.gz", hash = "sha256:8fa108fec592f1340d96cc64955deae4f4e9b64449b54d072c183b74c8a1957b", size = 6309, upload-time = "2010-07-14T16:47:16.989Z" }
-
-[[package]]
 name = "requests"
 version = "2.32.5"
 source = { registry = "https://pypi.org/simple" }
@@ -2145,8 +2139,8 @@ dependencies = [
     { name = "fastapi" },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-sdk" },
+    { name = "py-rattler" },
     { name = "pydantic" },
-    { name = "rattler" },
     { name = "ruamel-yaml" },
     { name = "uvicorn" },
     { name = "wt-contracts" },
@@ -2194,8 +2188,8 @@ requires-dist = [
     { name = "opentelemetry-sdk", specifier = ">=1.0.0" },
     { name = "opentelemetry-sdk", marker = "extra == 'gcp'", specifier = ">=1.37.0,<2" },
     { name = "opentelemetry-sdk", marker = "extra == 'tracing'", specifier = ">=1.37.0,<2" },
+    { name = "py-rattler", specifier = ">=0.8.0" },
     { name = "pydantic", specifier = ">=2.0.0,<3.0.0" },
-    { name = "rattler", specifier = ">=0.8.0" },
     { name = "ruamel-yaml", specifier = ">=0.18.0" },
     { name = "uvicorn", specifier = ">=0.20.0" },
     { name = "wt-contracts", editable = "../wt-contracts" },
