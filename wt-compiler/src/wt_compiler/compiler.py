@@ -30,6 +30,7 @@ import pydot as dot
 import ruamel.yaml
 from jinja2 import Environment, FileSystemLoader
 from pydantic import BaseModel, computed_field
+from rattler import Channel
 
 from wt_compiler.artifacts import (
     Dags,
@@ -403,19 +404,15 @@ class DagCompiler(BaseModel):
         Returns:
             Formatted Python code for the DAG
         """
-        env = Environment(loader=FileSystemLoader(self.jinja_templates_dir))
-
-        template_map = {
-            "jupytext": "pkg/dags/jupytext.jinja2",
-            "async": "pkg/dags/run_async.jinja2",
-            "sequential": "pkg/dags/run_sequential.jinja2",
-        }
-
-        template_name = template_map[dag_type]
-        template = env.get_template(template_name)
-
-        config = self.get_dag_config(dag_type, mock_io)
-        return template.render(**config)
+        loader = FileSystemLoader(self.jinja_templates_dir / "pkg" / "dags")
+        env = Environment(loader=loader)
+        template = env.get_template(
+            f"run_{dag_type}.jinja2" if dag_type != "jupytext" else "jupytext.jinja2"
+        )
+        testing = True if mock_io else False
+        return template.render(
+            self.get_dag_config(dag_type, mock_io=mock_io) | {"testing": testing}
+        )
 
     def generate_params_model(self, params_jsonschema: dict[str, Any], file_header: str) -> str:
         """Generate Pydantic model from parameters JSON schema.
@@ -780,12 +777,23 @@ async def compile_workflow_from_yaml(
     # Deduplicate channels while preserving order, keyed by base_url
     unique_channels = list({c.base_url: c for c in channels}.values())
 
-    # Always include conda-forge for base dependencies (e.g., python, libffi)
-    from rattler import Channel
+    # Add all known channels for transitive dependency resolution
+    # This uses CHANNELS from requirements.py as the single source of truth
+    from wt_compiler.requirements import CHANNELS
 
-    conda_forge = Channel("conda-forge")
-    if not any(c.base_url == conda_forge.base_url for c in unique_channels):
-        unique_channels.append(conda_forge)
+    for known_channel in CHANNELS:
+        if not any(c.base_url == known_channel.base_url for c in unique_channels):
+            unique_channels.append(known_channel)
+
+    # Filter out file:// channels that don't exist on the local filesystem
+    def _local_channel_exists(channel: "Channel") -> bool:
+        base_url = channel.base_url
+        if base_url.startswith("file://"):
+            local_path = Path(base_url.replace("file://", ""))
+            return local_path.exists()
+        return True  # Non-local channels are always "valid"
+
+    unique_channels = [c for c in unique_channels if _local_channel_exists(c)]
 
     # Discover tasks and populate global known_tasks
     await populate_known_tasks(match_specs, channels=unique_channels)
