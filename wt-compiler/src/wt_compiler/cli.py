@@ -49,9 +49,9 @@ def main() -> None:
     compile_parser.add_argument(
         "--pkg-name-prefix",
         type=str,
-        default="wf",
+        default="wt",
         metavar="PREFIX",
-        help="Package name prefix for generated artifacts (default: wf)",
+        help="Package name prefix for generated artifacts (default: wt)",
     )
 
     args = parser.parse_args()

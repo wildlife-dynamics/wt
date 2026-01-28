@@ -68,8 +68,8 @@ class TestDagCompiler:
             workflow=[],
         )
         compiler = DagCompiler(spec=spec)
-        assert compiler.release_name == "wf-my_workflow"
-        assert compiler.package_name == "wf_my_workflow"
+        assert compiler.release_name == "wt-my_workflow"
+        assert compiler.package_name == "wt_my_workflow"
 
     def test_custom_pkg_name_prefix(self):
         """Test custom package name prefix."""
@@ -167,7 +167,7 @@ class TestDagCompiler:
         compiler = DagCompiler(spec=spec)
         pixi_toml = compiler.get_pixi_toml()
 
-        assert pixi_toml.workspace.name == "wf_test_spec"
+        assert pixi_toml.workspace.name == "wt_test_spec"
         assert "python" in pixi_toml.dependencies
         assert "pandas" in pixi_toml.dependencies
 
