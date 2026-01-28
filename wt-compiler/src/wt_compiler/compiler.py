@@ -159,7 +159,7 @@ class DagCompiler(BaseModel):
 
     spec: Spec
     jinja_templates_dir: pathlib.Path = TEMPLATES
-    pkg_name_prefix: str = "wf"
+    pkg_name_prefix: str = "wt"
 
     def get_dag_config(self, dag_type: DagTypes, mock_io: bool) -> dict[str, Any]:
         """Get configuration dict for rendering a DAG.
