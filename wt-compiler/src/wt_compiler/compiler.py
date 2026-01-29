@@ -377,7 +377,7 @@ class DagCompiler(BaseModel):
     @property
     def release_name(self) -> str:
         """Get release directory name."""
-        return f"{self.pkg_name_prefix}-{self.spec.id}"
+        return f"{self.pkg_name_prefix}-{self.spec.id.replace('_', '-')}-workflow"
 
     @property
     def package_name(self) -> str:
