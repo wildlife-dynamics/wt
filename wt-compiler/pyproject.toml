@@ -20,6 +20,7 @@ dependencies = [
     "py-rattler>=0.9.0",
     "datamodel-code-generator>=0.25.0",
     "pydot>=1.4.0",
+    "ruff>=0.1.0",
     "tomli>=2.0.0; python_version < '3.11'",
     "tomli-w>=1.0.0",
     "typing-extensions>=4.0.0; python_version < '3.11'",
@@ -126,5 +127,6 @@ jinja2 = ">=3.0.0"
 py-rattler = ">=0.9.0"
 datamodel-code-generator = ">=0.25.0"
 pydot = ">=1.4.0"
+ruff = ">=0.1.0"
 tomli-w = ">=1.0.0"
 wt-contracts = ">=0.1.0,<1.0.0"
