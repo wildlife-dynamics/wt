@@ -632,9 +632,9 @@ class DagCompiler(BaseModel):
             package_name=self.package_name,
             package=package,
             tests=tests,
-            pydot_graph=pydot_graph,  # type: ignore[call-arg]
             **{  # type: ignore[arg-type]
                 "pixi.toml": pixi_toml,
+                "graph.png": pydot_graph,
                 "Dockerfile": dockerfile,
                 ".dockerignore": dockerignore,
             },
