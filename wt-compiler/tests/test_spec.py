@@ -6,6 +6,7 @@ import pytest
 
 from wt_compiler.spec import (
     KnownTask,
+    SkipIf,
     SpecRequirement,
     TaskInstance,
     TaskTag,
@@ -80,6 +81,149 @@ class TestKnownTask:
         notebook = task.parameters_notebook(omit_args=["y"])
         assert "x" in notebook
         assert "y" not in notebook
+
+
+class TestKnownTaskSerialization:
+    """Tests for KnownTask.serialize_importable_reference field serializer."""
+
+    def test_importable_reference_serialization_basic(self):
+        """Test basic importable_reference serialization produces dict with expected keys."""
+        task = KnownTask(
+            importable_reference="mymodule.tasks.my_func",
+            json_schema={"properties": {"x": {"type": "integer"}}},
+        )
+
+        # Serialize without context
+        result = task.model_dump()
+        ir = result["importable_reference"]
+
+        # Check structure
+        assert isinstance(ir, dict)
+        assert ir["anchor"] == "mymodule.tasks"
+        assert ir["function"] == "my_func"
+        assert ir["statement"] == "from mymodule.tasks import my_func"
+        assert "params_notebook" in ir
+
+    def test_importable_reference_serialization_with_registry_ref(self):
+        """Test serialization with registry_ref > 0 uses safe_reference with suffix."""
+        task = KnownTask(
+            importable_reference="mymodule.my_func",
+            registry_ref=1,
+        )
+
+        result = task.model_dump()
+        ir = result["importable_reference"]
+
+        # Should have alias since registry_ref > 0
+        assert ir["function"] == "my_func_1"
+        assert "as my_func_1" in ir["statement"]
+        assert ir["statement"] == "from mymodule import my_func as my_func_1"
+
+    def test_importable_reference_serialization_with_mock_io(self):
+        """Test serialization with mock_io context for IO tasks generates mock import."""
+        task = KnownTask(
+            importable_reference="mymodule.get_data",
+            tags=[TaskTag.io],
+        )
+
+        # Serialize with mock_io=True
+        result = task.model_dump(context={"mock_io": True})
+        ir = result["importable_reference"]
+
+        # Should use mock import
+        assert "create_task_magicmock" in ir["statement"]
+        assert "🧪" in ir["statement"]
+        assert "anchor='mymodule'" in ir["statement"]
+        assert "func_name='get_data'" in ir["statement"]
+
+    def test_importable_reference_serialization_no_mock_for_non_io(self):
+        """Test that non-IO tasks use normal import even when mock_io=True."""
+        task = KnownTask(
+            importable_reference="mymodule.compute",
+            tags=[],  # Not an IO task
+        )
+
+        result = task.model_dump(context={"mock_io": True})
+        ir = result["importable_reference"]
+
+        # Should NOT use mock import
+        assert "create_task_magicmock" not in ir["statement"]
+        assert ir["statement"] == "from mymodule import compute"
+
+    def test_importable_reference_serialization_with_omit_args(self):
+        """Test params_notebook respects omit_args context."""
+        task = KnownTask(
+            importable_reference="mymodule.func",
+            json_schema={
+                "properties": {
+                    "x": {"type": "integer"},
+                    "y": {"type": "string"},
+                }
+            },
+        )
+
+        result = task.model_dump(context={"omit_args": ["y"]})
+        ir = result["importable_reference"]
+
+        assert "x" in ir["params_notebook"]
+        assert "y" not in ir["params_notebook"]
+
+
+class TestSkipIfKnownTasks:
+    """Tests for SkipIf.known_tasks property."""
+
+    def test_known_tasks_property_exists(self):
+        """Test that SkipIf.known_tasks property resolves conditions."""
+        from wt_compiler.spec import known_tasks as global_known_tasks
+
+        # Register a mock condition task
+        mock_task = KnownTask(importable_reference="mod.condition_func")
+        global_known_tasks["condition_func"] = {"mod": mock_task}
+
+        try:
+            skipif = SkipIf(conditions=["condition_func"])
+            assert len(skipif.known_tasks) == 1
+            assert skipif.known_tasks[0] == mock_task
+        finally:
+            global_known_tasks.clear()
+
+    def test_known_tasks_serialization(self):
+        """Test that known_tasks serializes correctly for templates."""
+        from wt_compiler.spec import known_tasks as global_known_tasks
+
+        mock_task = KnownTask(importable_reference="mod.check_condition")
+        global_known_tasks["check_condition"] = {"mod": mock_task}
+
+        try:
+            skipif = SkipIf(conditions=["check_condition"])
+            result = skipif.model_dump()
+
+            # known_tasks should be in the serialized output
+            assert "known_tasks" in result
+            assert len(result["known_tasks"]) == 1
+
+            # Check that each KnownTask's importable_reference is properly serialized
+            ir = result["known_tasks"][0]["importable_reference"]
+            assert isinstance(ir, dict)
+            assert "statement" in ir
+            assert "function" in ir
+        finally:
+            global_known_tasks.clear()
+
+    def test_known_tasks_with_fully_qualified_reference(self):
+        """Test known_tasks with fully qualified importable reference."""
+        from wt_compiler.spec import known_tasks as global_known_tasks
+
+        mock_task = KnownTask(importable_reference="mypackage.conditions.should_skip")
+        global_known_tasks["should_skip"] = {"mypackage.conditions": mock_task}
+
+        try:
+            # Use fully qualified reference
+            skipif = SkipIf(conditions=["mypackage.conditions.should_skip"])
+            assert len(skipif.known_tasks) == 1
+            assert skipif.known_tasks[0] == mock_task
+        finally:
+            global_known_tasks.clear()
 
 
 class TestSpecRequirement:

@@ -14,8 +14,10 @@ from pydantic import (
     BaseModel,
     Discriminator,
     Field,
+    FieldSerializationInfo,
     PlainSerializer,
     computed_field,
+    field_serializer,
     field_validator,
     model_serializer,
     model_validator,
@@ -144,6 +146,54 @@ class KnownTask(BaseModel):
             params += f"    {arg}=...,\n"
         params += ")"
         return params
+
+    @field_serializer("importable_reference")
+    def serialize_importable_reference(
+        self, value: str, info: FieldSerializationInfo
+    ) -> dict[str, str]:
+        """Serialize importable_reference to dict for template rendering.
+
+        The serialized dict contains:
+        - anchor: The module path
+        - function: The safe reference name (handles duplicates)
+        - statement: The import statement for code generation
+        - params_notebook: Parameter dict code for notebooks
+
+        When mock_io=True in the serialization context and the task has
+        the 'io' tag, generates a mock import statement instead.
+
+        Args:
+            value: The importable reference string
+            info: Pydantic serialization info with context
+
+        Returns:
+            Dict with anchor, function, statement, and params_notebook keys
+        """
+        mock_io = info.context.get("mock_io", False) if info.context else False
+        omit_args = info.context.get("omit_args", None) if info.context else None
+        is_io_task = TaskTag.io in self.tags
+
+        if mock_io and is_io_task:
+            # Mock import for testing - matches ecoscope-workflows-core format
+            statement = (
+                f"{self.safe_reference} = create_task_magicmock(  # 🧪\n"
+                f"    anchor='{self.anchor}',  # 🧪\n"
+                f"    func_name='{self.function_name}',  # 🧪\n"
+                ")  # 🧪"
+            )
+        elif self.safe_reference != self.function_name:
+            # Need alias for duplicate function names
+            statement = f"from {self.anchor} import {self.function_name} as {self.safe_reference}"
+        else:
+            # Normal import
+            statement = f"from {self.anchor} import {self.function_name}"
+
+        return {
+            "anchor": self.anchor,
+            "function": self.safe_reference,
+            "statement": statement,
+            "params_notebook": self.parameters_notebook(omit_args=omit_args),
+        }
 
 
 # Placeholder for discovered tasks - will be populated by discovery.py
@@ -520,7 +570,7 @@ class SkipIf(_ForbidExtra):
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def known_tasks_list(self) -> list[KnownTask]:
+    def known_tasks(self) -> list[KnownTask]:
         """Resolve all condition task names to KnownTask instances."""
         return [
             _resolve_task_from_name_or_reference(known_task_name)
@@ -531,7 +581,7 @@ class SkipIf(_ForbidExtra):
     def ensure_known_tasks(self) -> "SkipIf":
         """Validate that all tasks in conditions can be resolved."""
         try:
-            _ = self.known_tasks_list
+            _ = self.known_tasks
         except ValueError as e:
             raise e
         return self
