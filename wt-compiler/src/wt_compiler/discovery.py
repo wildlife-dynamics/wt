@@ -189,7 +189,7 @@ async def _create_environment(
 
     # Solve dependencies
     records = await solve(
-        channels=channels,
+        sources=channels,  # 'channels' renamed to 'sources' in rattler 0.22+
         specs=requirements,
         platforms=[platform, Platform("noarch")],
         virtual_packages=virtual_packages,
