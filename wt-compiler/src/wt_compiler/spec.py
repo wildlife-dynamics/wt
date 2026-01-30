@@ -181,12 +181,9 @@ class KnownTask(BaseModel):
                 f"    func_name='{self.function_name}',  # 🧪\n"
                 ")  # 🧪"
             )
-        elif self.safe_reference != self.function_name:
-            # Need alias for duplicate function names
-            statement = f"from {self.anchor} import {self.function_name} as {self.safe_reference}"
         else:
-            # Normal import
-            statement = f"from {self.anchor} import {self.function_name}"
+            # Always use "as" clause for explicit re-export semantics (matches legacy behavior)
+            statement = f"from {self.anchor} import {self.function_name} as {self.safe_reference}"
 
         return {
             "anchor": self.anchor,

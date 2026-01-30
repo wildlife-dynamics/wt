@@ -101,7 +101,8 @@ class TestKnownTaskSerialization:
         assert isinstance(ir, dict)
         assert ir["anchor"] == "mymodule.tasks"
         assert ir["function"] == "my_func"
-        assert ir["statement"] == "from mymodule.tasks import my_func"
+        # Always uses "as" clause for explicit re-export semantics
+        assert ir["statement"] == "from mymodule.tasks import my_func as my_func"
         assert "params_notebook" in ir
 
     def test_importable_reference_serialization_with_registry_ref(self):
@@ -146,9 +147,9 @@ class TestKnownTaskSerialization:
         result = task.model_dump(context={"mock_io": True})
         ir = result["importable_reference"]
 
-        # Should NOT use mock import
+        # Should NOT use mock import, but still uses "as" clause
         assert "create_task_magicmock" not in ir["statement"]
-        assert ir["statement"] == "from mymodule import compute"
+        assert ir["statement"] == "from mymodule import compute as compute"
 
     def test_importable_reference_serialization_with_omit_args(self):
         """Test params_notebook respects omit_args context."""

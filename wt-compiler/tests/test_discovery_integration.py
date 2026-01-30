@@ -33,9 +33,10 @@ class TestRegistryOutputParsing:
                         "deprecated": False,
                         "deprecation_message": None,
                     },
-                    "module_path": "mypackage.tasks",
+                    "module_path": "mypackage.tasks._math",
+                    "public_module_path": "mypackage.tasks",
                     "function_name": "add",
-                    "import_statement": "from mypackage.tasks import add",
+                    "import_statement": "from mypackage.tasks import add as add",
                     "json_schema": {
                         "type": "object",
                         "properties": {
@@ -55,7 +56,8 @@ class TestRegistryOutputParsing:
         assert "mypackage.tasks.add" in output.entries
         entry = output.entries["mypackage.tasks.add"]
         assert entry.function_name == "add"
-        assert entry.module_path == "mypackage.tasks"
+        assert entry.module_path == "mypackage.tasks._math"
+        assert entry.public_module_path == "mypackage.tasks"
         assert entry.metadata.title == "Add Numbers"
         assert "math" in entry.metadata.tags
 
@@ -85,18 +87,19 @@ class TestKnownTaskCreation:
                 description="A test function",
                 tags=["io", "test"],
             ),
-            module_path="mypackage.tasks",
+            module_path="mypackage.tasks._internal",
+            public_module_path="mypackage.tasks",
             function_name="test_func",
-            import_statement="from mypackage.tasks import test_func",
+            import_statement="from mypackage.tasks import test_func as test_func",
             json_schema={
                 "type": "object",
                 "properties": {"x": {"type": "integer"}},
             },
         )
 
-        # Simulate what discovery.py does
+        # Simulate what discovery.py does - uses public_module_path
         known_task = KnownTask(
-            importable_reference=f"{entry.module_path}.{entry.function_name}",
+            importable_reference=f"{entry.public_module_path}.{entry.function_name}",
             tags=[],  # Would filter to known TaskTag values
             registry_ref=0,
             json_schema=dict(entry.json_schema),
@@ -142,9 +145,10 @@ class TestDiscoverTasksMocked:
                         "description": "Calculate something",
                         "tags": [],
                     },
-                    "module_path": "mypackage.tasks",
+                    "module_path": "mypackage.tasks._internal",
+                    "public_module_path": "mypackage.tasks",
                     "function_name": "calculate",
-                    "import_statement": "from mypackage.tasks import calculate",
+                    "import_statement": "from mypackage.tasks import calculate as calculate",
                     "json_schema": {"properties": {}},
                 }
             },
@@ -161,7 +165,7 @@ class TestDiscoverTasksMocked:
         # Call discover_tasks_from_requirements with mocked subprocess
         result = await discover_tasks_from_requirements([MatchSpec("mypackage>=1.0.0")])
 
-        # Verify the result
+        # Verify the result - uses public_module_path for the key
         assert "calculate" in result
         assert "mypackage.tasks" in result["calculate"]
         known_task = result["calculate"]["mypackage.tasks"]
@@ -365,6 +369,128 @@ class TestDiscoveryErrors:
         error_msg = str(error)
         assert "exit code 1" in error_msg
         assert "ImportError" in error_msg
+
+
+class TestDisambiguationLogic:
+    """Tests for disambiguation logic when multiple functions have the same name."""
+
+    @pytest.mark.asyncio
+    @patch("wt_compiler.discovery.subprocess.run")
+    @patch("wt_compiler.discovery._create_environment", new_callable=AsyncMock)
+    @patch("wt_compiler.discovery.tempfile.TemporaryDirectory")
+    async def test_disambiguation_first_occurrence_gets_ref_zero(
+        self, mock_tmpdir, mock_install, mock_run, tmp_path
+    ):
+        """Test that first occurrence of function name gets registry_ref=0."""
+        from rattler import MatchSpec
+
+        # Create temp directory with fake executable
+        env_path = tmp_path / "env"
+        bin_path = env_path / "bin"
+        bin_path.mkdir(parents=True)
+        fake_exe = bin_path / "wt-registry"
+        fake_exe.touch()
+
+        mock_tmpdir.return_value.__enter__ = MagicMock(return_value=str(tmp_path))
+        mock_tmpdir.return_value.__exit__ = MagicMock(return_value=False)
+
+        # Single function
+        registry_json = {
+            "entries": {
+                "pkg.tasks.my_func": {
+                    "metadata": {"title": "My Func", "description": "Test", "tags": []},
+                    "module_path": "pkg.tasks._internal",
+                    "public_module_path": "pkg.tasks",
+                    "function_name": "my_func",
+                    "import_statement": "from pkg.tasks import my_func as my_func",
+                    "json_schema": {"properties": {}},
+                }
+            },
+            "version": "1.0.0",
+        }
+
+        mock_run.return_value = MagicMock(
+            stdout=json.dumps(registry_json),
+            returncode=0,
+        )
+
+        result = await discover_tasks_from_requirements([MatchSpec("pkg>=1.0.0")])
+
+        assert "my_func" in result
+        known_task = result["my_func"]["pkg.tasks"]
+        assert known_task.registry_ref == 0
+        assert known_task.safe_reference == "my_func"
+
+    @pytest.mark.asyncio
+    @patch("wt_compiler.discovery.subprocess.run")
+    @patch("wt_compiler.discovery._create_environment", new_callable=AsyncMock)
+    @patch("wt_compiler.discovery.tempfile.TemporaryDirectory")
+    async def test_disambiguation_second_occurrence_gets_ref_one(
+        self, mock_tmpdir, mock_install, mock_run, tmp_path
+    ):
+        """Test that second occurrence from different module gets registry_ref=1."""
+        from rattler import MatchSpec
+
+        # Create temp directory with fake executable
+        env_path = tmp_path / "env"
+        bin_path = env_path / "bin"
+        bin_path.mkdir(parents=True)
+        fake_exe = bin_path / "wt-registry"
+        fake_exe.touch()
+
+        mock_tmpdir.return_value.__enter__ = MagicMock(return_value=str(tmp_path))
+        mock_tmpdir.return_value.__exit__ = MagicMock(return_value=False)
+
+        # Two functions with same name from different modules
+        registry_json = {
+            "entries": {
+                "pkg1.tasks.my_func": {
+                    "metadata": {"title": "My Func 1", "description": "Test 1", "tags": []},
+                    "module_path": "pkg1.tasks._internal",
+                    "public_module_path": "pkg1.tasks",
+                    "function_name": "my_func",
+                    "import_statement": "from pkg1.tasks import my_func as my_func",
+                    "json_schema": {"properties": {}},
+                },
+                "pkg2.tasks.my_func": {
+                    "metadata": {"title": "My Func 2", "description": "Test 2", "tags": []},
+                    "module_path": "pkg2.tasks._internal",
+                    "public_module_path": "pkg2.tasks",
+                    "function_name": "my_func",
+                    "import_statement": "from pkg2.tasks import my_func as my_func",
+                    "json_schema": {"properties": {}},
+                },
+            },
+            "version": "1.0.0",
+        }
+
+        mock_run.return_value = MagicMock(
+            stdout=json.dumps(registry_json),
+            returncode=0,
+        )
+
+        result = await discover_tasks_from_requirements([MatchSpec("pkg1>=1.0.0")])
+
+        assert "my_func" in result
+        # Both should be present
+        assert "pkg1.tasks" in result["my_func"]
+        assert "pkg2.tasks" in result["my_func"]
+
+        # Check registry_ref values
+        task1 = result["my_func"]["pkg1.tasks"]
+        task2 = result["my_func"]["pkg2.tasks"]
+
+        # One should have ref=0, other should have ref=1
+        refs = {task1.registry_ref, task2.registry_ref}
+        assert refs == {0, 1}
+
+        # The one with ref=1 should have suffix in safe_reference
+        if task1.registry_ref == 1:
+            assert task1.safe_reference == "my_func_1"
+            assert task2.safe_reference == "my_func"
+        else:
+            assert task1.safe_reference == "my_func"
+            assert task2.safe_reference == "my_func_1"
 
 
 # Marker for slow/integration tests that require real environments

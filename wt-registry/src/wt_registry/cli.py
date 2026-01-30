@@ -2,6 +2,8 @@
 
 import argparse
 import sys
+import types
+from inspect import getmembers, ismodule
 from types import MappingProxyType
 
 # Import shared contracts from wt-contracts
@@ -14,6 +16,92 @@ from wt_contracts.registry import (
 
 from wt_registry.models import RegistryEntry
 from wt_registry.registry import get_registry
+
+
+def discover_public_paths(
+    registry: dict[str, RegistryEntry],
+    packages: list[str],
+) -> dict[tuple[str, str], str]:
+    """Discover public module paths by traversing --package modules.
+
+    When a function is registered, we store its private module path (where it's
+    defined, e.g., "tasks.config._set_vars"). This function traverses the
+    packages passed via --package CLI args to find public re-export paths
+    (e.g., "tasks.config" if the function is re-exported in __init__.py).
+
+    Args:
+        registry: Dictionary of registered functions (FQN -> RegistryEntry)
+        packages: List of package paths from --package CLI args
+
+    Returns:
+        Dict mapping (private_module_path, function_name) -> public_module_path
+
+    Examples:
+        >>> # Assuming a package structure where pkg.tasks.__init__.py re-exports
+        >>> # a function from pkg.tasks._internal:
+        >>> # discover_public_paths(registry, ["pkg.tasks"])  # doctest: +SKIP
+        >>> # {("pkg.tasks._internal", "my_func"): "pkg.tasks"}  # doctest: +SKIP
+    """
+    import importlib
+
+    public_paths: dict[tuple[str, str], str] = {}
+
+    for package in packages:
+        try:
+            module = importlib.import_module(package)
+            _traverse_module(module, registry, public_paths, visited=set())
+        except ImportError:
+            continue
+
+    return public_paths
+
+
+def _traverse_module(
+    module: types.ModuleType,
+    registry: dict[str, RegistryEntry],
+    public_paths: dict[tuple[str, str], str],
+    visited: set[int],
+) -> None:
+    """Recursively traverse module and match functions to registry entries.
+
+    This helper function walks through a module's attributes to find registered
+    functions that are re-exported. When a match is found, the public path
+    (module.__name__) is recorded.
+
+    Args:
+        module: The module to traverse
+        registry: Dictionary of registered functions (FQN -> RegistryEntry)
+        public_paths: Dict to populate with (private_path, func_name) -> public_path
+        visited: Set of module ids already visited (prevents infinite recursion)
+
+    Examples:
+        >>> # _traverse_module(mymodule, registry, public_paths, set())  # doctest: +SKIP
+    """
+    # Avoid infinite recursion on circular imports
+    if id(module) in visited:
+        return
+    visited.add(id(module))
+
+    for name, obj in getmembers(module):
+        # Skip private/dunder attributes
+        if name.startswith(("__", "_")):
+            continue
+
+        if ismodule(obj):
+            # Recursively traverse submodules
+            _traverse_module(obj, registry, public_paths, visited)
+        elif callable(obj):
+            # Check if this function is registered
+            private_module = getattr(obj, "__module__", None)
+            if private_module:
+                for fqn, entry in registry.items():
+                    if entry.function_name == name and entry.module_path == private_module:
+                        # Found a match - record the public path
+                        key = (private_module, name)
+                        # Only record if we haven't seen this or if this is a shorter path
+                        if key not in public_paths or len(module.__name__) < len(public_paths[key]):
+                            public_paths[key] = module.__name__
+                        break
 
 
 def filter_by_function_names(
@@ -65,6 +153,7 @@ def filter_by_function_names(
 
 def serialize_entries(
     entries: dict[str, RegistryEntry],
+    packages: list[str] | None = None,
 ) -> RegistryOutput:
     """
     Serialize registry entries to wt-contracts RegistryOutput format.
@@ -73,8 +162,14 @@ def serialize_entries(
     generating JSON schema for each entry. Returns a RegistryOutput
     object that can be serialized to JSON for consumption by wt-compiler.
 
+    When packages are provided, discovers public re-export paths by traversing
+    those modules. This allows import statements to use public paths
+    (e.g., "from pkg.tasks import func") instead of private paths
+    (e.g., "from pkg.tasks._internal import func").
+
     Args:
         entries: Filtered registry entries
+        packages: Optional list of packages to traverse for public path discovery
 
     Returns:
         RegistryOutput object (wt-contracts schema)
@@ -101,14 +196,27 @@ def serialize_entries(
         >>> output.version
         '1.0.0'
     """
+    # Discover public paths by traversing --package modules
+    public_paths = discover_public_paths(entries, packages or [])
+
     contract_entries = {}
     for fqn, entry in entries.items():
+        # Look up public module path, fall back to private path if not found
+        key = (entry.module_path, entry.function_name)
+        public_module_path = public_paths.get(key, entry.module_path)
+
+        # Build import statement using public path and always use "as" clause
+        import_statement = (
+            f"from {public_module_path} import {entry.function_name} as {entry.function_name}"
+        )
+
         # Convert to wt-contracts RegistryEntry format
         contract_entry = ContractRegistryEntry(
             metadata=entry.metadata,  # Already using wt-contracts RegistryMetadata
             module_path=entry.module_path,
+            public_module_path=public_module_path,
             function_name=entry.function_name,
-            import_statement=entry.import_statement,
+            import_statement=import_statement,
             json_schema=entry.json_schema,  # Triggers lazy generation
         )
         contract_entries[fqn] = contract_entry
@@ -235,7 +343,7 @@ def main() -> None:
 
         # Format and output
         if args.format == "json":
-            registry_output = serialize_entries(filtered_entries)
+            registry_output = serialize_entries(filtered_entries, packages=args.packages)
             # Use Pydantic's model_dump_json for proper serialization
             if args.pretty:
                 output = registry_output.model_dump_json(indent=2)

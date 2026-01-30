@@ -2,12 +2,19 @@
 
 import json
 import sys
-from unittest.mock import patch
+import types
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from wt_registry import register
-from wt_registry.cli import filter_by_function_names, main, serialize_entries
+from wt_registry.cli import (
+    _traverse_module,
+    discover_public_paths,
+    filter_by_function_names,
+    main,
+    serialize_entries,
+)
 from wt_registry.models import RegistryEntry, RegistryMetadata
 from wt_registry.registry import clear_registry, get_registry, register_entry
 
@@ -513,3 +520,243 @@ def test_cli_pretty_flag_doesnt_affect_pretty_format(capsys: pytest.CaptureFixtu
     assert output_without_flag == output_with_flag
     assert "===" in output_with_flag
     assert "Title: Text Test" in output_with_flag
+
+
+# --- Tests for public path discovery ---
+
+
+class TestDiscoverPublicPaths:
+    """Tests for discover_public_paths() and _traverse_module() functions."""
+
+    def test_discover_public_paths_finds_reexported_function(self) -> None:
+        """Test that discover_public_paths finds a function re-exported in __init__.py."""
+        import wt_registry.cli as cli_module
+
+        # Create a mock function that appears to be defined in a private module
+        def my_func(x: int) -> str:
+            return str(x)
+
+        my_func.__module__ = "pkg.tasks._internal"
+
+        # Create registry entry for this function
+        metadata = RegistryMetadata(title="My Func", description="Test")
+        entry = RegistryEntry(
+            metadata=metadata,
+            module_path="pkg.tasks._internal",
+            function_name="my_func",
+        )
+        entry._func_ref = my_func
+        registry = {"pkg.tasks._internal.my_func": entry}
+
+        # Create a simple namespace object to act as a module
+        mock_module = types.SimpleNamespace(__name__="pkg.tasks", my_func=my_func)
+
+        import importlib
+
+        with patch.object(importlib, "import_module", return_value=mock_module):
+            with patch.object(
+                cli_module,
+                "getmembers",
+                return_value=[("my_func", my_func)],
+            ):
+                public_paths = discover_public_paths(registry, ["pkg.tasks"])
+
+        # Should find the public path
+        assert ("pkg.tasks._internal", "my_func") in public_paths
+        assert public_paths[("pkg.tasks._internal", "my_func")] == "pkg.tasks"
+
+    def test_discover_public_paths_returns_empty_when_no_reexport(self) -> None:
+        """Test that discover_public_paths returns empty when function is not re-exported."""
+        import wt_registry.cli as cli_module
+
+        # Create a mock function
+        def my_func(x: int) -> str:
+            return str(x)
+
+        my_func.__module__ = "pkg.tasks._internal"
+
+        # Create registry entry
+        metadata = RegistryMetadata(title="My Func", description="Test")
+        entry = RegistryEntry(
+            metadata=metadata,
+            module_path="pkg.tasks._internal",
+            function_name="my_func",
+        )
+        entry._func_ref = my_func
+        registry = {"pkg.tasks._internal.my_func": entry}
+
+        # Create a simple namespace object that does NOT re-export the function
+        mock_module = types.SimpleNamespace(__name__="pkg.tasks")
+
+        import importlib
+
+        with patch.object(importlib, "import_module", return_value=mock_module):
+            with patch.object(cli_module, "getmembers", return_value=[]):
+                public_paths = discover_public_paths(registry, ["pkg.tasks"])
+
+        # Should not find any public path
+        assert ("pkg.tasks._internal", "my_func") not in public_paths
+
+    def test_discover_public_paths_handles_import_error(self) -> None:
+        """Test that discover_public_paths handles ImportError gracefully."""
+        registry: dict[str, RegistryEntry] = {}
+
+        import importlib
+
+        with patch.object(
+            importlib,
+            "import_module",
+            side_effect=ImportError("Module not found"),
+        ):
+            public_paths = discover_public_paths(registry, ["nonexistent.package"])
+
+        # Should return empty dict without raising
+        assert public_paths == {}
+
+    def test_traverse_module_skips_private_attributes(self) -> None:
+        """Test that _traverse_module skips attributes starting with underscore."""
+        import wt_registry.cli as cli_module
+
+        # Create a mock function
+        def _private_func(x: int) -> str:
+            return str(x)
+
+        _private_func.__module__ = "pkg.tasks._internal"
+
+        # Create registry entry
+        metadata = RegistryMetadata(title="Private", description="Test")
+        entry = RegistryEntry(
+            metadata=metadata,
+            module_path="pkg.tasks._internal",
+            function_name="_private_func",
+        )
+        entry._func_ref = _private_func
+        registry = {"pkg.tasks._internal._private_func": entry}
+
+        # Create simple namespace object
+        mock_module = types.SimpleNamespace(__name__="pkg.tasks")
+        public_paths: dict[tuple[str, str], str] = {}
+
+        # The mock getmembers returns a private function
+        with patch.object(
+            cli_module,
+            "getmembers",
+            return_value=[("_private_func", _private_func)],
+        ):
+            _traverse_module(mock_module, registry, public_paths, visited=set())
+
+        # Should not find the private function
+        assert ("pkg.tasks._internal", "_private_func") not in public_paths
+
+    def test_traverse_module_prevents_infinite_recursion(self) -> None:
+        """Test that _traverse_module prevents infinite recursion on circular imports."""
+        import wt_registry.cli as cli_module
+
+        # Create a simple namespace object
+        mock_module = types.SimpleNamespace(__name__="pkg.tasks")
+
+        registry: dict[str, RegistryEntry] = {}
+        public_paths: dict[tuple[str, str], str] = {}
+        visited: set[int] = set()
+
+        # First call should work
+        with patch.object(cli_module, "getmembers", return_value=[]):
+            _traverse_module(mock_module, registry, public_paths, visited)
+
+        # Module should be in visited
+        assert id(mock_module) in visited
+
+        # Second call with same module should do nothing (already visited)
+        with patch.object(cli_module, "getmembers") as mock_getmembers:
+            _traverse_module(mock_module, registry, public_paths, visited)
+            # getmembers should not be called since module is already visited
+            mock_getmembers.assert_not_called()
+
+
+class TestSerializeEntriesPublicPaths:
+    """Tests for serialize_entries() with public path discovery."""
+
+    def test_serialize_entries_populates_public_module_path(self) -> None:
+        """Test that serialize_entries populates public_module_path field."""
+        import wt_registry.cli as cli_module
+
+        def my_func(x: int) -> str:
+            return str(x)
+
+        my_func.__module__ = "pkg.tasks._internal"
+
+        metadata = RegistryMetadata(title="My Func", description="Test")
+        entry = RegistryEntry(
+            metadata=metadata,
+            module_path="pkg.tasks._internal",
+            function_name="my_func",
+        )
+        entry._func_ref = my_func
+        entries = {"pkg.tasks._internal.my_func": entry}
+
+        # Create simple namespace object that re-exports the function
+        mock_module = types.SimpleNamespace(__name__="pkg.tasks", my_func=my_func)
+
+        import importlib
+
+        with patch.object(importlib, "import_module", return_value=mock_module):
+            with patch.object(
+                cli_module,
+                "getmembers",
+                return_value=[("my_func", my_func)],
+            ):
+                output = serialize_entries(entries, packages=["pkg.tasks"])
+
+        # Check that public_module_path is populated
+        contract_entry = output.entries["pkg.tasks._internal.my_func"]
+        assert contract_entry.public_module_path == "pkg.tasks"
+        assert contract_entry.module_path == "pkg.tasks._internal"
+        # Import statement should use public path
+        assert "from pkg.tasks import my_func as my_func" == contract_entry.import_statement
+
+    def test_serialize_entries_falls_back_to_private_path(self) -> None:
+        """Test that serialize_entries falls back to private path when no public path found."""
+
+        def my_func(x: int) -> str:
+            return str(x)
+
+        my_func.__module__ = "pkg.tasks._internal"
+
+        metadata = RegistryMetadata(title="My Func", description="Test")
+        entry = RegistryEntry(
+            metadata=metadata,
+            module_path="pkg.tasks._internal",
+            function_name="my_func",
+        )
+        entry._func_ref = my_func
+        entries = {"pkg.tasks._internal.my_func": entry}
+
+        # No packages provided, so no public path discovery
+        output = serialize_entries(entries, packages=None)
+
+        # public_module_path should fall back to module_path
+        contract_entry = output.entries["pkg.tasks._internal.my_func"]
+        assert contract_entry.public_module_path == "pkg.tasks._internal"
+        assert contract_entry.module_path == "pkg.tasks._internal"
+
+    def test_serialize_entries_uses_as_clause_in_import(self) -> None:
+        """Test that serialize_entries always uses 'as' clause in import statement."""
+
+        def my_func(x: int) -> str:
+            return str(x)
+
+        metadata = RegistryMetadata(title="My Func", description="Test")
+        entry = RegistryEntry(
+            metadata=metadata,
+            module_path="pkg.tasks",
+            function_name="my_func",
+        )
+        entry._func_ref = my_func
+        entries = {"pkg.tasks.my_func": entry}
+
+        output = serialize_entries(entries)
+
+        # Import statement should always use "as" clause
+        contract_entry = output.entries["pkg.tasks.my_func"]
+        assert "as my_func" in contract_entry.import_statement
+        assert contract_entry.import_statement == "from pkg.tasks import my_func as my_func"

@@ -132,13 +132,14 @@ async def discover_tasks_from_requirements(
 
         for _, entry in registry_output.entries.items():
             # entry is typed as RegistryEntry from wt-contracts
-            module_path = entry.module_path
+            # Use public_module_path for imports (via __init__.py re-exports)
+            public_module_path = entry.public_module_path
             function_name = entry.function_name
             metadata = entry.metadata
             json_schema = dict(entry.json_schema)
 
-            # Build importable reference
-            importable_reference = f"{module_path}.{function_name}"
+            # Build importable reference using public path
+            importable_reference = f"{public_module_path}.{function_name}"
 
             # Parse tags - filter to only known TaskTag values
             tags = [TaskTag(tag) for tag in metadata.tags if tag in [t.value for t in TaskTag]]
@@ -154,14 +155,12 @@ async def discover_tasks_from_requirements(
 
             # Add to discovered_tasks dict
             if function_name not in discovered_tasks:
-                discovered_tasks[function_name] = {}
-
-            # Handle duplicate task names by incrementing registry_ref
-            if module_path in discovered_tasks[function_name]:
-                # This shouldn't happen, but handle it gracefully
+                # First occurrence of this function name
+                discovered_tasks[function_name] = {public_module_path: known_task}
+            else:
+                # Function name already seen from another module - needs disambiguation
                 known_task.registry_ref = len(discovered_tasks[function_name])
-
-            discovered_tasks[function_name][module_path] = known_task
+                discovered_tasks[function_name][public_module_path] = known_task
 
         return discovered_tasks
 

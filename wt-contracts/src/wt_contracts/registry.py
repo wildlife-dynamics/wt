@@ -62,10 +62,14 @@ class RegistryEntry(BaseModel):
 
     Attributes:
         metadata: Function metadata (title, description, tags, etc.)
-        module_path: Python module path (e.g., "mypackage.tasks")
+        module_path: Private Python module path where the function is defined
+                     (e.g., "mypackage.tasks._internal")
+        public_module_path: Public module path for imports, discovered via
+                            __init__.py re-exports (e.g., "mypackage.tasks").
+                            Falls back to module_path if not re-exported.
         function_name: Function name (e.g., "calculate_stats")
         import_statement: Complete import statement
-                          (e.g., "from mypackage.tasks import calculate_stats")
+                          (e.g., "from mypackage.tasks import calculate_stats as calculate_stats")
         json_schema: JSON Schema for function signature (parameters + return type)
 
     Examples:
@@ -74,9 +78,10 @@ class RegistryEntry(BaseModel):
         ...         title="Add Numbers",
         ...         description="Add two integers",
         ...     ),
-        ...     module_path="mypackage.tasks",
+        ...     module_path="mypackage.tasks._math",
+        ...     public_module_path="mypackage.tasks",
         ...     function_name="add",
-        ...     import_statement="from mypackage.tasks import add",
+        ...     import_statement="from mypackage.tasks import add as add",
         ...     json_schema={
         ...         "type": "object",
         ...         "properties": {
@@ -90,11 +95,18 @@ class RegistryEntry(BaseModel):
         >>> entry.function_name
         'add'
         >>> entry.module_path
+        'mypackage.tasks._math'
+        >>> entry.public_module_path
         'mypackage.tasks'
     """
 
     metadata: RegistryMetadata = Field(..., description="Function metadata")
-    module_path: str = Field(..., description="Python module path")
+    module_path: str = Field(
+        ..., description="Private Python module path where function is defined"
+    )
+    public_module_path: str = Field(
+        ..., description="Public module path for imports (via __init__.py re-exports)"
+    )
     function_name: str = Field(..., description="Function name")
     import_statement: str = Field(..., description="Complete import statement")
     json_schema: dict[str, object] = Field(..., description="JSON Schema for signature")
@@ -119,9 +131,10 @@ class RegistryOutput(BaseModel):
         ...                 title="Add Numbers",
         ...                 description="Add two integers"
         ...             ),
-        ...             module_path="mypackage.tasks",
+        ...             module_path="mypackage.tasks._math",
+        ...             public_module_path="mypackage.tasks",
         ...             function_name="add",
-        ...             import_statement="from mypackage.tasks import add",
+        ...             import_statement="from mypackage.tasks import add as add",
         ...             json_schema={"type": "object", "properties": {}}
         ...         )
         ...     },
