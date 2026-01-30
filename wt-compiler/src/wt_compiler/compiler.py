@@ -368,6 +368,7 @@ class DagCompiler(BaseModel):
         dependencies = {req.name: req.version for req in self.spec.requirements}
 
         pixi_toml = PixiToml(
+            file_header=self.file_header,
             workspace=PixiWorkspace(name=self.package_name),
             dependencies=dependencies,
         )
@@ -384,6 +385,7 @@ class DagCompiler(BaseModel):
         """Get Python package name."""
         return self.release_name.replace("-", "_")
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def file_header(self) -> str:
         """Get file header comment."""
