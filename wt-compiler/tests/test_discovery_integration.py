@@ -688,3 +688,134 @@ class TestCreateEnvironmentRetry:
         error_msg = str(error)
         assert "solve phase" in error_msg
         assert "Dependency resolution failed" in error_msg
+
+    @pytest.mark.asyncio
+    @patch("wt_compiler.discovery.install", new_callable=AsyncMock)
+    @patch("wt_compiler.discovery.solve", new_callable=AsyncMock)
+    async def test_retry_on_rattler_enotempty_exception(
+        self, mock_solve, mock_install, tmp_path
+    ):
+        """Test that py-rattler exceptions with ENOTEMPTY in message trigger retry.
+
+        py-rattler raises its own exception types (LinkError, ExtractError, IoError)
+        that are NOT OSError subclasses but contain "ENOTEMPTY" or "Directory not empty"
+        in the message.
+        """
+        from rattler import Channel, MatchSpec, Platform
+
+        env_path = tmp_path / "env"
+        requirements = [MatchSpec("test-package>=1.0.0")]
+        channels = [Channel("conda-forge")]
+        platform = Platform("linux-64")
+
+        # Mock solve to return fake records
+        mock_solve.return_value = [MagicMock()]
+
+        # Simulate py-rattler's LinkError with ENOTEMPTY in message
+        # This is NOT an OSError subclass
+        rattler_error = RuntimeError(
+            "failed to link package: ENOTEMPTY: directory not empty"
+        )
+        mock_install.side_effect = [rattler_error, None]
+
+        # Should succeed after retry
+        await _create_environment(env_path, requirements, channels, platform)
+
+        # Verify install was called twice (retry triggered)
+        assert mock_install.call_count == 2
+
+    @pytest.mark.asyncio
+    @patch("wt_compiler.discovery.install", new_callable=AsyncMock)
+    @patch("wt_compiler.discovery.solve", new_callable=AsyncMock)
+    async def test_retry_on_directory_not_empty_message(
+        self, mock_solve, mock_install, tmp_path
+    ):
+        """Test that exceptions with 'Directory not empty' in message trigger retry."""
+        from rattler import Channel, MatchSpec, Platform
+
+        env_path = tmp_path / "env"
+        requirements = [MatchSpec("test-package>=1.0.0")]
+        channels = [Channel("conda-forge")]
+        platform = Platform("linux-64")
+
+        # Mock solve to return fake records
+        mock_solve.return_value = [MagicMock()]
+
+        # Simulate exception with "Directory not empty" in message
+        dir_not_empty_error = Exception(
+            "ExtractError: Directory not empty: /tmp/cache/pkg-1.0"
+        )
+        mock_install.side_effect = [dir_not_empty_error, None]
+
+        # Should succeed after retry
+        await _create_environment(env_path, requirements, channels, platform)
+
+        # Verify install was called twice (retry triggered)
+        assert mock_install.call_count == 2
+
+    @pytest.mark.asyncio
+    @patch("wt_compiler.discovery.install", new_callable=AsyncMock)
+    @patch("wt_compiler.discovery.solve", new_callable=AsyncMock)
+    async def test_rattler_exception_exhausts_retries(
+        self, mock_solve, mock_install, tmp_path
+    ):
+        """Test that py-rattler ENOTEMPTY exceptions exhaust all retries."""
+        from rattler import Channel, MatchSpec, Platform
+
+        env_path = tmp_path / "env"
+        requirements = [MatchSpec("test-package>=1.0.0")]
+        channels = [Channel("conda-forge")]
+        platform = Platform("linux-64")
+
+        # Mock solve to return fake records
+        mock_solve.return_value = [MagicMock()]
+
+        # All attempts fail with rattler-style error
+        rattler_error = RuntimeError("IoError: ENOTEMPTY during extraction")
+        mock_install.side_effect = [rattler_error, rattler_error, rattler_error]
+
+        with pytest.raises(EnvironmentCreationError) as exc_info:
+            await _create_environment(env_path, requirements, channels, platform)
+
+        error = exc_info.value
+        assert error.phase == "install"
+        assert "ENOTEMPTY" in str(error.original_error)
+        assert mock_install.call_count == 3  # MAX_INSTALL_RETRIES
+
+
+class TestTemporaryDirectoryCleanup:
+    """Tests for TemporaryDirectory cleanup behavior."""
+
+    @pytest.mark.asyncio
+    @patch("wt_compiler.discovery.subprocess.run")
+    @patch("wt_compiler.discovery._create_environment", new_callable=AsyncMock)
+    async def test_cleanup_errors_dont_mask_original_error(
+        self, mock_create_env, mock_run, tmp_path
+    ):
+        """Test that TemporaryDirectory cleanup errors don't mask the original exception.
+
+        When py-rattler fails during install, the TemporaryDirectory cleanup can also
+        fail with ENOTEMPTY. The ignore_cleanup_errors=True parameter should prevent
+        the cleanup error from masking the original helpful error message.
+        """
+        from rattler import MatchSpec
+
+        # Make _create_environment raise the original error
+        original_error = RuntimeError("LinkError: failed to extract package foo")
+        mock_create_env.side_effect = EnvironmentCreationError(
+            env_path=tmp_path / "env",
+            requirements=[MatchSpec("test>=1.0")],
+            original_error=original_error,
+            phase="install",
+        )
+
+        # The key assertion is that we get EnvironmentCreationError with the
+        # original error, not an OSError about directory cleanup
+        with pytest.raises(EnvironmentCreationError) as exc_info:
+            await discover_tasks_from_requirements([MatchSpec("test>=1.0.0")])
+
+        error = exc_info.value
+        # The original error message should be preserved
+        assert "LinkError" in str(error.original_error)
+        # Should NOT be a cleanup-related error
+        assert "Directory not empty" not in str(error)

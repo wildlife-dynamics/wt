@@ -82,7 +82,7 @@ async def discover_tasks_from_requirements(
         else:
             platform = Platform("linux-64")  # fallback
 
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
         env_path = Path(tmpdir) / "env"
 
         # Use py-rattler native API to solve and install packages
@@ -226,10 +226,16 @@ async def _create_environment(
     backoff = INITIAL_BACKOFF_SECONDS
 
     for attempt in range(1, MAX_INSTALL_RETRIES + 1):
-        # Ensure clean env_path for each attempt
+        # Ensure clean env_path and cache_dir for each attempt
+        # Both must be cleaned to avoid stale state from partial installs
         if env_path.exists():
             shutil.rmtree(env_path, ignore_errors=True)
         env_path.mkdir(parents=True, exist_ok=True)
+        if attempt > 1:
+            # Clean cache on retry to avoid stale extraction artifacts
+            if cache_dir.exists():
+                shutil.rmtree(cache_dir, ignore_errors=True)
+            cache_dir.mkdir(parents=True, exist_ok=True)
 
         try:
             await install(
@@ -239,9 +245,19 @@ async def _create_environment(
                 cache_dir=cache_dir,
             )
             return  # Success
-        except OSError as e:
+        except Exception as e:
             last_error = e
-            if e.errno == errno.ENOTEMPTY and attempt < MAX_INSTALL_RETRIES:
+            # Check if this is a retryable ENOTEMPTY error
+            # py-rattler raises its own exception types (LinkError, ExtractError, IoError)
+            # that are NOT OSError subclasses but contain "ENOTEMPTY" or
+            # "Directory not empty" in the message
+            error_str = str(e).lower()
+            is_enotempty = (
+                (isinstance(e, OSError) and e.errno == errno.ENOTEMPTY)
+                or "enotempty" in error_str
+                or "directory not empty" in error_str
+            )
+            if is_enotempty and attempt < MAX_INSTALL_RETRIES:
                 # Inform user about retry so they understand why progress restarts
                 print(
                     f"Installation interrupted (directory conflict), "
@@ -251,9 +267,6 @@ async def _create_environment(
                 await asyncio.sleep(backoff)
                 backoff *= 2.0
                 continue
-            break
-        except Exception as e:
-            last_error = e
             break
 
     raise EnvironmentCreationError(
