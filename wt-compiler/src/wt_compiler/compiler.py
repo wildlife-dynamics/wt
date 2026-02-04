@@ -16,6 +16,7 @@ TODO areas for expansion:
 import hashlib
 import io
 import json
+import os
 import pathlib
 import sys
 from pathlib import Path
@@ -620,7 +621,12 @@ class DagCompiler(BaseModel):
         pixi_toml = self.get_pixi_toml()
 
         # Generate Dockerfile
-        dockerfile = self.plainrender("Dockerfile.jinja2")
+        dockerfile = self.plainrender(
+            "Dockerfile.jinja2",
+            pixi_version=os.environ.get("PIXI_VERSION", "latest"),
+            requires_local_release_artifacts=self.spec.requires_local_release_artifacts,
+            release_name=self.release_name,
+        )
 
         # Generate .dockerignore
         dockerignore = self.plainrender("dockerignore.jinja2")
