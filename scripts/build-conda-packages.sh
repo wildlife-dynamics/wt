@@ -88,7 +88,7 @@ build_package() {
 
     # Build the package
     if ! pixi build \
-        --manifest-path "$pkg_dir/pyproject.toml" \
+        --path "$pkg_dir/pyproject.toml" \
         --output-dir "$OUTPUT_DIR"; then
         log_error "Failed to build $pkg"
         return 1
