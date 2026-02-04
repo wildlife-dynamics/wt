@@ -145,3 +145,83 @@ This may indicate:
   - An incompatible version of wt-registry
   - Missing dependencies in the environment
   - A bug in wt-registry or registered task functions"""
+
+
+class EnvironmentCreationError(DiscoveryError):
+    """Raised when ephemeral environment creation fails.
+
+    This error occurs when py-rattler fails to solve dependencies or install
+    packages into the ephemeral environment. The error includes context about
+    which phase failed and provides guidance based on the error type.
+
+    Attributes:
+        env_path: Path to the environment that failed to create
+        requirements: List of MatchSpec requirements that were being installed
+        original_error: The underlying exception that caused the failure
+        phase: Which phase failed - "solve" or "install"
+
+    Examples:
+        >>> from pathlib import Path
+        >>> from rattler import MatchSpec
+        >>> error = EnvironmentCreationError(
+        ...     env_path=Path("/tmp/env"),
+        ...     requirements=[MatchSpec("my-package>=1.0.0")],
+        ...     original_error=OSError(66, "Directory not empty"),
+        ...     phase="install",
+        ... )
+        >>> "install" in str(error)
+        True
+        >>> "Directory not empty" in str(error)
+        True
+    """
+
+    def __init__(
+        self,
+        env_path: Path,
+        requirements: list[MatchSpec],
+        original_error: Exception,
+        phase: str,
+    ) -> None:
+        self.env_path = env_path
+        self.requirements = requirements
+        self.original_error = original_error
+        self.phase = phase
+        super().__init__(str(self))
+
+    def __str__(self) -> str:
+        import errno
+
+        req_list = "\n".join(f"  - {req}" for req in self.requirements)
+        base_msg = f"""Environment creation failed during {self.phase} phase
+
+Target environment: {self.env_path}
+
+Requirements:
+{req_list}
+
+Error: {self.original_error}"""
+
+        # Add specific guidance based on error type
+        guidance = ""
+        if isinstance(self.original_error, OSError):
+            if self.original_error.errno == errno.ENOTEMPTY:
+                guidance = """
+This is a race condition in parallel package installation (ENOTEMPTY).
+The installation was retried but still failed. This may indicate:
+  - Extremely high filesystem contention
+  - A corrupted package cache
+Try running the command again, or clear the rattler cache."""
+            elif self.original_error.errno == errno.EMFILE:
+                guidance = """
+Too many open files (EMFILE). Try:
+  - Increasing the file descriptor limit: ulimit -n 4096
+  - Reducing parallelism in package installation"""
+
+        if self.phase == "solve":
+            guidance = """
+Dependency resolution failed. This may indicate:
+  - Package not found on the specified channels
+  - Conflicting version constraints
+  - Missing or invalid channel configuration"""
+
+        return base_msg + guidance

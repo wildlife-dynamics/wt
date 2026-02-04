@@ -25,6 +25,7 @@ from wt_compiler.discovery import (
 )
 from wt_compiler.exceptions import (
     DiscoveryError,
+    EnvironmentCreationError,
     RegistryExecutionError,
     RegistryNotFoundError,
 )
@@ -49,6 +50,7 @@ __all__ = [
     "populate_known_tasks",
     # Exceptions
     "DiscoveryError",
+    "EnvironmentCreationError",
     "RegistryNotFoundError",
     "RegistryExecutionError",
     # Spec models

@@ -6,6 +6,9 @@ native async API (solve + install) and calling the wt-registry CLI, avoiding
 direct Python import dependencies on task libraries.
 """
 
+import asyncio
+import errno
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -15,9 +18,17 @@ from typing import Any
 from rattler import Channel, MatchSpec, Platform, VirtualPackage, install, solve
 from wt_contracts.registry import RegistryOutput
 
-from wt_compiler.exceptions import RegistryExecutionError, RegistryNotFoundError
+from wt_compiler.exceptions import (
+    EnvironmentCreationError,
+    RegistryExecutionError,
+    RegistryNotFoundError,
+)
 from wt_compiler.requirements import CHANNELS
 from wt_compiler.spec import KnownTask, TaskTag, known_tasks
+
+# Retry configuration for handling transient ENOTEMPTY errors during parallel install
+MAX_INSTALL_RETRIES = 3
+INITIAL_BACKOFF_SECONDS = 0.5
 
 
 async def discover_tasks_from_requirements(
@@ -173,6 +184,10 @@ async def _create_environment(
 ) -> None:
     """Create conda environment using py-rattler native API.
 
+    This function handles transient ENOTEMPTY errors that can occur when
+    py-rattler installs packages in parallel and multiple packages try to
+    write to the same shared directory (like share/doc).
+
     Args:
         env_path: Path to create the environment
         requirements: List of package requirements (MatchSpec)
@@ -180,7 +195,7 @@ async def _create_environment(
         platform: Target platform
 
     Raises:
-        RuntimeError: If solving or installation fails
+        EnvironmentCreationError: If solving or installation fails after retries
     """
     # Detect virtual packages for the current system (e.g., __osx, __glibc)
     # These are needed for packages with platform-specific requirements
@@ -195,17 +210,58 @@ async def _create_environment(
             virtual_packages=virtual_packages,
         )
     except Exception as e:
-        raise RuntimeError(f"Failed to solve dependencies: {e}") from e
+        raise EnvironmentCreationError(
+            env_path=env_path,
+            requirements=requirements,
+            original_error=e,
+            phase="solve",
+        ) from e
 
-    # Install solved packages to target prefix
-    try:
-        await install(
-            records=records,
-            target_prefix=str(env_path),
-            platform=platform,
-        )
-    except Exception as e:
-        raise RuntimeError(f"Failed to install packages: {e}") from e
+    # Create dedicated cache directory (persists across retries)
+    cache_dir = env_path.parent / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    # Install solved packages with retry logic for transient ENOTEMPTY errors
+    last_error: Exception | None = None
+    backoff = INITIAL_BACKOFF_SECONDS
+
+    for attempt in range(1, MAX_INSTALL_RETRIES + 1):
+        # Ensure clean env_path for each attempt
+        if env_path.exists():
+            shutil.rmtree(env_path, ignore_errors=True)
+        env_path.mkdir(parents=True, exist_ok=True)
+
+        try:
+            await install(
+                records=records,
+                target_prefix=str(env_path),
+                platform=platform,
+                cache_dir=cache_dir,
+            )
+            return  # Success
+        except OSError as e:
+            last_error = e
+            if e.errno == errno.ENOTEMPTY and attempt < MAX_INSTALL_RETRIES:
+                # Inform user about retry so they understand why progress restarts
+                print(
+                    f"Installation interrupted (directory conflict), "
+                    f"retrying ({attempt + 1}/{MAX_INSTALL_RETRIES})...",
+                    file=sys.stderr,
+                )
+                await asyncio.sleep(backoff)
+                backoff *= 2.0
+                continue
+            break
+        except Exception as e:
+            last_error = e
+            break
+
+    raise EnvironmentCreationError(
+        env_path=env_path,
+        requirements=requirements,
+        original_error=last_error if last_error else RuntimeError("Unknown error"),
+        phase="install",
+    ) from last_error
 
 
 async def populate_known_tasks(

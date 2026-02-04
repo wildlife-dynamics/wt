@@ -1,5 +1,6 @@
 """Tests for discovery.py and its integration with compiler.py."""
 
+import errno
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,9 +13,14 @@ from wt_compiler.compiler import (
     compile_workflow_from_yaml,
 )
 from wt_compiler.discovery import (
+    _create_environment,
     discover_tasks_from_requirements,
 )
-from wt_compiler.exceptions import RegistryExecutionError, RegistryNotFoundError
+from wt_compiler.exceptions import (
+    EnvironmentCreationError,
+    RegistryExecutionError,
+    RegistryNotFoundError,
+)
 from wt_compiler.spec import KnownTask, known_tasks
 
 
@@ -515,3 +521,170 @@ class TestDiscoveryIntegration:
         """Test full compilation from YAML with real discovery."""
         # Would test the complete compile_workflow_from_yaml flow
         pass
+
+
+class TestCreateEnvironmentRetry:
+    """Tests for _create_environment retry logic on ENOTEMPTY errors."""
+
+    @pytest.mark.asyncio
+    @patch("wt_compiler.discovery.install", new_callable=AsyncMock)
+    @patch("wt_compiler.discovery.solve", new_callable=AsyncMock)
+    async def test_retry_on_enotempty_succeeds_on_second_attempt(
+        self, mock_solve, mock_install, tmp_path
+    ):
+        """Test that ENOTEMPTY error on first attempt retries and succeeds."""
+        from rattler import Channel, MatchSpec, Platform
+
+        env_path = tmp_path / "env"
+        requirements = [MatchSpec("test-package>=1.0.0")]
+        channels = [Channel("conda-forge")]
+        platform = Platform("linux-64")
+
+        # Mock solve to return fake records
+        mock_solve.return_value = [MagicMock()]
+
+        # First call raises ENOTEMPTY, second succeeds
+        enotempty_error = OSError(errno.ENOTEMPTY, "Directory not empty")
+        mock_install.side_effect = [enotempty_error, None]
+
+        # Should succeed after retry
+        await _create_environment(env_path, requirements, channels, platform)
+
+        # Verify install was called twice
+        assert mock_install.call_count == 2
+
+    @pytest.mark.asyncio
+    @patch("wt_compiler.discovery.install", new_callable=AsyncMock)
+    @patch("wt_compiler.discovery.solve", new_callable=AsyncMock)
+    async def test_max_retries_exceeded_raises_error(
+        self, mock_solve, mock_install, tmp_path
+    ):
+        """Test that EnvironmentCreationError is raised after max retries."""
+        from rattler import Channel, MatchSpec, Platform
+
+        env_path = tmp_path / "env"
+        requirements = [MatchSpec("test-package>=1.0.0")]
+        channels = [Channel("conda-forge")]
+        platform = Platform("linux-64")
+
+        # Mock solve to return fake records
+        mock_solve.return_value = [MagicMock()]
+
+        # All attempts fail with ENOTEMPTY
+        enotempty_error = OSError(errno.ENOTEMPTY, "Directory not empty")
+        mock_install.side_effect = [enotempty_error, enotempty_error, enotempty_error]
+
+        with pytest.raises(EnvironmentCreationError) as exc_info:
+            await _create_environment(env_path, requirements, channels, platform)
+
+        error = exc_info.value
+        assert error.phase == "install"
+        assert error.original_error.errno == errno.ENOTEMPTY
+        assert mock_install.call_count == 3  # MAX_INSTALL_RETRIES
+
+    @pytest.mark.asyncio
+    @patch("wt_compiler.discovery.install", new_callable=AsyncMock)
+    @patch("wt_compiler.discovery.solve", new_callable=AsyncMock)
+    async def test_non_retryable_error_fails_immediately(
+        self, mock_solve, mock_install, tmp_path
+    ):
+        """Test that non-ENOTEMPTY errors fail without retry."""
+        from rattler import Channel, MatchSpec, Platform
+
+        env_path = tmp_path / "env"
+        requirements = [MatchSpec("test-package>=1.0.0")]
+        channels = [Channel("conda-forge")]
+        platform = Platform("linux-64")
+
+        # Mock solve to return fake records
+        mock_solve.return_value = [MagicMock()]
+
+        # Fail with a different error (not ENOTEMPTY)
+        permission_error = OSError(errno.EACCES, "Permission denied")
+        mock_install.side_effect = permission_error
+
+        with pytest.raises(EnvironmentCreationError) as exc_info:
+            await _create_environment(env_path, requirements, channels, platform)
+
+        error = exc_info.value
+        assert error.phase == "install"
+        assert error.original_error.errno == errno.EACCES
+        # Should only try once since EACCES is not retryable
+        assert mock_install.call_count == 1
+
+    @pytest.mark.asyncio
+    @patch("wt_compiler.discovery.solve", new_callable=AsyncMock)
+    async def test_solve_failure_raises_error(self, mock_solve, tmp_path):
+        """Test that solve failures raise EnvironmentCreationError with phase=solve."""
+        from rattler import Channel, MatchSpec, Platform
+
+        env_path = tmp_path / "env"
+        requirements = [MatchSpec("nonexistent-package>=1.0.0")]
+        channels = [Channel("conda-forge")]
+        platform = Platform("linux-64")
+
+        # Mock solve to fail
+        mock_solve.side_effect = RuntimeError("No candidates found")
+
+        with pytest.raises(EnvironmentCreationError) as exc_info:
+            await _create_environment(env_path, requirements, channels, platform)
+
+        error = exc_info.value
+        assert error.phase == "solve"
+        assert "No candidates found" in str(error.original_error)
+
+    def test_error_message_contains_guidance_for_enotempty(self):
+        """Test that EnvironmentCreationError provides helpful guidance for ENOTEMPTY."""
+        from pathlib import Path
+
+        from rattler import MatchSpec
+
+        enotempty_error = OSError(errno.ENOTEMPTY, "Directory not empty")
+        error = EnvironmentCreationError(
+            env_path=Path("/tmp/env"),
+            requirements=[MatchSpec("test-package>=1.0.0")],
+            original_error=enotempty_error,
+            phase="install",
+        )
+
+        error_msg = str(error)
+        assert "install phase" in error_msg
+        assert "race condition" in error_msg.lower()
+        assert "ENOTEMPTY" in error_msg
+
+    def test_error_message_contains_guidance_for_emfile(self):
+        """Test that EnvironmentCreationError provides helpful guidance for EMFILE."""
+        from pathlib import Path
+
+        from rattler import MatchSpec
+
+        emfile_error = OSError(errno.EMFILE, "Too many open files")
+        error = EnvironmentCreationError(
+            env_path=Path("/tmp/env"),
+            requirements=[MatchSpec("test-package>=1.0.0")],
+            original_error=emfile_error,
+            phase="install",
+        )
+
+        error_msg = str(error)
+        assert "install phase" in error_msg
+        assert "Too many open files" in error_msg or "EMFILE" in error_msg
+        assert "ulimit" in error_msg
+
+    def test_error_message_contains_guidance_for_solve(self):
+        """Test that EnvironmentCreationError provides helpful guidance for solve failures."""
+        from pathlib import Path
+
+        from rattler import MatchSpec
+
+        solve_error = RuntimeError("No candidates found for package")
+        error = EnvironmentCreationError(
+            env_path=Path("/tmp/env"),
+            requirements=[MatchSpec("test-package>=1.0.0")],
+            original_error=solve_error,
+            phase="solve",
+        )
+
+        error_msg = str(error)
+        assert "solve phase" in error_msg
+        assert "Dependency resolution failed" in error_msg
