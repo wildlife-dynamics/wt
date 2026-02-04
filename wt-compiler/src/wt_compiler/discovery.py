@@ -180,26 +180,32 @@ async def _create_environment(
         platform: Target platform
 
     Raises:
-        Exception: If solving or installation fails
+        RuntimeError: If solving or installation fails
     """
     # Detect virtual packages for the current system (e.g., __osx, __glibc)
     # These are needed for packages with platform-specific requirements
     virtual_packages = VirtualPackage.detect()
 
     # Solve dependencies
-    records = await solve(
-        sources=channels,  # 'channels' renamed to 'sources' in rattler 0.22+
-        specs=requirements,
-        platforms=[platform, Platform("noarch")],
-        virtual_packages=virtual_packages,
-    )
+    try:
+        records = await solve(
+            sources=channels,  # 'channels' renamed to 'sources' in rattler 0.22+
+            specs=requirements,
+            platforms=[platform, Platform("noarch")],
+            virtual_packages=virtual_packages,
+        )
+    except Exception as e:
+        raise RuntimeError(f"Failed to solve dependencies: {e}") from e
 
     # Install solved packages to target prefix
-    await install(
-        records=records,
-        target_prefix=str(env_path),
-        platform=platform,
-    )
+    try:
+        await install(
+            records=records,
+            target_prefix=str(env_path),
+            platform=platform,
+        )
+    except Exception as e:
+        raise RuntimeError(f"Failed to install packages: {e}") from e
 
 
 async def populate_known_tasks(

@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import resource
 import sys
 from pathlib import Path
 
@@ -67,6 +68,15 @@ def _compile(args: argparse.Namespace) -> None:
     Args:
         args: Parsed command-line arguments containing spec path and flags.
     """
+    # Increase file descriptor limit for py-rattler package extraction
+    try:
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        new_soft = min(max(soft, 4096), hard)
+        if new_soft > soft:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (new_soft, hard))
+    except (ValueError, OSError) as e:
+        print(f"Warning: Could not increase file descriptor limit: {e}", file=sys.stderr)
+
     spec_path = args.spec.resolve()
 
     if not spec_path.exists():
