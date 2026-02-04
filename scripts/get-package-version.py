@@ -50,7 +50,7 @@ def get_version(package_name: str, repo_root: Path) -> str:
         pass
 
     # Fallback version
-    return "0.1.0.dev0"
+    return "0.1.0"
 
 
 def main() -> None:
