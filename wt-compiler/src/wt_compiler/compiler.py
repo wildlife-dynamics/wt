@@ -572,6 +572,7 @@ class DagCompiler(BaseModel):
             self.get_dag_config(dag_type, mock_io=mock_io) | {"testing": testing}
         )
 
+    @ruff_formatted
     def generate_params_model(self, params_jsonschema: dict[str, Any], file_header: str) -> str:
         """Generate Pydantic model from parameters JSON schema.
 
