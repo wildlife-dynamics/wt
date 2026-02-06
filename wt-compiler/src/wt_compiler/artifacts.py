@@ -17,7 +17,7 @@ else:
 import pydot as dot
 import ruamel.yaml
 import tomli_w
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from wt_compiler._models import (
     _AllowArbitraryAndValidateAssignment,
@@ -62,7 +62,8 @@ class PixiWorkspace(_AllowArbitraryTypes):
 
 FeatureName = str
 PixiTaskName = str
-PixiTaskCommand = str | dict[str, str | list[str]]
+# A pixi task can be a simple string command, or a dict with cmd, env, depends_on, etc.
+PixiTaskCommand = str | dict[str, Any]
 
 
 class Feature(_AllowArbitraryTypes):
@@ -75,6 +76,8 @@ class Feature(_AllowArbitraryTypes):
 class Environment(BaseModel):
     """Pixi environment configuration."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     features: list[FeatureName] = Field(default_factory=list)
     solve_group: str = Field(default="default", alias="solve-group")
     no_default_feature: bool = Field(default=False, alias="no-default-feature")
@@ -86,6 +89,12 @@ class PixiToml(_AllowArbitraryAndValidateAssignment):
     This model represents the complete pixi configuration including workspace,
     dependencies, features, environments, and tasks.
     """
+
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        validate_assignment=True,
+        populate_by_name=True,
+    )
 
     workspace: PixiWorkspace
     system_requirements: dict[str, str] = Field(default_factory=dict, alias="system-requirements")

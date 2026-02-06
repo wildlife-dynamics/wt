@@ -27,11 +27,11 @@ WT_LOCAL_CHANNEL = Channel(
 )
 RELEASE_CHANNEL = Channel(
     "ecoscope-workflows",
-    ChannelConfig(channel_alias="https://prefix.dev/"),
+    ChannelConfig(channel_alias="https://repo.prefix.dev/"),
 )
 CUSTOM_RELEASE_CHANNEL = Channel(
     "ecoscope-workflows-custom",
-    ChannelConfig(channel_alias="https://prefix.dev/"),
+    ChannelConfig(channel_alias="https://repo.prefix.dev/"),
 )
 CONDA_FORGE_CHANNEL = Channel("conda-forge")
 MICROSOFT_CHANNEL = Channel("microsoft", ChannelConfig(channel_alias="https://conda.anaconda.org/"))

@@ -31,19 +31,32 @@ import pydot as dot
 import ruamel.yaml
 from jinja2 import Environment, FileSystemLoader
 from pydantic import BaseModel, computed_field
-from rattler import Channel
+from rattler import Channel, MatchSpec, NamelessMatchSpec
 
 from wt_compiler.artifacts import (
     Dags,
+    Feature,
     PackageDirectory,
     PixiToml,
     PixiWorkspace,
     Tests,
     WorkflowArtifacts,
 )
+from wt_compiler.artifacts import (
+    Environment as PixiEnvironment,
+)
 from wt_compiler.discovery import populate_known_tasks
 from wt_compiler.formatting import ruff_formatted
 from wt_compiler.jsonschema import ReactJSONSchemaFormConfiguration, find_referenced_defs
+from wt_compiler.requirements import (
+    CONDA_FORGE_CHANNEL,
+    CUSTOM_LOCAL_CHANNEL,
+    CUSTOM_RELEASE_CHANNEL,
+    LOCAL_CHANNEL,
+    MICROSOFT_CHANNEL,
+    RELEASE_CHANNEL,
+    WT_LOCAL_CHANNEL,
+)
 from wt_compiler.spec import (
     DagTypes,
     KnownTaskArgName,
@@ -363,18 +376,163 @@ class DagCompiler(BaseModel):
     def get_pixi_toml(self) -> PixiToml:
         """Generate pixi.toml for the workflow.
 
+        Builds a complete pixi.toml with:
+        - Dynamic channels based on which channels are used in requirements
+        - System requirements (linux = "4.4.0" for Docker compatibility)
+        - Dependencies with channel specified per dependency
+        - feature.runner with ecoscope-workflows-runner
+        - feature.test with test dependencies and tasks
+        - Environments: default, runner, test
+        - Tasks: docker-build (if local artifacts) and workflow CLI
+
         Returns:
             PixiToml model with all dependencies and configuration
         """
-        dependencies = {req.name: req.version for req in self.spec.requirements}
+        # 1. Build channels list dynamically based on which channels are in requirements
+        channels: list[str] = []
+        if any(r.channel.base_url == LOCAL_CHANNEL.base_url for r in self.spec.requirements):
+            channels.append(LOCAL_CHANNEL.base_url)
+        if any(r.channel.base_url == WT_LOCAL_CHANNEL.base_url for r in self.spec.requirements):
+            channels.append(WT_LOCAL_CHANNEL.base_url)
+        if any(r.channel.base_url == CUSTOM_LOCAL_CHANNEL.base_url for r in self.spec.requirements):
+            channels.append(CUSTOM_LOCAL_CHANNEL.base_url)
+        if any(
+            r.channel.base_url == CUSTOM_RELEASE_CHANNEL.base_url for r in self.spec.requirements
+        ):
+            channels.append(CUSTOM_RELEASE_CHANNEL.base_url)
+        # Always add standard channels at the end
+        # Note: name can be None for custom channels but not for these standard channels
+        assert CONDA_FORGE_CHANNEL.name is not None
+        assert MICROSOFT_CHANNEL.name is not None
+        channels += [RELEASE_CHANNEL.base_url, CONDA_FORGE_CHANNEL.name, MICROSOFT_CHANNEL.name]
 
-        pixi_toml = PixiToml(
-            file_header=self.file_header,
-            workspace=PixiWorkspace(name=self.package_name),
-            dependencies=dependencies,
+        # 2. Build workspace with dynamic channels
+        # (pydantic validators accept strings and parse them to Channel objects)
+        workspace = PixiWorkspace(name=self.release_name, channels=channels)  # type: ignore[arg-type]
+
+        # 3. Build dependencies with channel per dependency
+        dependencies: dict[str, NamelessMatchSpec] = {}
+        for r in self.spec.requirements:
+            version_str = str(r.version.version) if r.version.version else "*"
+            dependencies[r.name] = NamelessMatchSpec.from_match_spec(
+                MatchSpec(f"{r.channel.base_url}::{r.name} {version_str}")
+            )
+
+        # 4. Build feature.runner.dependencies
+        # Find the ecoscope-workflows-core dependency to get its channel and version
+        core_dep = next(
+            (r for r in self.spec.requirements if r.name == "ecoscope-workflows-core"), None
+        )
+        if core_dep:
+            runner_version = str(core_dep.version.version) if core_dep.version.version else "*"
+            runner_channel = core_dep.channel.base_url
+        else:
+            # Fallback to release channel if core not found
+            runner_version = "*"
+            runner_channel = RELEASE_CHANNEL.base_url
+
+        runner_feature = Feature(
+            dependencies={
+                "ecoscope-workflows-runner": NamelessMatchSpec.from_match_spec(
+                    MatchSpec(f"{runner_channel}::ecoscope-workflows-runner {runner_version}")
+                )
+            }
         )
 
-        return pixi_toml
+        # 5. Build feature.test (dependencies + tasks)
+        test_dependencies: dict[str, NamelessMatchSpec] = {
+            "pandas": NamelessMatchSpec.from_match_spec(MatchSpec("conda-forge::pandas *")),
+            "pyarrow": NamelessMatchSpec.from_match_spec(MatchSpec("conda-forge::pyarrow *")),
+            "pytest": NamelessMatchSpec.from_match_spec(MatchSpec("conda-forge::pytest *")),
+            "pytest-asyncio": NamelessMatchSpec.from_match_spec(
+                MatchSpec("conda-forge::pytest-asyncio *")
+            ),
+            "pytest-check": NamelessMatchSpec.from_match_spec(
+                MatchSpec("conda-forge::pytest-check *")
+            ),
+            "pillow": NamelessMatchSpec.from_match_spec(MatchSpec("conda-forge::pillow *")),
+            "scikit-image": NamelessMatchSpec.from_match_spec(
+                MatchSpec("conda-forge::scikit-image *")
+            ),
+            "syrupy": NamelessMatchSpec.from_match_spec(MatchSpec("conda-forge::syrupy *")),
+            "playwright": NamelessMatchSpec.from_match_spec(
+                MatchSpec("microsoft::playwright >=1.52.0")
+            ),
+        }
+
+        test_tasks: dict[str, str | dict[str, str | list[str]]] = {
+            "test-all": "python -m pytest -v tests",
+            "playwright-install": "playwright install --with-deps chromium",
+            "test-app-metadata": {"cmd": "python -m pytest -v tests/test_metadata.py"},
+            "test-app-async-mock-io": {
+                "cmd": "python -m pytest -v tests/test_results.py -k 'app and async and mock-io'",
+                "depends-on": ["playwright-install"],
+            },
+            "test-app-sequential-mock-io": {
+                "cmd": (
+                    "python -m pytest -v tests/test_results.py -k 'app and sequential and mock-io'"
+                ),
+                "depends-on": ["playwright-install"],
+            },
+            "test-cli-async-mock-io": {
+                "cmd": "python -m pytest -v tests/test_results.py -k 'cli and async and mock-io'",
+                "depends-on": ["playwright-install"],
+            },
+            "test-cli-sequential-mock-io": {
+                "cmd": (
+                    "python -m pytest -v tests/test_results.py -k 'cli and sequential and mock-io'"
+                ),
+                "depends-on": ["playwright-install"],
+            },
+        }
+
+        test_feature = Feature(dependencies=test_dependencies, tasks=test_tasks)
+
+        # 6. Build environments
+        # Note: using field names instead of aliases; pydantic's populate_by_name allows this
+        environments = {
+            "default": PixiEnvironment(solve_group="default"),  # type: ignore[call-arg]
+            "runner": PixiEnvironment(  # type: ignore[call-arg]
+                features=["runner"], solve_group="runner", no_default_feature=True
+            ),
+            "test": PixiEnvironment(  # type: ignore[call-arg]
+                features=["runner", "test"], solve_group="test", no_default_feature=True
+            ),
+        }
+
+        # 7. Build tasks
+        tasks: dict[str, str | dict[str, Any]] = {}
+
+        # Add docker-build task
+        if self.spec.requires_local_release_artifacts:
+            # When local artifacts are required, copy them before building
+            copy_local_artifacts = (
+                "mkdir -p .tmp/ecoscope-workflows/release/artifacts/\n"
+                "&& cp -r /tmp/ecoscope-workflows/release/artifacts/* "
+                ".tmp/ecoscope-workflows/release/artifacts/\n"
+            )
+            tasks["docker-build"] = (
+                f"{copy_local_artifacts}&& docker buildx build -t {self.release_name} .\n"
+            )
+        else:
+            tasks["docker-build"] = f"docker buildx build -t {self.release_name} ."
+
+        # Add workflow CLI task
+        tasks[self.release_name] = f"python -m {self.package_name}.cli"
+
+        # 8. Build system requirements (linux = "4.4.0" for Docker compatibility)
+        system_requirements = {"linux": "4.4.0"}
+
+        # Note: using field names instead of aliases; pydantic's populate_by_name allows this
+        return PixiToml(  # type: ignore[call-arg]
+            file_header=self.file_header,
+            workspace=workspace,
+            system_requirements=system_requirements,
+            dependencies=dependencies,
+            feature={"runner": runner_feature, "test": test_feature},
+            environments=environments,
+            tasks=tasks,
+        )
 
     @property
     def release_name(self) -> str:

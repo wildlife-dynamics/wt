@@ -298,7 +298,9 @@ workflow: []
 
         # Verify channels were passed (not None or empty)
         assert channels is not None, "channels parameter should be passed"
-        assert len(channels) == 2, f"Expected 2 unique channels, got {len(channels)}"
+        # All known remote channels are included for transitive dependency resolution
+        # (local file:// channels that don't exist are filtered out)
+        assert len(channels) >= 2, f"Expected at least 2 channels, got {len(channels)}"
 
         # Verify both ecoscope-workflows channel and conda-forge are present
         channel_identifiers = [c.name or c.base_url for c in channels]

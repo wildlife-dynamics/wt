@@ -68,8 +68,10 @@ class TestDagCompiler:
             workflow=[],
         )
         compiler = DagCompiler(spec=spec)
-        assert compiler.release_name == "wt-my_workflow"
-        assert compiler.package_name == "wt_my_workflow"
+        # Release name: prefix-{id with _ replaced by -}-workflow
+        assert compiler.release_name == "wt-my-workflow-workflow"
+        # Package name: release name with - replaced by _
+        assert compiler.package_name == "wt_my_workflow_workflow"
 
     def test_custom_pkg_name_prefix(self):
         """Test custom package name prefix."""
@@ -79,8 +81,8 @@ class TestDagCompiler:
             workflow=[],
         )
         compiler = DagCompiler(spec=spec, pkg_name_prefix="custom")
-        assert compiler.release_name == "custom-my_workflow"
-        assert compiler.package_name == "custom_my_workflow"
+        assert compiler.release_name == "custom-my-workflow-workflow"
+        assert compiler.package_name == "custom_my_workflow_workflow"
 
     def test_per_taskinstance_omit_args(self):
         """Test omit_args calculation for task instances."""
@@ -167,9 +169,54 @@ class TestDagCompiler:
         compiler = DagCompiler(spec=spec)
         pixi_toml = compiler.get_pixi_toml()
 
-        assert pixi_toml.workspace.name == "wt_test_spec"
+        # Workspace name should be the release name (underscores replaced by dashes)
+        assert pixi_toml.workspace.name == "wt-test-spec-workflow"
         assert "python" in pixi_toml.dependencies
         assert "pandas" in pixi_toml.dependencies
+
+        # Check system requirements
+        assert pixi_toml.system_requirements == {"linux": "4.4.0"}
+
+        # Check environments
+        assert "default" in pixi_toml.environments
+        assert "runner" in pixi_toml.environments
+        assert "test" in pixi_toml.environments
+
+        # Check features
+        assert "runner" in pixi_toml.feature
+        assert "test" in pixi_toml.feature
+
+        # Check tasks (task name is the release_name)
+        assert "wt-test-spec-workflow" in pixi_toml.tasks
+
+    def test_get_pixi_toml_with_ecoscope_core(self):
+        """Test pixi.toml generation with ecoscope-workflows-core dependency."""
+        from wt_compiler.requirements import RELEASE_CHANNEL
+
+        spec = Spec(
+            id="my_workflow",
+            requirements=[
+                SpecRequirement(
+                    requirement=f"{RELEASE_CHANNEL.base_url}::ecoscope-workflows-core>=0.1.0"
+                ),
+            ],
+            workflow=[],
+        )
+        compiler = DagCompiler(spec=spec, pkg_name_prefix="ecoscope-workflows")
+        pixi_toml = compiler.get_pixi_toml()
+
+        # Runner feature should have ecoscope-workflows-runner with same version
+        assert "runner" in pixi_toml.feature
+        assert "ecoscope-workflows-runner" in pixi_toml.feature["runner"].dependencies
+
+        # Test feature should have test dependencies
+        assert "test" in pixi_toml.feature
+        assert "pytest" in pixi_toml.feature["test"].dependencies
+        assert "pandas" in pixi_toml.feature["test"].dependencies
+
+        # Test tasks should exist
+        assert "test-all" in pixi_toml.feature["test"].tasks
+        assert "playwright-install" in pixi_toml.feature["test"].tasks
 
     def test_props_and_defs_from_task_instance(self):
         """Test extracting properties and definitions from a task instance."""
