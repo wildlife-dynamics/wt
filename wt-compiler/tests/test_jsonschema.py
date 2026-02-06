@@ -1,16 +1,12 @@
 """Tests for jsonschema.py - JSON schema utilities and RJSF support."""
 
-from typing import Annotated
-
 import pytest
-from pydantic import Field
 
 from wt_compiler.jsonschema import (
     ReactJSONSchemaFormConfiguration,
     ReactJSONSchemaFormOverrides,
     _apply_dict_overrides,
     find_referenced_defs,
-    jsonschema_from_task_func,
 )
 
 
@@ -92,48 +88,6 @@ class TestApplyDictOverrides:
         """Test creating entirely new nested path."""
         result = _apply_dict_overrides({"x.y.z": 5}, {})
         assert result == {"x": {"y": {"z": 5}}}
-
-
-class TestJSONSchemaFromTaskFunc:
-    """Tests for jsonschema_from_task_func."""
-
-    def test_simple_function(self):
-        """Test schema generation from simple function."""
-
-        def simple_func(x: int, y: str) -> bool:
-            return True
-
-        schema = jsonschema_from_task_func(simple_func)
-        assert "properties" in schema
-        assert "x" in schema["properties"]
-        assert "y" in schema["properties"]
-
-    def test_function_with_defaults(self):
-        """Test schema generation with default values."""
-
-        def func_with_defaults(x: int, y: str = "default") -> int:
-            return x
-
-        schema = jsonschema_from_task_func(func_with_defaults)
-        assert schema["properties"]["y"].get("default") == "default"
-        assert "x" in schema.get("required", [])
-        assert "y" not in schema.get("required", [])
-
-    def test_function_with_annotated_field(self):
-        """Test schema generation with Annotated[T, Field(...)]."""
-
-        def annotated_func(
-            x: Annotated[int, Field(description="An integer", ge=0, le=100)],
-            y: Annotated[str, Field(description="A string", max_length=50)],
-        ) -> bool:
-            return True
-
-        schema = jsonschema_from_task_func(annotated_func)
-        assert "x" in schema["properties"]
-        assert "y" in schema["properties"]
-        # Check that Field metadata is included
-        assert "description" in schema["properties"]["x"]
-        assert schema["properties"]["x"]["description"] == "An integer"
 
 
 class TestReactJSONSchemaFormConfiguration:

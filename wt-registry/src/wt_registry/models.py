@@ -2,12 +2,13 @@
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 # Import shared contract from wt-contracts
 from wt_contracts.registry import RegistryMetadata
 
 from wt_registry.exceptions import SchemaGenerationError
+from wt_registry.jsonschema import jsonschema_from_task_func
 from wt_registry.validation import validate_function_signature
 
 # Re-export for backward compatibility
@@ -120,12 +121,10 @@ class RegistryEntry(BaseModel):
         # Step 1: Validate function signature
         validate_function_signature(self._func_ref)
 
-        # Step 2: Generate JSON schema
+        # Step 2: Generate JSON schema using custom generator that surfaces
+        # Field() metadata (descriptions, titles, defaults, json_schema_extra)
         try:
-            type_adapter: TypeAdapter[Any] = TypeAdapter(
-                self._func_ref, config={"arbitrary_types_allowed": True}
-            )
-            schema = type_adapter.json_schema()
+            schema = jsonschema_from_task_func(self._func_ref)
         except Exception as e:
             raise SchemaGenerationError(
                 f"Failed to generate JSON schema for {self.fully_qualified_name}: {e}"

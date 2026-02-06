@@ -1,7 +1,9 @@
 """Tests for Pydantic models."""
 
+from typing import Annotated
+
 import pytest
-from pydantic import ValidationError as PydanticValidationError
+from pydantic import Field, ValidationError as PydanticValidationError
 
 from wt_registry.models import RegistryEntry, RegistryMetadata
 
@@ -241,3 +243,29 @@ def test_registry_entry_validation_missing_func_ref() -> None:
         _ = entry.json_schema
 
     assert "function reference not set" in str(exc_info.value)
+
+
+def test_registry_entry_json_schema_surfaces_field_metadata() -> None:
+    """Test that RegistryEntry.json_schema surfaces Annotated Field descriptions and titles."""
+    metadata = RegistryMetadata(title="Test", description="Test function")
+
+    def func_with_annotations(
+        x: Annotated[int, Field(description="An integer", title="X Value")],
+        y: Annotated[str, Field(description="A string")],
+        z: Annotated[float, Field(default=3.14, json_schema_extra={"ecoscope:advanced": True})],
+    ) -> bool:
+        return True
+
+    entry = RegistryEntry(
+        metadata=metadata,
+        module_path="test.module",
+        function_name="func_with_annotations",
+    )
+    entry._func_ref = func_with_annotations
+
+    schema = entry.json_schema
+    assert schema["properties"]["x"]["description"] == "An integer"
+    assert schema["properties"]["x"]["title"] == "X Value"
+    assert schema["properties"]["y"]["description"] == "A string"
+    assert schema["properties"]["z"]["default"] == 3.14
+    assert schema["properties"]["z"]["ecoscope:advanced"] is True
