@@ -98,7 +98,9 @@ class TestCompileCommand:
             ) as mock_compile:
                 main()
 
-        mock_compile.assert_called_once_with(str(spec_file.resolve()), pkg_name_prefix="wt")
+        mock_compile.assert_called_once_with(
+            str(spec_file.resolve()), progress=True, pkg_name_prefix="wt"
+        )
         mock_artifacts.dump.assert_called_once_with(clobber=False, update=False)
 
         captured = capsys.readouterr()

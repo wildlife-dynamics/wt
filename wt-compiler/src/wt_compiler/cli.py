@@ -54,6 +54,11 @@ def main() -> None:
         metavar="PREFIX",
         help="Package name prefix for generated artifacts (default: wt)",
     )
+    compile_parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Disable the progress spinner during compilation",
+    )
 
     args = parser.parse_args()
 
@@ -90,7 +95,11 @@ def _compile(args: argparse.Namespace) -> None:
     try:
         # compile_workflow_from_yaml handles discovery automatically
         artifacts = asyncio.run(
-            compile_workflow_from_yaml(str(spec_path), pkg_name_prefix=args.pkg_name_prefix)
+            compile_workflow_from_yaml(
+                str(spec_path),
+                progress=not args.no_progress,
+                pkg_name_prefix=args.pkg_name_prefix,
+            )
         )
 
         # Write artifacts to disk

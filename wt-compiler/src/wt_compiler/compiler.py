@@ -19,6 +19,7 @@ import json
 import os
 import pathlib
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -742,6 +743,7 @@ class DagCompiler(BaseModel):
         self,
         spec_relpath: str,
         installed_requirements: list[SpecRequirement] | None = None,
+        on_progress: Callable[[str], None] | None = None,
     ) -> WorkflowArtifacts:
         """Compile the workflow spec into complete artifacts.
 
@@ -750,6 +752,7 @@ class DagCompiler(BaseModel):
         Args:
             spec_relpath: Relative path to the spec file
             installed_requirements: Optional list of solved/pinned requirements
+            on_progress: Optional callback invoked with a status message at each sub-step
 
         Returns:
             WorkflowArtifacts with all generated files
@@ -760,6 +763,8 @@ class DagCompiler(BaseModel):
             >>> # compiler = DagCompiler(spec=spec)  # doctest: +SKIP
             >>> # artifacts = compiler.compile("path/to/spec.yaml")  # doctest: +SKIP
         """
+        if on_progress is not None:
+            on_progress("Generating schemas...")
         # Generate parameter schemas (both flat and hierarchical)
         params_schema_flat = self.get_params_jsonschema(flat=True)
         params_schema_hierarchical = self.get_params_jsonschema(flat=False)
@@ -779,6 +784,8 @@ class DagCompiler(BaseModel):
             result: dict[str, Any] = j.model_dump(by_alias=True, exclude_none=True)
             return result
 
+        if on_progress is not None:
+            on_progress("Rendering DAGs...")
         # Generate DAGs
         dags = Dags(
             **{
@@ -791,6 +798,8 @@ class DagCompiler(BaseModel):
             }
         )
 
+        if on_progress is not None:
+            on_progress("Generating package files...")
         # Generate package files
         package = PackageDirectory(
             dags=dags,
@@ -807,6 +816,8 @@ class DagCompiler(BaseModel):
             },
         )
 
+        if on_progress is not None:
+            on_progress("Generating tests...")
         # Generate tests
         from wt_compiler.spec import TaskTag
 
@@ -844,6 +855,8 @@ class DagCompiler(BaseModel):
         # Generate .dockerignore
         dockerignore = self.plainrender("dockerignore.jinja2")
 
+        if on_progress is not None:
+            on_progress("Building graph...")
         # Generate pydot graph
         pydot_graph = self.build_pydot_graph()
 
@@ -883,6 +896,7 @@ def compile_workflow(
     spec: Spec,
     spec_relpath: str,
     installed_requirements: list[SpecRequirement] | None = None,
+    on_progress: Callable[[str], None] | None = None,
     **compiler_kwargs: Any,
 ) -> WorkflowArtifacts:
     """Compile a workflow from a validated Spec.
@@ -895,6 +909,7 @@ def compile_workflow(
         spec: Workflow specification (must have known_tasks already populated)
         spec_relpath: Relative path to spec file
         installed_requirements: Optional list of solved/pinned requirements
+        on_progress: Optional callback invoked with a status message at each sub-step
         **compiler_kwargs: Additional arguments for DagCompiler
 
     Returns:
@@ -910,7 +925,9 @@ def compile_workflow(
         >>> # artifacts = compile_workflow_from_yaml("spec.yaml")  # doctest: +SKIP
     """
     compiler = DagCompiler(spec=spec, **compiler_kwargs)
-    return compiler.compile(spec_relpath, installed_requirements=installed_requirements)
+    return compiler.compile(
+        spec_relpath, installed_requirements=installed_requirements, on_progress=on_progress
+    )
 
 
 def _parse_requirements_from_yaml(yaml_path: Path) -> list[SpecRequirement]:
@@ -948,6 +965,7 @@ def _parse_requirements_from_yaml(yaml_path: Path) -> list[SpecRequirement]:
 
 async def compile_workflow_from_yaml(
     yaml_path: str | Path,
+    progress: bool = True,
     **compiler_kwargs: Any,
 ) -> WorkflowArtifacts:
     """Compile a workflow from a spec.yaml file with automatic task discovery.
@@ -961,6 +979,8 @@ async def compile_workflow_from_yaml(
 
     Args:
         yaml_path: Path to spec.yaml file
+        progress: Whether to display a progress spinner on stderr (default: True).
+            Automatically disabled when stderr is not a TTY.
         **compiler_kwargs: Additional arguments for DagCompiler
 
     Returns:
@@ -978,60 +998,72 @@ async def compile_workflow_from_yaml(
     """
     from rattler import MatchSpec
 
+    from wt_compiler.progress import spinner
+
     yaml_path = Path(yaml_path)
 
-    # Phase 1: Parse requirements from YAML
-    requirements = _parse_requirements_from_yaml(yaml_path)
+    with spinner(progress) as sp:
+        # Phase 1: Parse requirements from YAML
+        sp.update("Parsing requirements...")
+        requirements = _parse_requirements_from_yaml(yaml_path)
 
-    # Phase 2: Convert SpecRequirements to MatchSpecs and discover tasks
-    # Build MatchSpec strings: "{channel}::{name} {version}"
-    # Use base_url (not name) to ensure custom channels are correctly identified
-    # Also collect channels to pass to the discovery function
-    match_specs = []
-    channels = []
-    for req in requirements:
-        # Use base_url for the matchspec to correctly identify custom channels
-        # (using just the name would default to conda.anaconda.org)
-        channel_str = req.channel.base_url
-        channels.append(req.channel)
-        version_str = str(req.version.version) if req.version.version else ""
-        matchspec_str = f"{channel_str}::{req.name} {version_str}".strip()
-        match_specs.append(MatchSpec(matchspec_str))
+        # Phase 2: Convert SpecRequirements to MatchSpecs and discover tasks
+        # Build MatchSpec strings: "{channel}::{name} {version}"
+        # Use base_url (not name) to ensure custom channels are correctly identified
+        # Also collect channels to pass to the discovery function
+        match_specs = []
+        channels = []
+        for req in requirements:
+            # Use base_url for the matchspec to correctly identify custom channels
+            # (using just the name would default to conda.anaconda.org)
+            channel_str = req.channel.base_url
+            channels.append(req.channel)
+            version_str = str(req.version.version) if req.version.version else ""
+            matchspec_str = f"{channel_str}::{req.name} {version_str}".strip()
+            match_specs.append(MatchSpec(matchspec_str))
 
-    # Deduplicate channels while preserving order, keyed by base_url
-    unique_channels = list({c.base_url: c for c in channels}.values())
+        # Deduplicate channels while preserving order, keyed by base_url
+        unique_channels = list({c.base_url: c for c in channels}.values())
 
-    # Add all known channels for transitive dependency resolution
-    # This uses CHANNELS from requirements.py as the single source of truth
-    from wt_compiler.requirements import CHANNELS
+        # Add all known channels for transitive dependency resolution
+        # This uses CHANNELS from requirements.py as the single source of truth
+        from wt_compiler.requirements import CHANNELS
 
-    for known_channel in CHANNELS:
-        if not any(c.base_url == known_channel.base_url for c in unique_channels):
-            unique_channels.append(known_channel)
+        for known_channel in CHANNELS:
+            if not any(c.base_url == known_channel.base_url for c in unique_channels):
+                unique_channels.append(known_channel)
 
-    # Filter out file:// channels that don't exist on the local filesystem
-    def _local_channel_exists(channel: "Channel") -> bool:
-        base_url = channel.base_url
-        if base_url.startswith("file://"):
-            local_path = Path(base_url.replace("file://", ""))
-            return local_path.exists()
-        return True  # Non-local channels are always "valid"
+        # Filter out file:// channels that don't exist on the local filesystem
+        def _local_channel_exists(channel: "Channel") -> bool:
+            base_url = channel.base_url
+            if base_url.startswith("file://"):
+                local_path = Path(base_url.replace("file://", ""))
+                return local_path.exists()
+            return True  # Non-local channels are always "valid"
 
-    unique_channels = [c for c in unique_channels if _local_channel_exists(c)]
+        unique_channels = [c for c in unique_channels if _local_channel_exists(c)]
 
-    # Discover tasks and populate global known_tasks
-    records = await populate_known_tasks(match_specs, channels=unique_channels)
+        # Discover tasks and populate global known_tasks
+        records = await populate_known_tasks(
+            match_specs, channels=unique_channels, on_progress=sp.update
+        )
 
-    # Build installed requirements from solved records
-    installed_requirements = _build_installed_requirements(requirements, records)
+        # Build installed requirements from solved records
+        installed_requirements = _build_installed_requirements(requirements, records)
 
-    # Phase 3: Now we can safely validate the full Spec
-    with open(yaml_path) as f:
-        data = yaml.load(f)
-    spec = Spec.model_validate(data)
+        # Phase 3: Now we can safely validate the full Spec
+        sp.update("Validating spec...")
+        with open(yaml_path) as f:
+            data = yaml.load(f)
+        spec = Spec.model_validate(data)
 
-    # Phase 4: Compile
-    spec_relpath = str(yaml_path)
-    return compile_workflow(
-        spec, spec_relpath, installed_requirements=installed_requirements, **compiler_kwargs
-    )
+        # Phase 4: Compile
+        sp.update("Compiling artifacts...")
+        spec_relpath = str(yaml_path)
+        return compile_workflow(
+            spec,
+            spec_relpath,
+            installed_requirements=installed_requirements,
+            on_progress=sp.update,
+            **compiler_kwargs,
+        )

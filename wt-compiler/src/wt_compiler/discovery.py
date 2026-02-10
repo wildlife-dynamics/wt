@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -42,6 +43,7 @@ async def discover_tasks_from_requirements(
     requirements: list[MatchSpec],
     channels: list[Channel] | None = None,
     platform: Platform | None = None,
+    on_progress: Callable[[str], None] | None = None,
 ) -> DiscoveryResult:
     """Discover tasks by creating an ephemeral rattler environment.
 
@@ -56,6 +58,7 @@ async def discover_tasks_from_requirements(
         requirements: List of package requirements to install
         channels: Optional list of channels (defaults to conda-forge)
         platform: Optional Platform object (defaults to current platform)
+        on_progress: Optional callback invoked with a status message at each phase
 
     Returns:
         DiscoveryResult containing:
@@ -95,7 +98,11 @@ async def discover_tasks_from_requirements(
         env_path = Path(tmpdir) / "env"
 
         # Use py-rattler native API to solve and install packages
-        records = await _create_environment(env_path, requirements, channels, platform)
+        if on_progress is not None:
+            on_progress("Solving dependencies...")
+        records = await _create_environment(
+            env_path, requirements, channels, platform, on_progress=on_progress
+        )
 
         # Determine the executable path based on platform
         if sys.platform == "win32":
@@ -128,6 +135,8 @@ async def discover_tasks_from_requirements(
             cli_args.extend(["--package", module])
 
         # Call wt-registry CLI in the environment
+        if on_progress is not None:
+            on_progress("Discovering tasks...")
         result = subprocess.run(
             cli_args,
             capture_output=True,
@@ -190,6 +199,7 @@ async def _create_environment(
     requirements: list[MatchSpec],
     channels: list[Channel],
     platform: Platform,
+    on_progress: Callable[[str], None] | None = None,
 ) -> list[Any]:
     """Create conda environment using py-rattler native API.
 
@@ -232,6 +242,9 @@ async def _create_environment(
     # Create dedicated cache directory (persists across retries)
     cache_dir = env_path.parent / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
+
+    if on_progress is not None:
+        on_progress("Installing packages...")
 
     # Install solved packages with retry logic for transient ENOTEMPTY errors
     last_error: Exception | None = None
@@ -292,6 +305,7 @@ async def _create_environment(
 async def populate_known_tasks(
     requirements: list[MatchSpec],
     channels: list[Channel] | None = None,
+    on_progress: Callable[[str], None] | None = None,
     **kwargs: Any,
 ) -> list[Any]:
     """Discover tasks and populate the global known_tasks dictionary.
@@ -304,6 +318,7 @@ async def populate_known_tasks(
         channels: Optional list of channels to search for packages.
             If not provided, defaults to conda-forge in discover_tasks_from_requirements.
             For custom package channels, this parameter must be provided.
+        on_progress: Optional callback invoked with a status message at each phase
         **kwargs: Additional arguments to pass to discover_tasks_from_requirements
 
     Returns:
@@ -317,7 +332,9 @@ async def populate_known_tasks(
         >>> # len(known_tasks) > 0  # doctest: +SKIP
         True
     """
-    result = await discover_tasks_from_requirements(requirements, channels=channels, **kwargs)
+    result = await discover_tasks_from_requirements(
+        requirements, channels=channels, on_progress=on_progress, **kwargs
+    )
     known_tasks.clear()
     known_tasks.update(result.tasks)
     return result.records
