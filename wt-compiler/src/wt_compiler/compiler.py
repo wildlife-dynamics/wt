@@ -30,7 +30,7 @@ else:
 import pydot as dot
 import ruamel.yaml
 from jinja2 import Environment, FileSystemLoader
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel, Field, computed_field
 from rattler import Channel, MatchSpec, NamelessMatchSpec
 
 from wt_compiler.artifacts import (
@@ -106,6 +106,51 @@ def _remove_functionally_irrelevant_keys(
         return data
 
 
+def _build_installed_requirements(
+    spec_requirements: list[SpecRequirement],
+    records: list[Any],  # list[RepoDataRecord] from rattler solve()
+) -> list[SpecRequirement]:
+    """Build installed requirements from spec requirements and solved records.
+
+    For each spec requirement, finds the solved version from records and creates
+    a new SpecRequirement with the exact pinned version and resolved channel.
+
+    Args:
+        spec_requirements: Original spec requirements
+        records: Solved RepoDataRecord objects from rattler
+
+    Returns:
+        List of SpecRequirement with pinned versions (e.g., ==1.2.3)
+
+    Examples:
+        >>> # records = [...]  # RepoDataRecord from rattler solve  # doctest: +SKIP
+        >>> # reqs = [SpecRequirement(requirement="pandas>=2.0")]  # doctest: +SKIP
+        >>> # installed = _build_installed_requirements(reqs, records)  # doctest: +SKIP
+        >>> # installed[0].version.version  # "==2.2.3"  # doctest: +SKIP
+    """
+    # Build lookup: normalized package name -> version string
+    solved_versions: dict[str, tuple[str, str]] = {}
+    for r in records:
+        name = str(r.name.normalized)
+        version = str(r.version)
+        channel = str(r.channel)
+        solved_versions[name] = (version, channel)
+
+    installed: list[SpecRequirement] = []
+    for req in spec_requirements:
+        if req.name in solved_versions:
+            version, channel = solved_versions[req.name]
+            installed.append(
+                SpecRequirement(
+                    name=req.name,
+                    version=f"=={version}",  # type: ignore[arg-type]
+                    channel=channel,  # type: ignore[arg-type]
+                )
+            )
+
+    return installed
+
+
 class Fingerprint(BaseModel):
     """A fingerprint of the spec and its artifacts.
 
@@ -114,6 +159,7 @@ class Fingerprint(BaseModel):
 
     spec: Spec
     wa: WorkflowArtifacts
+    installed_requirements: list[SpecRequirement] = Field(default_factory=list)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -692,13 +738,18 @@ class DagCompiler(BaseModel):
 
         return graph
 
-    def compile(self, spec_relpath: str) -> WorkflowArtifacts:
+    def compile(
+        self,
+        spec_relpath: str,
+        installed_requirements: list[SpecRequirement] | None = None,
+    ) -> WorkflowArtifacts:
         """Compile the workflow spec into complete artifacts.
 
         This is the main entry point for compilation.
 
         Args:
             spec_relpath: Relative path to the spec file
+            installed_requirements: Optional list of solved/pinned requirements
 
         Returns:
             WorkflowArtifacts with all generated files
@@ -812,7 +863,11 @@ class DagCompiler(BaseModel):
         )
 
         # Generate README with fingerprint
-        fingerprint = Fingerprint(spec=self.spec, wa=artifacts)
+        fingerprint = Fingerprint(
+            spec=self.spec,
+            wa=artifacts,
+            installed_requirements=installed_requirements or [],
+        )
         readme_md = self.plainrender(
             "README.jinja2",
             fingerprint=fingerprint.to_yaml(),
@@ -827,6 +882,7 @@ class DagCompiler(BaseModel):
 def compile_workflow(
     spec: Spec,
     spec_relpath: str,
+    installed_requirements: list[SpecRequirement] | None = None,
     **compiler_kwargs: Any,
 ) -> WorkflowArtifacts:
     """Compile a workflow from a validated Spec.
@@ -838,6 +894,7 @@ def compile_workflow(
     Args:
         spec: Workflow specification (must have known_tasks already populated)
         spec_relpath: Relative path to spec file
+        installed_requirements: Optional list of solved/pinned requirements
         **compiler_kwargs: Additional arguments for DagCompiler
 
     Returns:
@@ -853,7 +910,7 @@ def compile_workflow(
         >>> # artifacts = compile_workflow_from_yaml("spec.yaml")  # doctest: +SKIP
     """
     compiler = DagCompiler(spec=spec, **compiler_kwargs)
-    return compiler.compile(spec_relpath)
+    return compiler.compile(spec_relpath, installed_requirements=installed_requirements)
 
 
 def _parse_requirements_from_yaml(yaml_path: Path) -> list[SpecRequirement]:
@@ -963,7 +1020,10 @@ async def compile_workflow_from_yaml(
     unique_channels = [c for c in unique_channels if _local_channel_exists(c)]
 
     # Discover tasks and populate global known_tasks
-    await populate_known_tasks(match_specs, channels=unique_channels)
+    records = await populate_known_tasks(match_specs, channels=unique_channels)
+
+    # Build installed requirements from solved records
+    installed_requirements = _build_installed_requirements(requirements, records)
 
     # Phase 3: Now we can safely validate the full Spec
     with open(yaml_path) as f:
@@ -972,4 +1032,6 @@ async def compile_workflow_from_yaml(
 
     # Phase 4: Compile
     spec_relpath = str(yaml_path)
-    return compile_workflow(spec, spec_relpath, **compiler_kwargs)
+    return compile_workflow(
+        spec, spec_relpath, installed_requirements=installed_requirements, **compiler_kwargs
+    )

@@ -172,9 +172,9 @@ class TestDiscoverTasksMocked:
         result = await discover_tasks_from_requirements([MatchSpec("mypackage>=1.0.0")])
 
         # Verify the result - uses public_module_path for the key
-        assert "calculate" in result
-        assert "mypackage.tasks" in result["calculate"]
-        known_task = result["calculate"]["mypackage.tasks"]
+        assert "calculate" in result.tasks
+        assert "mypackage.tasks" in result.tasks["calculate"]
+        known_task = result.tasks["calculate"]["mypackage.tasks"]
         assert known_task.importable_reference == "mypackage.tasks.calculate"
         assert known_task.description == "Calculate something"
 
@@ -424,8 +424,8 @@ class TestDisambiguationLogic:
 
         result = await discover_tasks_from_requirements([MatchSpec("pkg>=1.0.0")])
 
-        assert "my_func" in result
-        known_task = result["my_func"]["pkg.tasks"]
+        assert "my_func" in result.tasks
+        known_task = result.tasks["my_func"]["pkg.tasks"]
         assert known_task.registry_ref == 0
         assert known_task.safe_reference == "my_func"
 
@@ -479,14 +479,14 @@ class TestDisambiguationLogic:
 
         result = await discover_tasks_from_requirements([MatchSpec("pkg1>=1.0.0")])
 
-        assert "my_func" in result
+        assert "my_func" in result.tasks
         # Both should be present
-        assert "pkg1.tasks" in result["my_func"]
-        assert "pkg2.tasks" in result["my_func"]
+        assert "pkg1.tasks" in result.tasks["my_func"]
+        assert "pkg2.tasks" in result.tasks["my_func"]
 
         # Check registry_ref values
-        task1 = result["my_func"]["pkg1.tasks"]
-        task2 = result["my_func"]["pkg2.tasks"]
+        task1 = result.tasks["my_func"]["pkg1.tasks"]
+        task2 = result.tasks["my_func"]["pkg2.tasks"]
 
         # One should have ref=0, other should have ref=1
         refs = {task1.registry_ref, task2.registry_ref}

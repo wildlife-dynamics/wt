@@ -13,7 +13,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from rattler import Channel, MatchSpec, Platform, VirtualPackage, install, solve
 from wt_contracts.registry import RegistryOutput
@@ -31,11 +31,18 @@ MAX_INSTALL_RETRIES = 3
 INITIAL_BACKOFF_SECONDS = 0.5
 
 
+class DiscoveryResult(NamedTuple):
+    """Result of task discovery, containing both tasks and solved package records."""
+
+    tasks: dict[str, dict[str, KnownTask]]
+    records: list[Any]  # list[RepoDataRecord] from rattler solve()
+
+
 async def discover_tasks_from_requirements(
     requirements: list[MatchSpec],
     channels: list[Channel] | None = None,
     platform: Platform | None = None,
-) -> dict[str, dict[str, KnownTask]]:
+) -> DiscoveryResult:
     """Discover tasks by creating an ephemeral rattler environment.
 
     This async function:
@@ -51,7 +58,9 @@ async def discover_tasks_from_requirements(
         platform: Optional Platform object (defaults to current platform)
 
     Returns:
-        Dictionary mapping task names to {module: KnownTask} dicts
+        DiscoveryResult containing:
+            - tasks: Dictionary mapping task names to {module: KnownTask} dicts
+            - records: List of RepoDataRecord objects from rattler solve()
 
     Raises:
         RegistryNotFoundError: If wt-registry is not installed in the environment
@@ -86,7 +95,7 @@ async def discover_tasks_from_requirements(
         env_path = Path(tmpdir) / "env"
 
         # Use py-rattler native API to solve and install packages
-        await _create_environment(env_path, requirements, channels, platform)
+        records = await _create_environment(env_path, requirements, channels, platform)
 
         # Determine the executable path based on platform
         if sys.platform == "win32":
@@ -173,7 +182,7 @@ async def discover_tasks_from_requirements(
                 known_task.registry_ref = len(discovered_tasks[function_name])
                 discovered_tasks[function_name][public_module_path] = known_task
 
-        return discovered_tasks
+        return DiscoveryResult(tasks=discovered_tasks, records=records)
 
 
 async def _create_environment(
@@ -181,7 +190,7 @@ async def _create_environment(
     requirements: list[MatchSpec],
     channels: list[Channel],
     platform: Platform,
-) -> None:
+) -> list[Any]:
     """Create conda environment using py-rattler native API.
 
     This function handles transient ENOTEMPTY errors that can occur when
@@ -193,6 +202,9 @@ async def _create_environment(
         requirements: List of package requirements (MatchSpec)
         channels: List of channels
         platform: Target platform
+
+    Returns:
+        List of RepoDataRecord objects from the solved environment
 
     Raises:
         EnvironmentCreationError: If solving or installation fails after retries
@@ -244,7 +256,7 @@ async def _create_environment(
                 platform=platform,
                 cache_dir=cache_dir,
             )
-            return  # Success
+            return records  # Success
         except Exception as e:
             last_error = e
             # Check if this is a retryable ENOTEMPTY error
@@ -281,7 +293,7 @@ async def populate_known_tasks(
     requirements: list[MatchSpec],
     channels: list[Channel] | None = None,
     **kwargs: Any,
-) -> None:
+) -> list[Any]:
     """Discover tasks and populate the global known_tasks dictionary.
 
     This async convenience function calls discover_tasks_from_requirements
@@ -294,6 +306,9 @@ async def populate_known_tasks(
             For custom package channels, this parameter must be provided.
         **kwargs: Additional arguments to pass to discover_tasks_from_requirements
 
+    Returns:
+        List of RepoDataRecord objects from the solved environment
+
     Examples:
         >>> from rattler import MatchSpec
         >>> from wt_compiler.spec import known_tasks
@@ -302,15 +317,16 @@ async def populate_known_tasks(
         >>> # len(known_tasks) > 0  # doctest: +SKIP
         True
     """
-    discovered = await discover_tasks_from_requirements(requirements, channels=channels, **kwargs)
+    result = await discover_tasks_from_requirements(requirements, channels=channels, **kwargs)
     known_tasks.clear()
-    known_tasks.update(discovered)
+    known_tasks.update(result.tasks)
+    return result.records
 
 
 async def discover_tasks_from_spec_requirements(
     spec_requirements: list[Any],  # SpecRequirement from spec.py
     **kwargs: Any,
-) -> dict[str, dict[str, KnownTask]]:
+) -> DiscoveryResult:
     """Discover tasks from Spec requirements.
 
     Converts SpecRequirement objects to MatchSpec and discovers tasks.
@@ -320,7 +336,7 @@ async def discover_tasks_from_spec_requirements(
         **kwargs: Additional arguments to pass to discover_tasks_from_requirements
 
     Returns:
-        Dictionary mapping task names to {module: KnownTask} dicts
+        DiscoveryResult containing tasks and solved records
 
     Examples:
         >>> # from wt_compiler.spec import SpecRequirement  # doctest: +SKIP

@@ -5,6 +5,7 @@ import pytest
 from wt_compiler.compiler import (
     DagCompiler,
     Fingerprint,
+    _build_installed_requirements,
     _remove_functionally_irrelevant_keys,
 )
 from wt_compiler.spec import KnownTask, Spec, SpecRequirement, TaskInstance, known_tasks
@@ -382,6 +383,222 @@ class TestFingerprint:
         assert "spec_sha256" in yaml_str
         assert "params_sha256" in yaml_str
         assert "artifacts_sha256_basic" in yaml_str
+
+
+    def test_fingerprint_with_installed_requirements(self):
+        """Test fingerprint YAML includes installed_requirements in block style."""
+        from wt_compiler.artifacts import (
+            Dags,
+            PackageDirectory,
+            PixiToml,
+            PixiWorkspace,
+            Tests,
+            WorkflowArtifacts,
+        )
+
+        spec = Spec(
+            id="test",
+            requirements=[],
+            workflow=[],
+        )
+
+        dags = Dags(
+            **{
+                "__init__.py": "",
+                "jupytext.py": "",
+                "run_async_mock_io.py": "",
+                "run_async.py": "",
+                "run_sequential_mock_io.py": "",
+                "run_sequential.py": "",
+            }
+        )
+        package = PackageDirectory(
+            dags=dags,
+            **{
+                "rjsf.json": {},
+                "params.json": {},
+                "params.py": "",
+                "formdata.py": "",
+                "cli.py": "",
+                "dispatch.py": "",
+                "metadata.py": "",
+                "response.py": "",
+                "__init__.py": "",
+            },
+        )
+        pixi_toml = PixiToml(workspace=PixiWorkspace(name="test"), dependencies={})
+        tests = Tests(**{
+            "conftest.py": "",
+            "test_metadata.py": "",
+            "test_results.py": "",
+        })
+
+        artifacts = WorkflowArtifacts(
+            spec_relpath="spec.yaml",
+            release_name="wf-test",
+            package_name="wf_test",
+            package=package,
+            tests=tests,
+            pydot_graph=None,
+            **{"pixi.toml": pixi_toml, "Dockerfile": "", ".dockerignore": ""},
+        )
+
+        installed_reqs = [
+            SpecRequirement(name="pandas", version="==2.2.3", channel="conda-forge"),
+            SpecRequirement(name="numpy", version="==1.26.4", channel="conda-forge"),
+        ]
+
+        fingerprint = Fingerprint(
+            spec=spec, wa=artifacts, installed_requirements=installed_reqs
+        )
+        yaml_str = fingerprint.to_yaml()
+
+        # Should include installed_requirements key
+        assert "installed_requirements:" in yaml_str
+        # Top-level fingerprint keys should be in block-style (not flow-style `{key: ...}`)
+        # The first line should NOT start with `{`
+        assert not yaml_str.startswith("{")
+        # Should contain the package names
+        assert "pandas" in yaml_str
+        assert "numpy" in yaml_str
+
+    def test_fingerprint_default_empty_installed_requirements(self):
+        """Test fingerprint defaults to empty installed_requirements."""
+        from wt_compiler.artifacts import (
+            Dags,
+            PackageDirectory,
+            PixiToml,
+            PixiWorkspace,
+            Tests,
+            WorkflowArtifacts,
+        )
+
+        spec = Spec(
+            id="test",
+            requirements=[],
+            workflow=[],
+        )
+
+        dags = Dags(
+            **{
+                "__init__.py": "",
+                "jupytext.py": "",
+                "run_async_mock_io.py": "",
+                "run_async.py": "",
+                "run_sequential_mock_io.py": "",
+                "run_sequential.py": "",
+            }
+        )
+        package = PackageDirectory(
+            dags=dags,
+            **{
+                "rjsf.json": {},
+                "params.json": {},
+                "params.py": "",
+                "formdata.py": "",
+                "cli.py": "",
+                "dispatch.py": "",
+                "metadata.py": "",
+                "response.py": "",
+                "__init__.py": "",
+            },
+        )
+        pixi_toml = PixiToml(workspace=PixiWorkspace(name="test"), dependencies={})
+        tests = Tests(**{
+            "conftest.py": "",
+            "test_metadata.py": "",
+            "test_results.py": "",
+        })
+
+        artifacts = WorkflowArtifacts(
+            spec_relpath="spec.yaml",
+            release_name="wf-test",
+            package_name="wf_test",
+            package=package,
+            tests=tests,
+            pydot_graph=None,
+            **{"pixi.toml": pixi_toml, "Dockerfile": "", ".dockerignore": ""},
+        )
+
+        # No installed_requirements provided — should default to empty list
+        fingerprint = Fingerprint(spec=spec, wa=artifacts)
+        assert fingerprint.installed_requirements == []
+        yaml_str = fingerprint.to_yaml()
+        assert "installed_requirements: []" in yaml_str
+
+
+class TestBuildInstalledRequirements:
+    """Tests for _build_installed_requirements helper."""
+
+    def test_matches_spec_requirements_to_records(self):
+        """Test that spec requirements are matched to solved records."""
+        from unittest.mock import MagicMock
+
+        # Create mock records mimicking RepoDataRecord
+        record1 = MagicMock()
+        record1.name.normalized = "pandas"
+        record1.version = MagicMock(__str__=lambda self: "2.2.3")
+        record1.channel = "https://conda.anaconda.org/conda-forge/"
+
+        record2 = MagicMock()
+        record2.name.normalized = "numpy"
+        record2.version = MagicMock(__str__=lambda self: "1.26.4")
+        record2.channel = "https://conda.anaconda.org/conda-forge/"
+
+        records = [record1, record2]
+
+        spec_reqs = [
+            SpecRequirement(name="pandas", version=">=2.0", channel="conda-forge"),
+            SpecRequirement(name="numpy", version=">=1.20", channel="conda-forge"),
+        ]
+
+        installed = _build_installed_requirements(spec_reqs, records)
+
+        assert len(installed) == 2
+        assert installed[0].name == "pandas"
+        assert str(installed[0].version.version) == "==2.2.3"
+        assert installed[1].name == "numpy"
+        assert str(installed[1].version.version) == "==1.26.4"
+
+    def test_skips_unresolved_requirements(self):
+        """Test that requirements not found in records are skipped."""
+        from unittest.mock import MagicMock
+
+        record = MagicMock()
+        record.name.normalized = "pandas"
+        record.version = MagicMock(__str__=lambda self: "2.2.3")
+        record.channel = "https://conda.anaconda.org/conda-forge/"
+
+        spec_reqs = [
+            SpecRequirement(name="pandas", version=">=2.0", channel="conda-forge"),
+            SpecRequirement(name="missing-pkg", version=">=1.0", channel="conda-forge"),
+        ]
+
+        installed = _build_installed_requirements(spec_reqs, [record])
+
+        assert len(installed) == 1
+        assert installed[0].name == "pandas"
+
+    def test_empty_records(self):
+        """Test with empty records list."""
+        spec_reqs = [
+            SpecRequirement(name="pandas", version=">=2.0", channel="conda-forge"),
+        ]
+
+        installed = _build_installed_requirements(spec_reqs, [])
+        assert len(installed) == 0
+
+    def test_empty_requirements(self):
+        """Test with empty requirements list."""
+        from unittest.mock import MagicMock
+
+        record = MagicMock()
+        record.name.normalized = "pandas"
+        record.version = MagicMock(__str__=lambda self: "2.2.3")
+        record.channel = "https://conda.anaconda.org/conda-forge/"
+
+        installed = _build_installed_requirements([], [record])
+        assert len(installed) == 0
 
 
 if __name__ == "__main__":
