@@ -437,7 +437,7 @@ def _iframe_widgets_from_response_json(response_json: dict) -> list[dict]:
 
 
 async def _take_screenshot(widget: dict) -> tuple[str, bytes]:
-    assert widget["widget_type"] in ["map", "graph"]
+    assert widget["widget_type"] in ["map", "graph", "table"]
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         page = await browser.new_page()
