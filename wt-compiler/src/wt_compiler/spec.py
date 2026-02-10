@@ -9,7 +9,7 @@ import hashlib
 import keyword
 from collections.abc import Generator
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Any, Literal, TypeAlias
+from typing import TYPE_CHECKING, Annotated, Any, Literal, TypeAlias, TypedDict, cast
 
 from pydantic import (
     BaseModel,
@@ -281,13 +281,47 @@ class EnvVariable(_WorkflowVariable):
         return f'os.environ["{self.value}"]'
 
 
+class SerializedInlineValue(TypedDict):
+    """Serialized shape of an InlineValue."""
+
+    asstr: str
+    is_inline_value: bool
+
+
+class SerializedVars(TypedDict):
+    """Serialized shape of a Vars (list of workflow variables)."""
+
+    asstr: str
+    aslist: list[str]
+
+
+class SerializedVariableValuesDict(TypedDict):
+    """Serialized shape of a VariableValuesDict."""
+
+    asstr: str
+    asdict: dict[str, "SerializedInlineValue | SerializedVars"]
+    has_variable_values: bool
+
+
+class SerializedVariableValuesList(TypedDict):
+    """Serialized shape of a VariableValuesList."""
+
+    asstr: str
+    aslist: list[
+        "SerializedInlineValue | SerializedVars"
+        " | SerializedVariableValuesDict"
+        " | SerializedVariableValuesList"
+    ]
+    has_variable_values: bool
+
+
 class InlineValue(BaseModel):
     """A variable that references a JSON-serializable inline value."""
 
     value: str | list[Any] | dict[str, Any] | float | int | bool | None
 
     @model_serializer
-    def serialize(self) -> dict[str, str | bool]:
+    def serialize(self) -> SerializedInlineValue:
         """Serialize inline value for template use."""
         return {
             "asstr": (f"'{self.value}'" if isinstance(self.value, str) else f"{self.value}"),
@@ -377,7 +411,7 @@ def _is_valid_spec_name(s: str) -> str:
 WorkflowVariable = Annotated[TaskIdVariable | EnvVariable, BeforeValidator(_parse_variables)]
 
 
-def _serialize_variables(v: list[WorkflowVariable]) -> dict[str, str | list[str]]:
+def _serialize_variables(v: list[WorkflowVariable]) -> SerializedVars:
     """Serialize a list of workflow variables to a string for use in templating.
 
     Args:
@@ -407,7 +441,7 @@ def _singleton_or_list_aslist(s: Any | list[Any]) -> list[Any]:
 Vars = Annotated[
     list[WorkflowVariable],
     BeforeValidator(_singleton_or_list_aslist),
-    PlainSerializer(_serialize_variables, return_type=dict[str, str | list[str]]),
+    PlainSerializer(_serialize_variables, return_type=SerializedVars),
 ]
 
 TaskInstanceId = Annotated[
@@ -436,10 +470,10 @@ def _vars_or_inline_value(v: Any) -> str:
 
 def _serialize_variables_or_inline_value(
     v: list[WorkflowVariable] | InlineValue,
-) -> dict[str, str | list[str]] | dict[str, str | bool]:
+) -> SerializedInlineValue | SerializedVars:
     """Serialize either variables or inline values."""
     if isinstance(v, InlineValue):
-        return v.model_dump()
+        return cast(SerializedInlineValue, v.model_dump())
     return _serialize_variables(v)
 
 
@@ -449,7 +483,7 @@ VarsOrInlineValue = Annotated[
     Discriminator(_vars_or_inline_value),
     PlainSerializer(
         _serialize_variables_or_inline_value,
-        return_type=dict[str, str | list[str] | bool],
+        return_type=SerializedInlineValue | SerializedVars,
     ),
 ]
 
@@ -460,9 +494,7 @@ class VariableValuesDict(BaseModel):
     value: dict[str, VarsOrInlineValue]
 
     @model_serializer
-    def serialize(
-        self,
-    ) -> dict[str, dict[str, Any] | str | bool]:
+    def serialize(self) -> SerializedVariableValuesDict:
         """Serialize for template use."""
         return {
             "asstr": (
@@ -493,7 +525,7 @@ class VariableValuesList(BaseModel):
         return len(self.value)
 
     @model_serializer
-    def serialize(self) -> dict[str, list[Any] | str | bool]:
+    def serialize(self) -> SerializedVariableValuesList:
         """Serialize for template use."""
         return {
             "asstr": (
@@ -509,14 +541,22 @@ class VariableValuesList(BaseModel):
         }
 
 
+SerializedDictOrVarsOrInlineValue = (
+    SerializedInlineValue
+    | SerializedVars
+    | SerializedVariableValuesDict
+    | SerializedVariableValuesList
+)
+
+
 def _serialize_dict_or_variables_or_inline_value(
     v: VariableValuesDict | VariableValuesList | VarsOrInlineValue,
-) -> dict[str, str | list[str]] | dict[str, str | bool] | dict[str, dict[str, Any] | str | bool]:
+) -> SerializedDictOrVarsOrInlineValue:
     """Serialize dict, list, or variables or inline values."""
     if isinstance(v, VariableValuesDict):
-        return v.model_dump()
+        return cast(SerializedVariableValuesDict, v.model_dump())
     if isinstance(v, VariableValuesList):
-        return v.model_dump()
+        return cast(SerializedVariableValuesList, v.model_dump())
     return _serialize_variables_or_inline_value(v)
 
 
@@ -536,9 +576,7 @@ DictOrVarsOrInlineValue = Annotated[
     BeforeValidator(_coerce_dict_or_list_of_variable_values_or_vars_or_inline_value),
     PlainSerializer(
         _serialize_dict_or_variables_or_inline_value,
-        return_type=dict[str, str | list[str]]
-        | dict[str, str | bool]
-        | dict[str, dict[str, Any] | str | bool],
+        return_type=SerializedDictOrVarsOrInlineValue,
     ),
 ]
 VariableValuesList.model_rebuild()
