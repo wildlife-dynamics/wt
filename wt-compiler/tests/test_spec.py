@@ -66,6 +66,33 @@ class TestKnownTask:
         assert "z" not in schema_omit["properties"]
         assert schema_omit["required"] == ["x"]  # y removed from required
 
+    def test_parameters_jsonschema_all_defaults_with_omit_args(self):
+        """Test that omit_args always sets 'required' key, even when original schema lacks it.
+
+        When all parameters have defaults, Pydantic omits the 'required' key from
+        the generated schema. The legacy compiler unconditionally sets 'required'
+        when omit_args is provided, producing 'required': []. We must match this
+        behavior to avoid false major version bumps due to params_sha256 mismatch.
+        """
+        task = KnownTask(
+            importable_reference="mod.func",
+            json_schema={
+                "properties": {
+                    "x": {"type": "integer", "default": 1},
+                    "y": {"type": "string", "default": "hello"},
+                },
+                # No "required" key — all params have defaults
+            },
+        )
+
+        schema = task.parameters_jsonschema(omit_args=["y"])
+        assert "required" in schema, (
+            "Expected 'required' key to be present when omit_args is provided"
+        )
+        assert schema["required"] == []
+        assert "y" not in schema["properties"]
+        assert "x" in schema["properties"]
+
     def test_parameters_notebook(self):
         """Test parameters_notebook generation."""
         task = KnownTask(

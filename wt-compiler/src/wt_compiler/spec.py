@@ -111,10 +111,7 @@ class KnownTask(BaseModel):
                 for arg in schema["properties"]
                 if arg not in omit_args
             }
-            if "required" in schema:
-                schema["required"] = [
-                    arg for arg in schema.get("required", []) if arg not in omit_args
-                ]
+            schema["required"] = [arg for arg in schema.get("required", []) if arg not in omit_args]
 
         return schema
 
