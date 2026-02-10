@@ -161,7 +161,7 @@ async def discover_tasks_from_requirements(
                 tags=tags,
                 registry_ref=0,
                 json_schema=json_schema,
-                description=metadata.description,
+                description=metadata.description or None,
             )
 
             # Add to discovered_tasks dict

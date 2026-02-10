@@ -101,7 +101,7 @@ class KnownTask(BaseModel):
         schema = self.json_schema.copy()
 
         # Add description if available
-        if self.description is not None and "description" not in schema:
+        if self.description and "description" not in schema:
             schema["description"] = self.description
 
         # Filter out omitted args

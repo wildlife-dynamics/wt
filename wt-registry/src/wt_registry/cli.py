@@ -265,7 +265,8 @@ def format_pretty(entries: dict[str, RegistryEntry]) -> str:
     for fqn, entry in entries.items():
         lines.append(f"=== {fqn} ===")
         lines.append(f"Title: {entry.metadata.title}")
-        lines.append(f"Description: {entry.metadata.description}")
+        if entry.metadata.description:
+            lines.append(f"Description: {entry.metadata.description}")
 
         if entry.metadata.tags:
             lines.append(f"Tags: {', '.join(entry.metadata.tags)}")

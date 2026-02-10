@@ -39,14 +39,14 @@ class RegistryMetadata(BaseModel):
         >>> minimal = RegistryMetadata()
         >>> minimal.title is None
         True
-        >>> minimal.description
-        ''
+        >>> minimal.description is None
+        True
     """
 
     title: str | None = Field(
         default=None, description="Human-readable title (auto-generated if not provided)"
     )
-    description: str = Field(default="", description="Detailed description")
+    description: str | None = Field(default=None, description="Detailed description")
     tags: list[str] = Field(default_factory=list, description="Categorization tags")
     deprecated: bool = Field(default=False, description="Whether function is deprecated")
     deprecation_message: str | None = Field(

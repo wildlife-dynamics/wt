@@ -62,15 +62,15 @@ class TestRegistryMetadata:
         metadata = RegistryMetadata()
 
         assert metadata.title is None
-        assert metadata.description == ""
+        assert metadata.description is None
         assert metadata.tags == []
         assert metadata.deprecated is False
         assert metadata.deprecation_message is None
 
-        # Title-only should work (description defaults to "")
+        # Title-only should work (description defaults to None)
         metadata_with_title = RegistryMetadata(title="Test")
         assert metadata_with_title.title == "Test"
-        assert metadata_with_title.description == ""
+        assert metadata_with_title.description is None
 
 
 class TestRegistryEntry:

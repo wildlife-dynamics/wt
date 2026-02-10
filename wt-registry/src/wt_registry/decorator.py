@@ -31,7 +31,7 @@ def _snake_to_title(name: str) -> str:
 def register(
     *,
     title: str | None = None,
-    description: str = "",
+    description: str | None = None,
     tags: list[str] | None = None,
     deprecated: bool = False,
     deprecation_message: str | None = None,
@@ -51,7 +51,7 @@ def register(
         title: Human-readable title for the function. If None, auto-generated
             from the function name.
         description: Detailed description of what the function does. Defaults
-            to empty string.
+            to None.
         tags: Optional list of categorization tags
         deprecated: Whether this function is deprecated (default: False)
         deprecation_message: Optional message explaining the deprecation
@@ -76,8 +76,8 @@ def register(
         >>> entry = list(get_registry().values())[0]
         >>> entry.metadata.title
         'Get Patrol Observations'
-        >>> entry.metadata.description
-        ''
+        >>> entry.metadata.description is None
+        True
 
         With explicit title and description:
 

@@ -324,8 +324,8 @@ def test_register_no_arguments() -> None:
 
     # Title should be auto-generated from function name
     assert entry.metadata.title == "Simple Func"
-    # Description should default to empty string
-    assert entry.metadata.description == ""
+    # Description should default to None
+    assert entry.metadata.description is None
 
 
 def test_register_auto_generated_title() -> None:
@@ -357,8 +357,8 @@ def test_register_explicit_title_takes_precedence() -> None:
     assert entry.metadata.title == "Custom Title"
 
 
-def test_register_empty_description_default() -> None:
-    """Test that description defaults to empty string."""
+def test_register_none_description_default() -> None:
+    """Test that description defaults to None."""
 
     @register(title="Test")
     def func_with_default_description(x: int) -> str:
@@ -368,7 +368,7 @@ def test_register_empty_description_default() -> None:
     fqn = next(iter(registry.keys()))
     entry = registry[fqn]
 
-    assert entry.metadata.description == ""
+    assert entry.metadata.description is None
 
 
 def test_register_with_tags_only() -> None:
@@ -386,5 +386,5 @@ def test_register_with_tags_only() -> None:
     assert entry.metadata.title == "Fetch Events"
     # Tags set
     assert entry.metadata.tags == ["io", "earthranger"]
-    # Description defaults to empty
-    assert entry.metadata.description == ""
+    # Description defaults to None
+    assert entry.metadata.description is None

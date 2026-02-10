@@ -69,18 +69,18 @@ def test_registry_metadata_title_defaults_to_none() -> None:
     assert metadata.description == "Has description"
 
 
-def test_registry_metadata_description_defaults_to_empty_string() -> None:
-    """Test that RegistryMetadata description defaults to empty string."""
+def test_registry_metadata_description_defaults_to_none() -> None:
+    """Test that RegistryMetadata description defaults to None."""
     metadata = RegistryMetadata(title="Has title")
     assert metadata.title == "Has title"
-    assert metadata.description == ""
+    assert metadata.description is None
 
 
 def test_registry_metadata_minimal_creation() -> None:
     """Test that RegistryMetadata can be created with no arguments."""
     metadata = RegistryMetadata()
     assert metadata.title is None
-    assert metadata.description == ""
+    assert metadata.description is None
     assert metadata.tags == []
     assert metadata.deprecated is False
     assert metadata.deprecation_message is None
