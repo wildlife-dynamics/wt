@@ -336,10 +336,6 @@ class DagCompiler(BaseModel):
             **{"$defs": definitions},  # type: ignore[arg-type]
         )
 
-        # Apply RJSF overrides from spec
-        if self.spec.rjsf_overrides:
-            config = self.spec.rjsf_overrides.apply_overrides(config)
-
         return config
 
     def get_params_fillable_yaml(self) -> str:
@@ -716,6 +712,13 @@ class DagCompiler(BaseModel):
         # Generate parameter schemas (both flat and hierarchical)
         params_schema_flat = self.get_params_jsonschema(flat=True)
         params_schema_hierarchical = self.get_params_jsonschema(flat=False)
+
+        # Apply RJSF overrides only to hierarchical schema (rjsf.json),
+        # not to flat schema (params.json), matching legacy behavior.
+        if self.spec.rjsf_overrides:
+            params_schema_hierarchical = self.spec.rjsf_overrides.apply_overrides(
+                params_schema_hierarchical
+            )
 
         # Create titled versions for model generation
         params_mod = params_schema_flat.model_copy(update={"title": "Params"})
