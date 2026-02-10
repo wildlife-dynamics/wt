@@ -5,11 +5,15 @@ from pathlib import Path
 import pytest
 
 from wt_compiler.spec import (
+    InlineValue,
     KnownTask,
     SkipIf,
     SpecRequirement,
+    TaskIdVariable,
     TaskInstance,
     TaskTag,
+    VariableValuesList,
+    _find_task_id_vars,
 )
 
 
@@ -317,6 +321,212 @@ class TestTaskInstance:
             assert task.known_task == mock_task
         finally:
             known_tasks.clear()
+
+
+class TestVariableValuesList:
+    """Tests for VariableValuesList parsing, serialization, and dependency extraction."""
+
+    def test_mixed_list_parsing(self):
+        """Test that a mixed list is parsed as VariableValuesList."""
+        from wt_compiler.spec import known_tasks
+
+        mock_task = KnownTask(importable_reference="mod.func")
+        known_tasks["func"] = {"mod": mock_task}
+
+        try:
+            ti = TaskInstance(
+                id="task2",
+                name="Mixed List Task",
+                task="mod.func",
+                partial={"values": [" by ", "${{ workflow.task1.return }}"]},
+            )
+            dep = ti.partial["values"]
+            assert isinstance(dep, VariableValuesList)
+            assert len(dep.value) == 2
+        finally:
+            known_tasks.clear()
+
+    def test_mixed_list_serialization_asstr(self):
+        """Test that VariableValuesList serialization produces correct asstr."""
+        from wt_compiler.spec import known_tasks
+
+        mock_task = KnownTask(importable_reference="mod.func")
+        known_tasks["func"] = {"mod": mock_task}
+
+        try:
+            ti = TaskInstance(
+                id="task2",
+                name="Mixed List Task",
+                task="mod.func",
+                partial={"values": [" by ", "${{ workflow.task1.return }}"]},
+            )
+            serialized = ti.model_dump()
+            partial_values = serialized["partial"]["values"]
+            assert partial_values["asstr"] == "[' by ', task1]"
+            assert partial_values["has_variable_values"] is True
+        finally:
+            known_tasks.clear()
+
+    def test_mixed_list_serialization_aslist(self):
+        """Test that VariableValuesList aslist contains properly serialized items."""
+        from wt_compiler.spec import known_tasks
+
+        mock_task = KnownTask(importable_reference="mod.func")
+        known_tasks["func"] = {"mod": mock_task}
+
+        try:
+            ti = TaskInstance(
+                id="task2",
+                name="Mixed List Task",
+                task="mod.func",
+                partial={"values": [" by ", "${{ workflow.task1.return }}"]},
+            )
+            serialized = ti.model_dump()
+            aslist = serialized["partial"]["values"]["aslist"]
+            assert len(aslist) == 2
+            # First item is an inline value
+            assert aslist[0]["is_inline_value"] is True
+            assert aslist[0]["asstr"] == "' by '"
+            # Second item is a variable reference
+            assert aslist[1]["asstr"] == "task1"
+            assert aslist[1]["aslist"] == ["task1"]
+        finally:
+            known_tasks.clear()
+
+    def test_pure_inline_list_becomes_variable_values_list(self):
+        """Test that a pure inline list (no variables) becomes VariableValuesList."""
+        from wt_compiler.spec import known_tasks
+
+        mock_task = KnownTask(importable_reference="mod.func")
+        known_tasks["func"] = {"mod": mock_task}
+
+        try:
+            ti = TaskInstance(
+                id="task1",
+                name="Inline List Task",
+                task="mod.func",
+                partial={"colors": ["red", "green", "blue"]},
+            )
+            dep = ti.partial["colors"]
+            assert isinstance(dep, VariableValuesList)
+            serialized = ti.model_dump()
+            assert serialized["partial"]["colors"]["asstr"] == "['red', 'green', 'blue']"
+        finally:
+            known_tasks.clear()
+
+    def test_single_variable_list(self):
+        """Test a list with a single variable reference."""
+        from wt_compiler.spec import known_tasks
+
+        mock_task = KnownTask(importable_reference="mod.func")
+        known_tasks["func"] = {"mod": mock_task}
+
+        try:
+            ti = TaskInstance(
+                id="task2",
+                name="Single Var List Task",
+                task="mod.func",
+                partial={"values": ["${{ workflow.task1.return }}"]},
+            )
+            dep = ti.partial["values"]
+            assert isinstance(dep, VariableValuesList)
+            serialized = ti.model_dump()
+            assert serialized["partial"]["values"]["asstr"] == "[task1]"
+        finally:
+            known_tasks.clear()
+
+    def test_empty_list(self):
+        """Test an empty list partial arg."""
+        from wt_compiler.spec import known_tasks
+
+        mock_task = KnownTask(importable_reference="mod.func")
+        known_tasks["func"] = {"mod": mock_task}
+
+        try:
+            ti = TaskInstance(
+                id="task1",
+                name="Empty List Task",
+                task="mod.func",
+                partial={"values": []},
+            )
+            dep = ti.partial["values"]
+            assert isinstance(dep, VariableValuesList)
+            serialized = ti.model_dump()
+            assert serialized["partial"]["values"]["asstr"] == "[]"
+        finally:
+            known_tasks.clear()
+
+    def test_dependency_extraction_from_mixed_list(self):
+        """Test TaskIdVariable extraction from VariableValuesList."""
+        from wt_compiler.spec import known_tasks
+
+        mock_task = KnownTask(importable_reference="mod.func")
+        known_tasks["func"] = {"mod": mock_task}
+
+        try:
+            ti = TaskInstance(
+                id="task2",
+                name="Mixed List Task",
+                task="mod.func",
+                partial={"values": [" by ", "${{ workflow.task1.return }}"]},
+            )
+            deps = ti.all_dependencies_dict
+            assert "values" in deps
+            assert deps["values"] == ["task1"]
+        finally:
+            known_tasks.clear()
+
+    def test_dependency_extraction_no_variables(self):
+        """Test that pure inline lists produce empty dependency lists."""
+        from wt_compiler.spec import known_tasks
+
+        mock_task = KnownTask(importable_reference="mod.func")
+        known_tasks["func"] = {"mod": mock_task}
+
+        try:
+            ti = TaskInstance(
+                id="task1",
+                name="Inline List Task",
+                task="mod.func",
+                partial={"colors": ["red", "green"]},
+            )
+            deps = ti.all_dependencies_dict
+            assert deps["colors"] == []
+        finally:
+            known_tasks.clear()
+
+
+class TestFindTaskIdVars:
+    """Tests for the _find_task_id_vars helper function."""
+
+    def test_task_id_variable(self):
+        """Test extracting a TaskIdVariable."""
+        var = TaskIdVariable(value="task1", suffix="return")
+        result = list(_find_task_id_vars(var))
+        assert len(result) == 1
+        assert result[0].value == "task1"
+
+    def test_inline_value(self):
+        """Test that InlineValue yields no task id vars."""
+        val = InlineValue(value="literal")
+        result = list(_find_task_id_vars(val))
+        assert result == []
+
+    def test_variable_values_list(self):
+        """Test extracting from a VariableValuesList (constructed via validation pipeline)."""
+        vvl = VariableValuesList(value=["${{ workflow.task1.return }}", "literal"])
+        result = list(_find_task_id_vars(vvl))
+        assert len(result) == 1
+        assert result[0].value == "task1"
+
+    def test_plain_list(self):
+        """Test extracting from a plain list (Vars type)."""
+        var1 = TaskIdVariable(value="task1", suffix="return")
+        var2 = TaskIdVariable(value="task2", suffix="return")
+        result = list(_find_task_id_vars([var1, var2]))
+        assert len(result) == 2
+        assert result[0].value == "task1"
+        assert result[1].value == "task2"
 
 
 class TestSpec:

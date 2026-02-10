@@ -60,8 +60,35 @@ task({{ t.known_task.importable_reference.function }})
 {% endmacro %}
 
 
+{% macro handle_async_partial_arg_aslist(aslist) %}[
+                    {% for v in aslist %}
+                    {% if v["is_inline_value"] %}
+                    {{ v["asstr"] }},
+                    {% elif v["has_variable_values"] %}
+                    {{ v["asstr"] }},
+                    {% else %}
+                    {% if "os.environ" in v["asstr"] %}
+                    {{ v["aslist"][0] }},
+                    {% else %}
+                    DependsOn("{{ v["aslist"][0] }}"),
+                    {% endif %}
+                    {% endif %}
+                    {% endfor %}
+                ]{% endmacro %}
+
+
 {% macro handle_async_partial_arg(arg, value) %}
-    {% if value["is_inline_value"] %}
+    {% if value["has_variable_values"] %}
+    {% if value["asdict"] %}
+    "{{ arg }}": {
+        {% for nested_arg, nested_value in value["asdict"].items() %}
+        {{ handle_async_partial_arg(nested_arg, nested_value) }}
+        {% endfor %}
+    },
+    {% elif value["aslist"] %}
+    "{{ arg }}": {{ handle_async_partial_arg_aslist(value["aslist"]) }},
+    {% endif %}
+    {% elif value["is_inline_value"] %}
     "{{ arg }}": {{ value["asstr"] }},
     {% else %}
     {% if value["aslist"]|length > 1 %}
@@ -79,5 +106,5 @@ task({{ t.known_task.importable_reference.function }})
     "{{ arg }}": DependsOn("{{ value["aslist"][0] }}"),
     {% endif %}
     {% endif %}
-                {% endif %}
+    {% endif %}
 {% endmacro %}

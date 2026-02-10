@@ -50,15 +50,7 @@ def main(params: Params):
             {% if t.partial %}
             partial={
                 {% for arg in t.partial %}
-                {% if t.partial[arg]["has_variable_values"] %}
-                "{{ arg }}": {
-                    {% for nested_arg, nested_value in t.partial[arg]["asdict"].items() %}
-                    {{ call_task_macros.handle_async_partial_arg(nested_arg, nested_value) }}
-                    {% endfor %}
-                },
-                {% else %}
                 {{ call_task_macros.handle_async_partial_arg(arg, t.partial[arg]) }}
-                {% endif %}
                 {% endfor %}
             } | {{ params }},
             {% else %}

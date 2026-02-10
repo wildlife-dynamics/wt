@@ -7,6 +7,7 @@ the workflow specification (spec.yaml) input format.
 import builtins
 import hashlib
 import keyword
+from collections.abc import Generator
 from enum import Enum
 from typing import TYPE_CHECKING, Annotated, Any, Literal, TypeAlias
 
@@ -453,15 +454,6 @@ VarsOrInlineValue = Annotated[
 ]
 
 
-def _variable_values_dict_or_vars_or_inline_value(v: Any) -> str:
-    """Discriminator for DictOrVarsOrInlineValue union."""
-    match v:
-        case dict() if any(isinstance(i, str) and (_is_wrapped_variable(i)) for i in v.values()):
-            return "inline_dict"
-        case _:
-            return "vars_or_inline_value"
-
-
 class VariableValuesDict(BaseModel):
     """A dictionary with variable values."""
 
@@ -486,22 +478,62 @@ class VariableValuesDict(BaseModel):
         }
 
 
+class VariableValuesList(BaseModel):
+    """A list that may contain variable references mixed with inline values."""
+
+    value: list["DictOrVarsOrInlineValue"]
+
+    def __iter__(self) -> Any:
+        return iter(self.value)
+
+    def __getitem__(self, item: int) -> Any:
+        return self.value[item]
+
+    def __len__(self) -> int:
+        return len(self.value)
+
+    @model_serializer
+    def serialize(self) -> dict[str, list[Any] | str | bool]:
+        """Serialize for template use."""
+        return {
+            "asstr": (
+                "["
+                + ", ".join(
+                    str(_serialize_dict_or_variables_or_inline_value(v)["asstr"])
+                    for v in self.value
+                )
+                + "]"
+            ),
+            "aslist": [_serialize_dict_or_variables_or_inline_value(v) for v in self.value],
+            "has_variable_values": True,
+        }
+
+
 def _serialize_dict_or_variables_or_inline_value(
-    v: VariableValuesDict | VarsOrInlineValue,
+    v: VariableValuesDict | VariableValuesList | VarsOrInlineValue,
 ) -> dict[str, str | list[str]] | dict[str, str | bool] | dict[str, dict[str, Any] | str | bool]:
-    """Serialize dict or variables or inline values."""
+    """Serialize dict, list, or variables or inline values."""
     if isinstance(v, VariableValuesDict):
+        return v.model_dump()
+    if isinstance(v, VariableValuesList):
         return v.model_dump()
     return _serialize_variables_or_inline_value(v)
 
 
-VariableValuesDictType = Annotated[
-    VariableValuesDict, BeforeValidator(lambda v: VariableValuesDict(value=v))
-]
+def _coerce_dict_or_list_of_variable_values_or_vars_or_inline_value(v: Any) -> Any:
+    """Coerce dicts to VariableValuesDict and lists to VariableValuesList."""
+    match v:
+        case dict():
+            return VariableValuesDict(value=v)
+        case list():
+            return VariableValuesList(value=v)
+        case _:
+            return v
+
+
 DictOrVarsOrInlineValue = Annotated[
-    Annotated[VariableValuesDictType, PydanticTag("inline_dict")]
-    | Annotated[VarsOrInlineValue, PydanticTag("vars_or_inline_value")],
-    Discriminator(_variable_values_dict_or_vars_or_inline_value),
+    VariableValuesDict | VariableValuesList | VarsOrInlineValue,
+    BeforeValidator(_coerce_dict_or_list_of_variable_values_or_vars_or_inline_value),
     PlainSerializer(
         _serialize_dict_or_variables_or_inline_value,
         return_type=dict[str, str | list[str]]
@@ -509,9 +541,39 @@ DictOrVarsOrInlineValue = Annotated[
         | dict[str, dict[str, Any] | str | bool],
     ),
 ]
+VariableValuesList.model_rebuild()
+VariableValuesDict.model_rebuild()
 PartialKwargs: TypeAlias = dict[KnownTaskArgName, DictOrVarsOrInlineValue]
 SpecId = Annotated[str, AfterValidator(_is_not_reserved), AfterValidator(_is_valid_spec_name)]
 ParallelOpArgNames = Annotated[list[KnownTaskArgName], BeforeValidator(_singleton_or_list_aslist)]
+
+
+def _find_task_id_vars(
+    v: Any,
+) -> "Generator[TaskIdVariable, None, None]":
+    """Recursively extract TaskIdVariable from nested structures.
+
+    Handles VariableValuesDict, VariableValuesList, plain lists (Vars),
+    and individual TaskIdVariable instances.
+
+    Args:
+        v: A value from a partial argument (DictOrVarsOrInlineValue)
+
+    Yields:
+        TaskIdVariable instances found in the structure
+    """
+    match v:
+        case TaskIdVariable():
+            yield v
+        case VariableValuesDict():
+            for dict_val in v.value.values():
+                yield from _find_task_id_vars(dict_val)
+        case VariableValuesList():
+            for list_item in v.value:
+                yield from _find_task_id_vars(list_item)
+        case list():
+            for elem in v:
+                yield from _find_task_id_vars(elem)
 
 
 class _ParallelOperation(_ForbidExtra):
@@ -657,23 +719,9 @@ class TaskInstance(_ForbidExtra):
     )
 
     @property
-    def flattened_partial_values(self) -> list[Any | WorkflowVariable]:
-        """Get all partial values as a flat list."""
-        return [
-            (list(var) if isinstance(var, tuple) else var)
-            for dep in self.partial.values()
-            for var in (
-                [
-                    inner_var
-                    for var in dep.value.values()
-                    for inner_var in var
-                    if isinstance(inner_var, TaskIdVariable)
-                ]
-                if isinstance(dep, VariableValuesDict)
-                else dep
-            )
-            if not isinstance(dep, InlineValue)
-        ]
+    def flattened_partial_values(self) -> list[TaskIdVariable]:
+        """Get all TaskIdVariable instances from partial values."""
+        return [var for dep in self.partial.values() for var in _find_task_id_vars(dep)]
 
     @property
     def all_dependencies(self) -> list[Any | WorkflowVariable]:
@@ -685,16 +733,7 @@ class TaskInstance(_ForbidExtra):
         """Get all dependencies as a dictionary mapping args to task IDs."""
         return (
             {
-                arg: (
-                    [
-                        inner_var.value
-                        for var in dep.value.values()
-                        for inner_var in var
-                        if isinstance(inner_var, TaskIdVariable)
-                    ]
-                    if isinstance(dep, VariableValuesDict)
-                    else [var.value for var in dep if isinstance(var, TaskIdVariable)]
-                )
+                arg: [var.value for var in _find_task_id_vars(dep)]
                 for arg, dep in self.partial.items()
             }
             | self.map.all_dependencies_dict
