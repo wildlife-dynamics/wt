@@ -34,6 +34,7 @@ class TestMainParser:
         assert "--spec" in captured.out
         assert "--clobber" in captured.out
         assert "--update" in captured.out
+        assert "--install" in captured.out
 
     def test_no_command_error(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Test that missing command shows error."""
@@ -178,6 +179,96 @@ class TestCompileCommand:
         assert exc_info.value.code == 1
         captured = capsys.readouterr()
         assert "Error: Invalid spec format" in captured.err
+
+    def test_compile_with_install(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    ) -> None:
+        """Test that --install calls artifacts.install() after dump."""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text("id: test-workflow\n")
+
+        mock_artifacts = MagicMock()
+        mock_artifacts.release_dir = tmp_path / "test-workflow"
+
+        with patch.object(
+            sys,
+            "argv",
+            ["wt-compiler", "compile", "--spec", str(spec_file), "--install"],
+        ):
+            with patch("wt_compiler.cli.compile_workflow_from_yaml", return_value=mock_artifacts):
+                main()
+
+        mock_artifacts.dump.assert_called_once_with(clobber=False, update=False)
+        mock_artifacts.install.assert_called_once()
+        mock_artifacts.update.assert_not_called()
+
+    def test_compile_with_clobber_and_update_calls_update(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    ) -> None:
+        """Test that --clobber --update calls artifacts.update() after dump."""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text("id: test-workflow\n")
+
+        mock_artifacts = MagicMock()
+        mock_artifacts.release_dir = tmp_path / "test-workflow"
+
+        with patch.object(
+            sys,
+            "argv",
+            ["wt-compiler", "compile", "--spec", str(spec_file), "--clobber", "--update"],
+        ):
+            with patch("wt_compiler.cli.compile_workflow_from_yaml", return_value=mock_artifacts):
+                main()
+
+        mock_artifacts.dump.assert_called_once_with(clobber=True, update=True)
+        mock_artifacts.update.assert_called_once()
+        mock_artifacts.install.assert_not_called()
+
+    def test_compile_update_without_clobber_error(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    ) -> None:
+        """Test that --update without --clobber exits with error."""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text("id: test-workflow\n")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["wt-compiler", "compile", "--spec", str(spec_file), "--update"],
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert "--update is only valid with --clobber and without --install" in captured.err
+
+    def test_compile_update_with_install_error(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    ) -> None:
+        """Test that --update with --install exits with error."""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text("id: test-workflow\n")
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "wt-compiler",
+                "compile",
+                "--spec",
+                str(spec_file),
+                "--clobber",
+                "--update",
+                "--install",
+            ],
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert "--update is only valid with --clobber and without --install" in captured.err
 
 
 class TestModuleEntryPoint:

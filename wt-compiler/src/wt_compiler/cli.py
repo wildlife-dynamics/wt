@@ -55,6 +55,11 @@ def main() -> None:
         help="Package name prefix for generated artifacts (default: wt)",
     )
     compile_parser.add_argument(
+        "--install",
+        action="store_true",
+        help="Generate a new pixi lockfile and install all dependencies after compilation",
+    )
+    compile_parser.add_argument(
         "--no-progress",
         action="store_true",
         help="Disable the progress spinner during compilation",
@@ -82,6 +87,13 @@ def _compile(args: argparse.Namespace) -> None:
     except (ValueError, OSError) as e:
         print(f"Warning: Could not increase file descriptor limit: {e}", file=sys.stderr)
 
+    if args.update and not (args.clobber and not args.install):
+        print(
+            "Error: --update is only valid with --clobber and without --install",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     spec_path = args.spec.resolve()
 
     if not spec_path.exists():
@@ -104,6 +116,11 @@ def _compile(args: argparse.Namespace) -> None:
 
         # Write artifacts to disk
         artifacts.dump(clobber=args.clobber, update=args.update)
+
+        if args.install:
+            artifacts.install()
+        elif args.update:
+            artifacts.update()
 
         print(f"Compiled workflow to: {artifacts.release_dir}")
 
