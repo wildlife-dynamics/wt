@@ -19,7 +19,7 @@ import json
 import os
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 from .sync_task import SyncTask
@@ -53,29 +53,27 @@ class MockSyncTask(SyncTask[..., Any, Any, Any]):
         return self
 
 
-def _import_task(anchor: str, func_name: str) -> SyncTask[..., Any, Any, Any]:
-    """Import a task-decorated function from a module.
+def _import_func(anchor: str, func_name: str) -> Callable[..., Any]:
+    """Import a registered function from a module.
 
     Args:
         anchor: Dotted module path (e.g. ``"ecoscope_workflows_ext_ecoscope.tasks.io"``).
         func_name: Attribute name within the module (e.g. ``"get_subjectgroup_observations"``).
 
     Returns:
-        The ``SyncTask`` instance bound to *func_name* in *anchor*.
+        The callable bound to *func_name* in *anchor*.
 
     Raises:
-        AssertionError: If the attribute is not a ``SyncTask`` instance.
+        AssertionError: If the attribute is not callable.
 
     Examples:
-        >>> from wt_task.testing import _import_task
-        >>> # (would normally import a real registered task)
+        >>> from wt_task.testing import _import_func
+        >>> # (would normally import a real registered function)
     """
     module = importlib.import_module(anchor)
     attr = getattr(module, func_name)
-    assert isinstance(attr, SyncTask), (
-        f"{anchor}.{func_name} is {type(attr).__name__}, expected SyncTask"
-    )
-    return attr
+    assert callable(attr), f"{anchor}.{func_name} is {type(attr).__name__}, expected callable"
+    return cast(Callable[..., Any], attr)
 
 
 def _env_var_name(anchor: str, func_name: str) -> str:
@@ -217,7 +215,7 @@ def create_task_magicmock(anchor: str, func_name: str) -> MockSyncTask:
     """Create a mock task that returns pre-loaded example data.
 
     This is the main entry point for mocking I/O tasks during testing.
-    It imports the real task to obtain its function signature, loads
+    It imports the registered function to obtain its signature, loads
     example return data from a file, and returns a :class:`MockSyncTask`
     whose underlying function is a :class:`~unittest.mock.MagicMock`
     with the correct call signature and a fixed return value.
@@ -235,17 +233,17 @@ def create_task_magicmock(anchor: str, func_name: str) -> MockSyncTask:
         >>> # create_task_magicmock("my_package.tasks", "fetch_data")
         >>> # Returns a MockSyncTask whose calls return the example data.
     """
-    real_task = _import_task(anchor, func_name)
+    func = _import_func(anchor, func_name)
     example_path = _find_example_return_path(anchor, func_name)
     example_data = _load_example_return(example_path)
 
-    sig = inspect.signature(real_task.func)
-    mock_func = MagicMock(spec=real_task.func, return_value=example_data)
+    sig = inspect.signature(func)
+    mock_func = MagicMock(spec=func, return_value=example_data)
     mock_func.__signature__ = sig
 
     return MockSyncTask(
         func=mock_func,
-        tags=real_task.tags,
-        description=real_task.description,
-        task_instance_id=real_task.task_instance_id,
+        tags=[],
+        description=None,
+        task_instance_id=None,
     )

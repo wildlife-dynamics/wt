@@ -10,13 +10,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from wt_task import SyncTask, task
 from wt_task.testing import (
     MockSyncTask,
     _discover_loaders,
     _env_var_name,
     _find_example_return_path,
-    _import_task,
+    _import_func,
     _load_example_return,
     create_task_magicmock,
 )
@@ -27,9 +26,8 @@ from wt_task.testing import (
 # ---------------------------------------------------------------------------
 
 
-@task
-def _sample_task(x: int, y: str = "hello") -> str:
-    """A simple task used for testing."""
+def _sample_func(x: int, y: str = "hello") -> str:
+    """A plain registered function used for testing."""
     return f"{y}: {x}"
 
 
@@ -50,31 +48,30 @@ def test_mock_sync_task_validate_is_noop():
 
 
 # ---------------------------------------------------------------------------
-# _import_task
+# _import_func
 # ---------------------------------------------------------------------------
 
 
-def test_import_task():
-    """_import_task successfully imports a @task-decorated function."""
-    # Patch a module that contains our _sample_task
+def test_import_func():
+    """_import_func successfully imports a plain registered function."""
     fake_module = types.ModuleType("fake_anchor_module")
-    fake_module.my_task = _sample_task  # type: ignore[attr-defined]
+    fake_module.my_func = _sample_func  # type: ignore[attr-defined]
 
     with patch.dict("sys.modules", {"fake_anchor_module": fake_module}):
-        result = _import_task("fake_anchor_module", "my_task")
+        result = _import_func("fake_anchor_module", "my_func")
 
-    assert isinstance(result, SyncTask)
-    assert result is _sample_task
+    assert callable(result)
+    assert result is _sample_func
 
 
-def test_import_task_not_a_task():
-    """_import_task raises AssertionError for non-task attributes."""
+def test_import_func_not_callable():
+    """_import_func raises AssertionError for non-callable attributes."""
     fake_module = types.ModuleType("fake_module_bad")
-    fake_module.not_a_task = "just a string"  # type: ignore[attr-defined]
+    fake_module.not_a_func = "just a string"  # type: ignore[attr-defined]
 
     with patch.dict("sys.modules", {"fake_module_bad": fake_module}):
-        with pytest.raises(AssertionError, match="expected SyncTask"):
-            _import_task("fake_module_bad", "not_a_task")
+        with pytest.raises(AssertionError, match="expected callable"):
+            _import_func("fake_module_bad", "not_a_func")
 
 
 # ---------------------------------------------------------------------------
@@ -190,9 +187,9 @@ def test_create_task_magicmock(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     env_var = _env_var_name("fake_pkg.tasks", "sample_task")
     monkeypatch.setenv(env_var, str(example_file))
 
-    # Create a fake module with our _sample_task
+    # Create a fake module with our plain function
     fake_module = types.ModuleType("fake_pkg.tasks")
-    fake_module.sample_task = _sample_task  # type: ignore[attr-defined]
+    fake_module.sample_task = _sample_func  # type: ignore[attr-defined]
 
     _discover_loaders.cache_clear()
 
