@@ -1,6 +1,8 @@
 """Requirement handling for rattler channels and match specifications."""
 
+import os
 import sys
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Annotated, cast
 from urllib.parse import urlparse
 
@@ -21,9 +23,10 @@ CUSTOM_LOCAL_CHANNEL = Channel(
     "ecoscope-workflows-custom/release/artifacts",
     ChannelConfig(channel_alias="file:///tmp/"),
 )
+_wt_channel_path = PurePosixPath(os.environ.get("WT_CONDA_CHANNEL") or "/tmp/wt-conda-channel")
 WT_LOCAL_CHANNEL = Channel(
-    "wt-conda-channel",
-    ChannelConfig(channel_alias="file:///tmp/"),
+    _wt_channel_path.name,
+    ChannelConfig(channel_alias=f"file://{_wt_channel_path.parent}/"),
 )
 RELEASE_CHANNEL = Channel(
     "ecoscope-workflows",

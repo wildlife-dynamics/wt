@@ -3,7 +3,7 @@
 #
 # Note: Each wt-* package has its own [tool.pixi.*] configuration in its pyproject.toml.
 # Build packages using: ./scripts/build-conda-packages.sh
-# Or individually: pixi build --manifest-path wt-contracts/pyproject.toml --output-dir /tmp/wt-conda-channel
+# Or individually: pixi build --manifest-path wt-contracts/pyproject.toml --output-dir ${WT_CONDA_CHANNEL:-/tmp/wt-conda-channel}
 
 [workspace]
 name = "wt-monorepo"
