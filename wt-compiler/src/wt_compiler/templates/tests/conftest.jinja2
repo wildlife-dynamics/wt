@@ -387,7 +387,7 @@ def response_json_success(
         example_return_path = mock_io_dir.joinpath("empty.parquet")
         pd.DataFrame().to_parquet(example_return_path)
         data_connections_env_vars = {
-            f"ECOSCOPE_WORKFLOWS_MOCK_IO__{ref.replace('.', '_').upper()}": example_return_path.as_posix()
+            f"WT_TASK_MOCK_IO__{ref.replace('.', '_').upper()}": example_return_path.as_posix()
             for ref in io_tasks_importable_references
         }
     with conftest_tracer.start_as_current_span(
