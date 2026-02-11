@@ -1,11 +1,12 @@
 """Tests for the progress spinner module."""
 
 import io
+import os
 import sys
 import time
 from unittest.mock import patch
 
-from wt_compiler.progress import NullSpinner, Spinner, spinner
+from wt_compiler.progress import NullSpinner, Spinner, _StderrCapture, spinner
 
 
 class TestSpinner:
@@ -163,9 +164,7 @@ class TestCliNoProgressFlag:
         mock_artifacts = MagicMock()
         mock_artifacts.release_dir = tmp_path / "test-workflow"
 
-        with patch.object(
-            sys, "argv", ["wt-compiler", "compile", "--spec", str(spec_file)]
-        ):
+        with patch.object(sys, "argv", ["wt-compiler", "compile", "--spec", str(spec_file)]):
             with patch(
                 "wt_compiler.cli.compile_workflow_from_yaml", return_value=mock_artifacts
             ) as mock_compile:
@@ -174,3 +173,87 @@ class TestCliNoProgressFlag:
         mock_compile.assert_called_once_with(
             str(spec_file.resolve()), progress=True, pkg_name_prefix="wt"
         )
+
+
+class TestStderrCapture:
+    """Tests for the _StderrCapture fd-level stderr redirect."""
+
+    def test_captures_fd_writes(self) -> None:
+        """Test that os.write(2, ...) output is captured."""
+        capture = _StderrCapture()
+        capture.start()
+        try:
+            os.write(2, b"native warning\n")
+        finally:
+            captured = capture.stop()
+            capture.close_terminal_file()
+        assert "native warning" in captured
+
+    def test_captures_writes_via_fd2_file_object(self) -> None:
+        """Test that writes through a Python file wrapping fd 2 are captured."""
+        capture = _StderrCapture()
+        capture.start()
+        try:
+            # Open a fresh Python file object around fd 2 (which now points
+            # to the pipe).  This simulates what native libraries do when they
+            # use the C-level stderr, which Python wraps as fd 2.
+            fd2_copy = os.dup(2)
+            f = os.fdopen(fd2_copy, "w")
+            f.write("file object message\n")
+            f.flush()
+            f.close()
+        finally:
+            captured = capture.stop()
+            capture.close_terminal_file()
+        assert "file object message" in captured
+
+    def test_restores_fd(self) -> None:
+        """Test that fd 2 is properly restored after capture."""
+        capture = _StderrCapture()
+        capture.start()
+        captured = capture.stop()
+        capture.close_terminal_file()
+        # fd 2 should work normally again — no exception
+        os.write(2, b"after restore\n")
+
+    def test_empty_when_nothing_written(self) -> None:
+        """Test that capture returns empty string when no stderr produced."""
+        capture = _StderrCapture()
+        capture.start()
+        captured = capture.stop()
+        capture.close_terminal_file()
+        assert captured == ""
+
+    def test_stop_without_start_returns_empty(self) -> None:
+        """Test that stop() is safe to call without start()."""
+        capture = _StderrCapture()
+        assert capture.stop() == ""
+
+
+class TestSpinnerStderrCapture:
+    """Tests for Spinner integration with stderr capture."""
+
+    def test_no_capture_with_stringio(self) -> None:
+        """Test that Spinner with StringIO does not attempt fd capture."""
+        buf = io.StringIO()
+        with Spinner("test", file=buf) as sp:
+            sp.update("updated")
+            time.sleep(0.1)
+        output = buf.getvalue()
+        assert "updated" in output
+
+    def test_no_capture_when_disabled(self) -> None:
+        """Test that capture_stderr=False skips capture."""
+        buf = io.StringIO()
+        with Spinner("test", file=buf, capture_stderr=False) as sp:
+            time.sleep(0.1)
+        output = buf.getvalue()
+        assert "test" in output
+
+    def test_clears_line_on_exit_without_capture(self) -> None:
+        """Test that line clearing works when capture is not active."""
+        buf = io.StringIO()
+        with Spinner("done", file=buf):
+            time.sleep(0.1)
+        output = buf.getvalue()
+        assert output.endswith("\r\033[K")
