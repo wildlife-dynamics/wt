@@ -10,7 +10,7 @@ task({{ t.known_task.importable_reference.function }})
 .skipif(
     conditions=[
         {% for condition in t.skipif.known_tasks %}
-        task({{ condition.importable_reference.function }}),
+        {{ condition.importable_reference.function }},
         {% endfor %}
     ],
     unpack_depth={{ t.skipif.unpack_depth }},
