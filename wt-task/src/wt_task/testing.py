@@ -201,10 +201,12 @@ def create_func_magicmock(anchor: str, func_name: str) -> MagicMock:
             (e.g. ``"get_subjectgroup_observations"``).
 
     Returns:
-        A ``MagicMock`` with function attributes (``__name__``,
-        ``__qualname__``, ``__module__``, ``__annotations__``,
-        ``__signature__``) copied from the real function, whose calls
-        return the example data.
+        A ``MagicMock`` with function attributes copied from the real
+        function via ``functools.update_wrapper`` (which copies all
+        ``functools.WRAPPER_ASSIGNMENTS`` attributes), plus an explicit
+        ``__signature__`` override.  This ensures the mock survives
+        ``functools.wraps`` inside ``validate_call`` on any Python
+        version.
 
     Examples:
         >>> # create_func_magicmock("my_package.tasks", "fetch_data")
@@ -216,10 +218,7 @@ def create_func_magicmock(anchor: str, func_name: str) -> MagicMock:
 
     sig = inspect.signature(func)
     mock_func = MagicMock(spec=func, return_value=example_data)
-    mock_func.__name__ = func.__name__
-    mock_func.__qualname__ = func.__qualname__
-    mock_func.__module__ = func.__module__
-    mock_func.__annotations__ = func.__annotations__
-    mock_func.__signature__ = sig
+    functools.update_wrapper(mock_func, func)
+    mock_func.__signature__ = sig  # override; update_wrapper doesn't copy __signature__
 
     return mock_func

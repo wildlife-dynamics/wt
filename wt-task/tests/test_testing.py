@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from wt_task import task
 from wt_task.testing import (
     _discover_loaders,
     _env_var_name,
@@ -190,3 +191,9 @@ def test_create_func_magicmock(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     # Calling it directly should return the example data
     result = mock_func(x=1, y="test")
     assert result == example_data
+
+    # task(mock_func).validate() must not raise TypeError (the
+    # __type_params__ bug on Python 3.12+).  validate_call internally
+    # uses functools.wraps which reads all WRAPPER_ASSIGNMENTS attrs.
+    validated = task(mock_func).validate()
+    assert validated is not None
