@@ -23,7 +23,6 @@ class TestDags:
         dags = Dags(
             **{
                 "__init__.py": "# Init",
-                "jupytext.py": "# Jupytext",
                 "run_async_mock_io.py": "# Async mock",
                 "run_async.py": "# Async",
                 "run_sequential_mock_io.py": "# Sequential mock",
@@ -31,7 +30,6 @@ class TestDags:
             }
         )
         assert dags.init_dot_py == "# Init"
-        assert dags.jupytext == "# Jupytext"
 
 
 class TestPixiToml:
@@ -108,7 +106,6 @@ class TestWorkflowArtifacts:
         dags = Dags(
             **{
                 "__init__.py": "",
-                "jupytext.py": "",
                 "run_async_mock_io.py": "",
                 "run_async.py": "",
                 "run_sequential_mock_io.py": "",
@@ -160,7 +157,6 @@ class TestWorkflowArtifacts:
         dags = Dags(
             **{
                 "__init__.py": "# Init",
-                "jupytext.py": "# Jupytext",
                 "run_async_mock_io.py": "# Async mock",
                 "run_async.py": "# Async",
                 "run_sequential_mock_io.py": "# Sequential mock",

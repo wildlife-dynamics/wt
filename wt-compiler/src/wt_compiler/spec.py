@@ -116,35 +116,6 @@ class KnownTask(BaseModel):
 
         return schema
 
-    def parameters_notebook(self, omit_args: list[str] | None = None) -> str:
-        """Generate parameter dict code for Jupyter notebooks.
-
-        Args:
-            omit_args: List of argument names to exclude
-
-        Returns:
-            Python code string for parameter dict
-
-        Examples:
-            >>> task = KnownTask(
-            ...     importable_reference="mymodule.my_func",
-            ...     json_schema={"properties": {"x": {"type": "int"}, "y": {"type": "str"}}}
-            ... )
-            >>> notebook = task.parameters_notebook(omit_args=["y"])
-            >>> "x=..." in notebook
-            True
-        """
-        if "properties" not in self.json_schema:
-            return "dict()"
-
-        params = "dict(\n"
-        for arg in self.json_schema["properties"]:
-            if omit_args and arg in omit_args:
-                continue
-            params += f"    {arg}=...,\n"
-        params += ")"
-        return params
-
     @field_serializer("importable_reference")
     def serialize_importable_reference(
         self, value: str, info: FieldSerializationInfo
@@ -155,7 +126,6 @@ class KnownTask(BaseModel):
         - anchor: The module path
         - function: The safe reference name (handles duplicates)
         - statement: The import statement for code generation
-        - params_notebook: Parameter dict code for notebooks
 
         When mock_io=True in the serialization context and the task has
         the 'io' tag, generates a mock import statement instead.
@@ -165,10 +135,9 @@ class KnownTask(BaseModel):
             info: Pydantic serialization info with context
 
         Returns:
-            Dict with anchor, function, statement, and params_notebook keys
+            Dict with anchor, function, statement, and is_mocked keys
         """
         mock_io = info.context.get("mock_io", False) if info.context else False
-        omit_args = info.context.get("omit_args", None) if info.context else None
         is_io_task = TaskTag.io in self.tags
         is_mocked = mock_io and is_io_task
 
@@ -188,7 +157,6 @@ class KnownTask(BaseModel):
             "anchor": self.anchor,
             "function": self.safe_reference,
             "statement": statement,
-            "params_notebook": self.parameters_notebook(omit_args=omit_args),
             "is_mocked": is_mocked,
         }
 
@@ -1035,4 +1003,4 @@ class Spec(_ForbidExtra):
 
 
 # DAG types for code generation
-DagTypes = Literal["jupytext", "async", "sequential"]
+DagTypes = Literal["async", "sequential"]

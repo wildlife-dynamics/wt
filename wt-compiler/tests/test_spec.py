@@ -97,22 +97,6 @@ class TestKnownTask:
         assert "y" not in schema["properties"]
         assert "x" in schema["properties"]
 
-    def test_parameters_notebook(self):
-        """Test parameters_notebook generation."""
-        task = KnownTask(
-            importable_reference="mod.func",
-            json_schema={
-                "properties": {
-                    "x": {"type": "integer", "default": 42},
-                    "y": {"type": "string"},
-                },
-            },
-        )
-
-        notebook = task.parameters_notebook(omit_args=["y"])
-        assert "x" in notebook
-        assert "y" not in notebook
-
 
 class TestKnownTaskSerialization:
     """Tests for KnownTask.serialize_importable_reference field serializer."""
@@ -134,8 +118,6 @@ class TestKnownTaskSerialization:
         assert ir["function"] == "my_func"
         # Always uses "as" clause for explicit re-export semantics
         assert ir["statement"] == "from mymodule.tasks import my_func as my_func"
-        assert "params_notebook" in ir
-
     def test_importable_reference_serialization_with_registry_ref(self):
         """Test serialization with registry_ref > 0 uses safe_reference with suffix."""
         task = KnownTask(
@@ -209,24 +191,6 @@ class TestKnownTaskSerialization:
 
         assert ir["is_mocked"] is False
         assert "create_func_magicmock" not in ir["statement"]
-
-    def test_importable_reference_serialization_with_omit_args(self):
-        """Test params_notebook respects omit_args context."""
-        task = KnownTask(
-            importable_reference="mymodule.func",
-            json_schema={
-                "properties": {
-                    "x": {"type": "integer"},
-                    "y": {"type": "string"},
-                }
-            },
-        )
-
-        result = task.model_dump(context={"omit_args": ["y"]})
-        ir = result["importable_reference"]
-
-        assert "x" in ir["params_notebook"]
-        assert "y" not in ir["params_notebook"]
 
 
 class TestSkipIfKnownTasks:

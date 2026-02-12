@@ -226,21 +226,16 @@ class DagCompiler(BaseModel):
         """Get configuration dict for rendering a DAG.
 
         Args:
-            dag_type: Type of DAG to generate (jupytext, async, sequential)
+            dag_type: Type of DAG to generate (async, sequential)
             mock_io: Whether to use mock I/O for testing
 
         Returns:
             Configuration dictionary for template rendering
         """
-        dag_config = self.model_dump(
+        return self.model_dump(
             exclude={"jinja_templates_dir"},
             context={"mock_io": mock_io},
         )
-        if dag_type == "jupytext":
-            dag_config |= {
-                "per_taskinstance_params_notebook": self.get_per_taskinstance_params_notebook(),
-            }
-        return dag_config
 
     @property
     def per_taskinstance_omit_args(
@@ -393,28 +388,6 @@ class DagCompiler(BaseModel):
         """
         # TODO: Implement based on params schema
         return "# TODO: Generate fillable params YAML\n"
-
-    def get_per_taskinstance_params_notebook(self) -> dict[str, str]:
-        """Generate per-task parameter notebooks for jupytext DAG.
-
-        Creates a dict mapping task IDs to parameter dict code strings
-        for use in Jupyter notebooks.
-
-        Returns:
-            Mapping of task ID to notebook content
-
-        Examples:
-            >>> compiler = DagCompiler(spec=Spec(...))  # doctest: +SKIP
-            >>> notebooks = compiler.get_per_taskinstance_params_notebook()  # doctest: +SKIP
-            >>> "task1" in notebooks  # doctest: +SKIP
-            True
-        """
-        return {
-            t.id: t.known_task.parameters_notebook(
-                omit_args=self.per_taskinstance_omit_args.get(t.id, [])
-            )
-            for t in self.spec.flat_workflow
-        }
 
     def get_pixi_toml(self) -> PixiToml:
         """Generate pixi.toml for the workflow.
@@ -599,7 +572,7 @@ class DagCompiler(BaseModel):
         """Render a DAG Python file from template.
 
         Args:
-            dag_type: Type of DAG (jupytext, async, sequential)
+            dag_type: Type of DAG (async, sequential)
             mock_io: Whether to use mock I/O
 
         Returns:
@@ -607,9 +580,7 @@ class DagCompiler(BaseModel):
         """
         loader = FileSystemLoader(self.jinja_templates_dir / "pkg" / "dags")
         env = Environment(loader=loader)
-        template = env.get_template(
-            f"run_{dag_type}.jinja2" if dag_type != "jupytext" else "jupytext.jinja2"
-        )
+        template = env.get_template(f"run_{dag_type}.jinja2")
         testing = True if mock_io else False
         return template.render(
             self.get_dag_config(dag_type, mock_io=mock_io) | {"testing": testing}
@@ -790,7 +761,6 @@ class DagCompiler(BaseModel):
         dags = Dags(
             **{
                 "__init__.py": self.ruffrender("pkg/dags/init.jinja2"),
-                "jupytext.py": self.render_dag("jupytext", mock_io=False),
                 "run_async_mock_io.py": self.render_dag("async", mock_io=True),
                 "run_async.py": self.render_dag("async", mock_io=False),
                 "run_sequential_mock_io.py": self.render_dag("sequential", mock_io=True),
