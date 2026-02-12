@@ -42,8 +42,7 @@ def main(params: Params):
 
     nodes = {
         {% for t in spec.flat_workflow %}
-        {% set is_mocked = testing and "io" in t.known_task.tags %}
-        {% set validate = not is_mocked %}
+        {% set validate = not t.known_task.importable_reference.is_mocked %}
         {% set params = '(params_dict.get("' ~ t.id ~ '") or {})' %}
         {% set set_executor = '"lithops"' %}
         "{{ t.id }}": Node(

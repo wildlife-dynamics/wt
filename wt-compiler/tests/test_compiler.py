@@ -704,6 +704,149 @@ class TestRenderDag:
         finally:
             known_tasks.clear()
 
+    def _setup_realistic_workflow(self):
+        """Register 4 non-IO + 1 IO task with a dependency chain.
+
+        Returns:
+            DagCompiler instance with 5 tasks (only load_data is IO-tagged).
+        """
+        from wt_compiler.spec import TaskTag
+
+        load_data = KnownTask(
+            importable_reference="mymod.load_data",
+            tags=[TaskTag.io],
+            json_schema={"properties": {"url": {"type": "string"}}},
+        )
+        transform = KnownTask(
+            importable_reference="mymod.transform",
+            json_schema={"properties": {"data": {"type": "string"}}},
+        )
+        validate_data = KnownTask(
+            importable_reference="mymod.validate_data",
+            json_schema={"properties": {"data": {"type": "string"}}},
+        )
+        aggregate = KnownTask(
+            importable_reference="mymod.aggregate",
+            json_schema={"properties": {"data": {"type": "string"}}},
+        )
+        render_output = KnownTask(
+            importable_reference="mymod.render_output",
+            json_schema={"properties": {"data": {"type": "string"}}},
+        )
+        known_tasks["load_data"] = {"mymod": load_data}
+        known_tasks["transform"] = {"mymod": transform}
+        known_tasks["validate_data"] = {"mymod": validate_data}
+        known_tasks["aggregate"] = {"mymod": aggregate}
+        known_tasks["render_output"] = {"mymod": render_output}
+
+        spec = Spec(
+            id="realistic_wf",
+            requirements=[],
+            workflow=[
+                TaskInstance(id="step_load", name="Load", task="mymod.load_data"),
+                TaskInstance(
+                    id="step_transform",
+                    name="Transform",
+                    task="mymod.transform",
+                    partial={"data": "${{ workflow.step_load.return }}"},
+                ),
+                TaskInstance(
+                    id="step_validate",
+                    name="Validate",
+                    task="mymod.validate_data",
+                    partial={"data": "${{ workflow.step_transform.return }}"},
+                ),
+                TaskInstance(
+                    id="step_aggregate",
+                    name="Aggregate",
+                    task="mymod.aggregate",
+                    partial={"data": "${{ workflow.step_validate.return }}"},
+                ),
+                TaskInstance(
+                    id="step_render",
+                    name="Render",
+                    task="mymod.render_output",
+                    partial={"data": "${{ workflow.step_aggregate.return }}"},
+                ),
+            ],
+        )
+        return DagCompiler(spec=spec)
+
+    def test_sequential_realistic_validate_count(self):
+        """mock_io=True: 4 .validate() calls and 1 'validation omitted' comment."""
+        try:
+            compiler = self._setup_realistic_workflow()
+            rendered = compiler.render_dag("sequential", mock_io=True)
+
+            assert rendered.count(".validate()") == 4
+            assert rendered.count("validation omitted for mocked IO task") == 1
+        finally:
+            known_tasks.clear()
+
+    def test_async_realistic_validate_count(self):
+        """mock_io=True async: 4 .validate() calls and 1 'validation omitted' comment."""
+        try:
+            compiler = self._setup_realistic_workflow()
+            rendered = compiler.render_dag("async", mock_io=True)
+
+            assert rendered.count(".validate()") == 4
+            assert rendered.count("validation omitted for mocked IO task") == 1
+        finally:
+            known_tasks.clear()
+
+    def test_sequential_no_mock_realistic_validates_all(self):
+        """mock_io=False: all 5 tasks should have .validate()."""
+        try:
+            compiler = self._setup_realistic_workflow()
+            rendered = compiler.render_dag("sequential", mock_io=False)
+
+            assert rendered.count(".validate()") == 5
+            assert "validation omitted for mocked IO task" not in rendered
+        finally:
+            known_tasks.clear()
+
+    def test_is_mocked_flag_in_serialized_dag_config(self):
+        """Inspect get_dag_config() output: is_mocked=True only for the IO task."""
+        try:
+            compiler = self._setup_realistic_workflow()
+            config = compiler.get_dag_config("sequential", mock_io=True)
+
+            tasks = config["spec"]["flat_workflow"]
+            mocked_ids = [
+                t["id"]
+                for t in tasks
+                if t["known_task"]["importable_reference"]["is_mocked"]
+            ]
+            assert mocked_ids == ["step_load"]
+
+            not_mocked_ids = [
+                t["id"]
+                for t in tasks
+                if not t["known_task"]["importable_reference"]["is_mocked"]
+            ]
+            assert set(not_mocked_ids) == {
+                "step_transform",
+                "step_validate",
+                "step_aggregate",
+                "step_render",
+            }
+        finally:
+            known_tasks.clear()
+
+    def test_is_mocked_flag_false_when_mock_io_disabled(self):
+        """All tasks have is_mocked=False when mock_io=False."""
+        try:
+            compiler = self._setup_realistic_workflow()
+            config = compiler.get_dag_config("sequential", mock_io=False)
+
+            tasks = config["spec"]["flat_workflow"]
+            assert all(
+                t["known_task"]["importable_reference"]["is_mocked"] is False
+                for t in tasks
+            )
+        finally:
+            known_tasks.clear()
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

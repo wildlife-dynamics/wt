@@ -37,8 +37,7 @@ def main(params: Params):
     {% endif %}
     params_dict = json.loads(params.model_dump_json(exclude_unset=True))
     {% for t in spec.flat_workflow %}
-    {% set is_mocked = testing and "io" in t.known_task.tags %}
-    {% set validate = not is_mocked %}
+    {% set validate = not t.known_task.importable_reference.is_mocked %}
     {% set params = '(params_dict.get("' ~ t.id ~ '") or {})' %}
     {% set indent = '    ' %}
     {{ call_task_macros.call_task(t, validate, params, indent) }}

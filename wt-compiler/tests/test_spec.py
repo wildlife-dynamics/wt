@@ -167,6 +167,7 @@ class TestKnownTaskSerialization:
         assert "🧪" in ir["statement"]
         assert "anchor='mymodule'" in ir["statement"]
         assert "func_name='get_data'" in ir["statement"]
+        assert ir["is_mocked"] is True
 
     def test_importable_reference_serialization_no_mock_for_non_io(self):
         """Test that non-IO tasks use normal import even when mock_io=True."""
@@ -181,6 +182,33 @@ class TestKnownTaskSerialization:
         # Should NOT use mock import, but still uses "as" clause
         assert "create_func_magicmock" not in ir["statement"]
         assert ir["statement"] == "from mymodule import compute as compute"
+        assert ir["is_mocked"] is False
+
+    def test_importable_reference_is_mocked_false_without_context(self):
+        """Test that IO-tagged task without mock_io context has is_mocked=False."""
+        task = KnownTask(
+            importable_reference="mymodule.get_data",
+            tags=[TaskTag.io],
+        )
+
+        # Serialize without any context (default)
+        result = task.model_dump()
+        ir = result["importable_reference"]
+
+        assert ir["is_mocked"] is False
+        assert "create_func_magicmock" not in ir["statement"]
+
+    def test_importable_reference_is_mocked_false_for_no_tags(self):
+        """Test that task with no tags has is_mocked=False even with mock_io=True."""
+        task = KnownTask(
+            importable_reference="mymodule.transform",
+        )
+
+        result = task.model_dump(context={"mock_io": True})
+        ir = result["importable_reference"]
+
+        assert ir["is_mocked"] is False
+        assert "create_func_magicmock" not in ir["statement"]
 
     def test_importable_reference_serialization_with_omit_args(self):
         """Test params_notebook respects omit_args context."""

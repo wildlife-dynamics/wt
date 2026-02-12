@@ -148,7 +148,7 @@ class KnownTask(BaseModel):
     @field_serializer("importable_reference")
     def serialize_importable_reference(
         self, value: str, info: FieldSerializationInfo
-    ) -> dict[str, str]:
+    ) -> dict[str, str | bool]:
         """Serialize importable_reference to dict for template rendering.
 
         The serialized dict contains:
@@ -170,8 +170,9 @@ class KnownTask(BaseModel):
         mock_io = info.context.get("mock_io", False) if info.context else False
         omit_args = info.context.get("omit_args", None) if info.context else None
         is_io_task = TaskTag.io in self.tags
+        is_mocked = mock_io and is_io_task
 
-        if mock_io and is_io_task:
+        if is_mocked:
             # Mock import for testing - matches ecoscope-workflows-core format
             statement = (
                 f"{self.safe_reference} = create_func_magicmock(  # 🧪\n"
@@ -188,6 +189,7 @@ class KnownTask(BaseModel):
             "function": self.safe_reference,
             "statement": statement,
             "params_notebook": self.parameters_notebook(omit_args=omit_args),
+            "is_mocked": is_mocked,
         }
 
 
