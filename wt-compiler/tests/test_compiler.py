@@ -601,5 +601,109 @@ class TestBuildInstalledRequirements:
         assert len(installed) == 0
 
 
+class TestRenderDag:
+    """Tests for DagCompiler.render_dag with validate skipping for mocked IO tasks."""
+
+    def _setup_tasks_and_compiler(self):
+        """Register an IO task and a non-IO task, build a Spec and DagCompiler.
+
+        Returns:
+            DagCompiler instance with two tasks (one IO-tagged, one not).
+        """
+        from wt_compiler.spec import TaskTag
+
+        io_task = KnownTask(
+            importable_reference="mymod.io_func",
+            tags=[TaskTag.io],
+            json_schema={"properties": {"url": {"type": "string"}}},
+        )
+        non_io_task = KnownTask(
+            importable_reference="mymod.non_io_func",
+            json_schema={"properties": {"data": {"type": "string"}}},
+        )
+        known_tasks["io_func"] = {"mymod": io_task}
+        known_tasks["non_io_func"] = {"mymod": non_io_task}
+
+        spec = Spec(
+            id="test_validate",
+            requirements=[],
+            workflow=[
+                TaskInstance(
+                    id="fetch_data",
+                    name="Fetch Data",
+                    task="mymod.io_func",
+                ),
+                TaskInstance(
+                    id="process_data",
+                    name="Process Data",
+                    task="mymod.non_io_func",
+                ),
+            ],
+        )
+        return DagCompiler(spec=spec)
+
+    def test_sequential_mock_io_skips_validate_for_io_tasks(self):
+        """With mock_io=True, IO tasks should NOT have .validate(), non-IO tasks should."""
+        try:
+            compiler = self._setup_tasks_and_compiler()
+            rendered = compiler.render_dag("sequential", mock_io=True)
+
+            # Non-IO task should still have .validate()
+            assert ".validate()" in rendered
+
+            # But only once — the IO task should not have .validate()
+            assert rendered.count(".validate()") == 1
+
+            # The omitted-validate comment should appear for the IO task
+            assert "validation omitted for mocked IO task" in rendered
+        finally:
+            known_tasks.clear()
+
+    def test_sequential_no_mock_io_validates_all_tasks(self):
+        """With mock_io=False, ALL tasks should have .validate()."""
+        try:
+            compiler = self._setup_tasks_and_compiler()
+            rendered = compiler.render_dag("sequential", mock_io=False)
+
+            # Both tasks should have .validate()
+            assert rendered.count(".validate()") == 2
+
+            # No omitted-validate comment
+            assert "validation omitted for mocked IO task" not in rendered
+        finally:
+            known_tasks.clear()
+
+    def test_async_mock_io_skips_validate_for_io_tasks(self):
+        """With mock_io=True, async IO tasks should NOT have .validate()."""
+        try:
+            compiler = self._setup_tasks_and_compiler()
+            rendered = compiler.render_dag("async", mock_io=True)
+
+            # Non-IO task should still have .validate()
+            assert ".validate()" in rendered
+
+            # But only once — the IO task should not have .validate()
+            assert rendered.count(".validate()") == 1
+
+            # The omitted-validate comment should appear for the IO task
+            assert "validation omitted for mocked IO task" in rendered
+        finally:
+            known_tasks.clear()
+
+    def test_async_no_mock_io_validates_all_tasks(self):
+        """With mock_io=False, async ALL tasks should have .validate()."""
+        try:
+            compiler = self._setup_tasks_and_compiler()
+            rendered = compiler.render_dag("async", mock_io=False)
+
+            # Both tasks should have .validate()
+            assert rendered.count(".validate()") == 2
+
+            # No omitted-validate comment
+            assert "validation omitted for mocked IO task" not in rendered
+        finally:
+            known_tasks.clear()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

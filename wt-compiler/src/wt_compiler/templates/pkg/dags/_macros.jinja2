@@ -2,6 +2,8 @@
 task({{ t.known_task.importable_reference.function }})
 {% if validate %}
 .validate()
+{% else %}
+# 🧪 validation omitted for mocked IO task (returns pre-loaded example data)
 {% endif %}
 .set_task_instance_id("{{ t.id }}")
 .handle_errors()
