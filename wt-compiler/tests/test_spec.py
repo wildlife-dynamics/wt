@@ -163,7 +163,7 @@ class TestKnownTaskSerialization:
         ir = result["importable_reference"]
 
         # Should use mock import
-        assert "create_task_magicmock" in ir["statement"]
+        assert "create_func_magicmock" in ir["statement"]
         assert "🧪" in ir["statement"]
         assert "anchor='mymodule'" in ir["statement"]
         assert "func_name='get_data'" in ir["statement"]
@@ -179,7 +179,7 @@ class TestKnownTaskSerialization:
         ir = result["importable_reference"]
 
         # Should NOT use mock import, but still uses "as" clause
-        assert "create_task_magicmock" not in ir["statement"]
+        assert "create_func_magicmock" not in ir["statement"]
         assert ir["statement"] == "from mymodule import compute as compute"
 
     def test_importable_reference_serialization_with_omit_args(self):

@@ -11,13 +11,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from wt_task.testing import (
-    MockSyncTask,
     _discover_loaders,
     _env_var_name,
     _find_example_return_path,
     _import_func,
     _load_example_return,
-    create_task_magicmock,
+    create_func_magicmock,
 )
 
 
@@ -29,22 +28,6 @@ from wt_task.testing import (
 def _sample_func(x: int, y: str = "hello") -> str:
     """A plain registered function used for testing."""
     return f"{y}: {x}"
-
-
-# ---------------------------------------------------------------------------
-# MockSyncTask
-# ---------------------------------------------------------------------------
-
-
-def test_mock_sync_task_validate_is_noop():
-    """MockSyncTask.validate() returns self unchanged."""
-    mock = MockSyncTask(
-        func=lambda: 42,
-        tags=[],
-        description=None,
-        task_instance_id=None,
-    )
-    assert mock.validate() is mock
 
 
 # ---------------------------------------------------------------------------
@@ -173,12 +156,12 @@ def test_find_example_return_path_from_package_resources(
 
 
 # ---------------------------------------------------------------------------
-# create_task_magicmock (end-to-end)
+# create_func_magicmock (end-to-end)
 # ---------------------------------------------------------------------------
 
 
-def test_create_task_magicmock(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """End-to-end: creates MockSyncTask that returns example data with correct signature."""
+def test_create_func_magicmock(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """End-to-end: creates MagicMock callable that returns example data with correct attributes."""
     # Set up example return file via env var
     example_data = {"result": [1, 2, 3]}
     example_file = tmp_path / "sample-task.example-return.json"
@@ -194,14 +177,16 @@ def test_create_task_magicmock(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     _discover_loaders.cache_clear()
 
     with patch.dict("sys.modules", {"fake_pkg.tasks": fake_module}):
-        mock_task = create_task_magicmock("fake_pkg.tasks", "sample_task")
+        mock_func = create_func_magicmock("fake_pkg.tasks", "sample_task")
 
-    # It should be a MockSyncTask
-    assert isinstance(mock_task, MockSyncTask)
+    # It should be a plain callable MagicMock
+    assert callable(mock_func)
+    assert isinstance(mock_func, MagicMock)
 
-    # Calling it should return the example data
-    result = mock_task.call(x=1, y="test")
+    # Function attributes should be copied from the real function
+    assert mock_func.__name__ == _sample_func.__name__
+    assert mock_func.__module__ == _sample_func.__module__
+
+    # Calling it directly should return the example data
+    result = mock_func(x=1, y="test")
     assert result == example_data
-
-    # validate() should be a no-op
-    assert mock_task.validate() is mock_task

@@ -22,36 +22,6 @@ from pathlib import Path
 from typing import Any, cast
 from unittest.mock import MagicMock
 
-from .sync_task import SyncTask
-
-
-class MockSyncTask(SyncTask[..., Any, Any, Any]):
-    """A SyncTask subclass for testing that skips Pydantic validation.
-
-    Mock functions don't have real type annotations, so calling
-    ``validate()`` on them would fail.  This subclass makes ``validate()``
-    a no-op that returns ``self`` unchanged.
-
-    Examples:
-        >>> from wt_task.testing import MockSyncTask
-        >>> mock = MockSyncTask(
-        ...     func=lambda: 42,
-        ...     tags=[],
-        ...     description=None,
-        ...     task_instance_id=None,
-        ... )
-        >>> mock.validate() is mock
-        True
-    """
-
-    def validate(self) -> MockSyncTask:
-        """No-op validation for mock tasks.
-
-        Returns:
-            self, unchanged.
-        """
-        return self
-
 
 def _import_func(anchor: str, func_name: str) -> Callable[..., Any]:
     """Import a registered function from a module.
@@ -211,14 +181,18 @@ def _load_example_return(path: Path) -> Any:
     return loaders[ext](path)
 
 
-def create_task_magicmock(anchor: str, func_name: str) -> MockSyncTask:
-    """Create a mock task that returns pre-loaded example data.
+def create_func_magicmock(anchor: str, func_name: str) -> MagicMock:
+    """Create a mock callable that returns pre-loaded example data.
 
     This is the main entry point for mocking I/O tasks during testing.
-    It imports the registered function to obtain its signature, loads
-    example return data from a file, and returns a :class:`MockSyncTask`
-    whose underlying function is a :class:`~unittest.mock.MagicMock`
-    with the correct call signature and a fixed return value.
+    It imports the registered function to obtain its signature and
+    function attributes, loads example return data from a file, and
+    returns a :class:`~unittest.mock.MagicMock` with the correct call
+    signature, function attributes, and a fixed return value.
+
+    The returned mock is a plain callable intended to be wrapped by
+    ``task()`` in compiled DAG code, matching the real-code pattern
+    where ``task()`` wraps plain registered functions.
 
     Args:
         anchor: Dotted module path containing the real task
@@ -227,11 +201,14 @@ def create_task_magicmock(anchor: str, func_name: str) -> MockSyncTask:
             (e.g. ``"get_subjectgroup_observations"``).
 
     Returns:
-        A ``MockSyncTask`` that, when called, returns the example data.
+        A ``MagicMock`` with function attributes (``__name__``,
+        ``__qualname__``, ``__module__``, ``__annotations__``,
+        ``__signature__``) copied from the real function, whose calls
+        return the example data.
 
     Examples:
-        >>> # create_task_magicmock("my_package.tasks", "fetch_data")
-        >>> # Returns a MockSyncTask whose calls return the example data.
+        >>> # create_func_magicmock("my_package.tasks", "fetch_data")
+        >>> # Returns a MagicMock whose calls return the example data.
     """
     func = _import_func(anchor, func_name)
     example_path = _find_example_return_path(anchor, func_name)
@@ -239,11 +216,10 @@ def create_task_magicmock(anchor: str, func_name: str) -> MockSyncTask:
 
     sig = inspect.signature(func)
     mock_func = MagicMock(spec=func, return_value=example_data)
+    mock_func.__name__ = func.__name__
+    mock_func.__qualname__ = func.__qualname__
+    mock_func.__module__ = func.__module__
+    mock_func.__annotations__ = func.__annotations__
     mock_func.__signature__ = sig
 
-    return MockSyncTask(
-        func=mock_func,
-        tags=[],
-        description=None,
-        task_instance_id=None,
-    )
+    return mock_func

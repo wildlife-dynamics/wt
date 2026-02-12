@@ -36,7 +36,7 @@ The `run_async.jinja2` template still imports from `ecoscope_workflows_core` for
 **Status**: Future consideration
 **Priority**: Medium
 
-The testing infrastructure (`create_task_magicmock`, mock return value resolution) currently lives in `ecoscope_workflows_core.testing`. A more pluggable architecture could allow domain-specific implementations of mock data loading.
+The testing infrastructure (`create_func_magicmock`, mock return value resolution) currently lives in `ecoscope_workflows_core.testing`. A more pluggable architecture could allow domain-specific implementations of mock data loading.
 
 **Potential improvements**:
 - Abstract mock return value resolution interface

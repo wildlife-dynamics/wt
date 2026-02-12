@@ -174,7 +174,7 @@ class KnownTask(BaseModel):
         if mock_io and is_io_task:
             # Mock import for testing - matches ecoscope-workflows-core format
             statement = (
-                f"{self.safe_reference} = create_task_magicmock(  # 🧪\n"
+                f"{self.safe_reference} = create_func_magicmock(  # 🧪\n"
                 f"    anchor='{self.anchor}',  # 🧪\n"
                 f"    func_name='{self.function_name}',  # 🧪\n"
                 ")  # 🧪"
