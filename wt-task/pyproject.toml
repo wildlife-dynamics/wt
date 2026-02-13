@@ -83,6 +83,20 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 warn_no_return = true
 
+[[tool.mypy.overrides]]
+module = [
+    "opentelemetry",
+    "opentelemetry.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "wt_task.tracing._config",
+    "wt_task.tracing._decorator",
+]
+warn_unused_ignores = false
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"
