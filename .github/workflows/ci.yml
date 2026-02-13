@@ -33,10 +33,10 @@ jobs:
           - package: wt-runner
             python-version: "3.12"
         include:
-          # Additional wt-runner run WITH pubsub extra
+          # Additional wt-runner run WITH gcp extra
           - package: wt-runner
             python-version: "3.13"
-            extras: "--extra pubsub"
+            extras: "--extra gcp"
 
     steps:
       - uses: actions/checkout@v4

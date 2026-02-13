@@ -26,17 +26,8 @@ pip install wt-runner
 ### With Optional Dependencies
 
 ```bash
-# For Google Cloud Platform support
+# For GCP support (tracing, Pub/Sub, ecoscope-eda-core)
 pip install wt-runner[gcp]
-
-# For OpenTelemetry tracing
-pip install wt-runner[tracing]
-
-# For Pub/Sub support (ecoscope-eda-core)
-pip install wt-runner[pubsub]
-
-# All optional dependencies
-pip install wt-runner[gcp,tracing,pubsub]
 ```
 
 ### Development Installation
@@ -49,18 +40,18 @@ uv run pytest
 
 ## Variants
 
-`wt-runner` ships as a base package with an optional Pub/Sub variant:
+`wt-runner` ships as a base package with an optional GCP variant:
 
 | Variant | Package | Adds |
 |---------|---------|------|
 | **Base** | `wt-runner` | Workflow execution, result retrieval (obstore), all endpoints except Pub/Sub |
-| **Pub/Sub** | `wt-runner-pubsub` | Pub/Sub endpoint (`/run-from-pubsub`) via ecoscope-eda-core |
+| **GCP** | `wt-runner-gcp` | Pub/Sub endpoint, GCP tracing, Cloud Batch deps (`wt-invokers-gcp`, `wt-task-gcp`) |
 
 ### Installing variants
 
-- **pip**: `pip install wt-runner[pubsub]`
-- **conda**: `pixi add wt-runner-pubsub` (metapackage that pulls in `wt-runner` + `ecoscope-eda-core`)
-- **Compiled workflows**: `wt-compiler compile --spec spec.yaml --runner-variant pubsub`
+- **pip**: `pip install wt-runner[gcp]`
+- **conda**: `pixi add wt-runner-gcp` (metapackage that pulls in `wt-runner` + all GCP deps)
+- **Compiled workflows**: `wt-compiler compile --spec spec.yaml --variant gcp`
 
 ## Usage
 
@@ -275,12 +266,12 @@ configure_tracer(
 ### Running Tests
 
 ```bash
-# Core tests (Pub/Sub tests skipped)
+# Core tests (GCP tests skipped)
 uv sync --dev
 uv run pytest
 
-# Full tests including Pub/Sub
-uv sync --extra pubsub --dev
+# Full tests including GCP (Pub/Sub, tracing)
+uv sync --extra gcp --dev
 uv run pytest
 
 # Run with coverage

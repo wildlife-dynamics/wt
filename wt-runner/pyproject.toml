@@ -21,19 +21,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# OpenTelemetry tracing dependencies
-tracing = [
-    "opentelemetry-sdk>=1.37.0,<2",
-    "opentelemetry-exporter-gcp-trace>=1.9.0,<2",
-]
-# Google Cloud Platform dependencies
+# Google Cloud Platform dependencies (tracing, Pub/Sub, ecoscope-eda-core)
 gcp = [
     "opentelemetry-sdk>=1.37.0,<2",
     "opentelemetry-exporter-gcp-trace>=1.9.0,<2",
     "gcloud-aio-pubsub>=6.1.0,<7",
-]
-# Pub/Sub support via ecoscope-eda-core
-pubsub = [
     "ecoscope-eda-core @ git+https://github.com/wildlife-dynamics/ecoscope-eda-core.git",
 ]
 

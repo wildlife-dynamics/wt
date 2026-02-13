@@ -6,8 +6,8 @@ set -euo pipefail
 #
 # If no package name provided, builds all packages in dependency order with parallelization:
 #   Phase 1: wt-contracts (foundation)
-#   Phase 2: wt-registry, wt-task, wt-compiler, wt-invokers (parallel)
-#   Phase 3: wt-runner, wt-runner-pubsub (depends on wt-invokers)
+#   Phase 2: wt-registry, wt-task, wt-task-gcp, wt-compiler, wt-invokers, wt-invokers-gcp (parallel)
+#   Phase 3: wt-runner, wt-runner-gcp (depends on wt-invokers)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -15,18 +15,20 @@ OUTPUT_DIR="${WT_CONDA_CHANNEL:-/tmp/wt-conda-channel}"
 
 # Package groups for parallel building
 PHASE1_PACKAGES=("wt-contracts")
-PHASE2_PACKAGES=("wt-registry" "wt-task" "wt-compiler" "wt-invokers")
-PHASE3_PACKAGES=("wt-runner" "wt-runner-pubsub")
+PHASE2_PACKAGES=("wt-registry" "wt-task" "wt-task-gcp" "wt-compiler" "wt-invokers" "wt-invokers-gcp")
+PHASE3_PACKAGES=("wt-runner" "wt-runner-gcp")
 
 # All packages in build order (for single package builds)
 ALL_PACKAGES=(
     "wt-contracts"
     "wt-registry"
     "wt-task"
+    "wt-task-gcp"
     "wt-compiler"
     "wt-invokers"
+    "wt-invokers-gcp"
     "wt-runner"
-    "wt-runner-pubsub"
+    "wt-runner-gcp"
 )
 
 # Colors for output
@@ -207,7 +209,7 @@ main() {
 
         # Phase 3: Build packages with multiple dependencies (wt-runner)
         echo "=========================================="
-        echo "  Phase 3: Final (wt-runner, wt-runner-pubsub)"
+        echo "  Phase 3: Final (wt-runner, wt-runner-gcp)"
         echo "=========================================="
         for pkg in "${PHASE3_PACKAGES[@]}"; do
             build_package "$pkg"

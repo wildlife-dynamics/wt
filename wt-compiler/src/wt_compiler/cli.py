@@ -66,11 +66,11 @@ def main() -> None:
         help="Disable the progress spinner during compilation",
     )
     compile_parser.add_argument(
-        "--runner-variant",
+        "--variant",
         type=str,
         default=None,
         metavar="VARIANT",
-        help="Runner package variant (e.g., 'pubsub' emits wt-runner-pubsub dependency)",
+        help="Platform variant suffix (e.g., 'gcp' emits wt-runner-gcp, wt-task-gcp dependencies)",
     )
 
     args = parser.parse_args()
@@ -117,8 +117,8 @@ def _compile(args: argparse.Namespace) -> None:
         compiler_kwargs: dict[str, Any] = {
             "pkg_name_prefix": args.pkg_name_prefix,
         }
-        if args.runner_variant:
-            compiler_kwargs["runner_variant"] = args.runner_variant
+        if args.variant:
+            compiler_kwargs["variant"] = args.variant
         artifacts = asyncio.run(
             compile_workflow_from_yaml(
                 str(spec_path),

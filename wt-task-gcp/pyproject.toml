@@ -3,29 +3,31 @@ requires = ["setuptools>=64", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "wt-runner-pubsub"
+name = "wt-task-gcp"
 dynamic = ["version"]
-description = "Metapackage bundling wt-runner with Pub/Sub support via ecoscope-eda-core"
-requires-python = ">=3.13,<3.16"
+description = "Metapackage bundling wt-task with GCP tracing dependencies"
+requires-python = ">=3.10"
 dependencies = [
-    "wt-runner>=0.1.0,<1.0.0",
-    "ecoscope-eda-core @ git+https://github.com/wildlife-dynamics/ecoscope-eda-core.git",
+    "wt-task>=0.1.0,<1.0.0",
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-exporter-gcp-trace>=1.6.0",
 ]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools_scm]
-tag_regex = "^wt-runner-pubsub/v(?P<version>[0-9.]+)$"
+tag_regex = "^wt-task-gcp/v(?P<version>[0-9.]+)$"
 root = ".."
-version_file = "src/wt_runner_pubsub/_version.py"
+version_file = "src/wt_task_gcp/_version.py"
 
 # ============================================================================
 # Pixi Build Configuration (conda package building)
 # ============================================================================
 
 [tool.pixi.package]
-name = "wt-runner-pubsub"
+name = "wt-task-gcp"
 version = "0.1.0"
 
 [tool.pixi.package.build]
@@ -35,12 +37,14 @@ backend = { name = "pixi-build-python", version = "*", channels = ["conda-forge"
 noarch = true
 
 [tool.pixi.package.host-dependencies]
-python = ">=3.13,<3.16"
+python = ">=3.10,<3.16"
 setuptools = ">=64"
 setuptools-scm = ">=8"
 pip = "*"
 
 [tool.pixi.package.run-dependencies]
-python = ">=3.13,<3.16"
-wt-runner = ">=0.1.0,<1.0.0"
-ecoscope-eda-core = ">=0.2.0"
+python = ">=3.10,<3.16"
+wt-task = ">=0.1.0,<1.0.0"
+opentelemetry-api = ">=1.20.0"
+opentelemetry-sdk = ">=1.20.0"
+opentelemetry-exporter-gcp-trace = ">=1.6.0"
