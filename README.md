@@ -14,9 +14,3 @@ The mypy hook addresses common pitfalls with type checking in pre-commit ([refer
 | Default hooks use `--ignore-missing-imports` hiding errors | Uses per-package strict configs in `pyproject.toml` |
 
 Run manually: `./scripts/run-mypy.sh`
-
-## Testing
-
-### Reverse Integration Tests
-
-The [reverse integration test suite](tests/reverse_integration/README.md) validates that framework changes don't break downstream workflow implementations. See the linked README for usage instructions.
