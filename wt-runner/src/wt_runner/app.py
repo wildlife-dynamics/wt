@@ -108,9 +108,8 @@ async def get_results_json(results_url: str) -> dict[str, Any]:
     # Fallback: use obstore directly
     store = obstore.store.from_url(results_url)
     get_result = await store.get_async("result.json")
-    result_json: dict[str, Any] = json.loads(
-        bytes(get_result).decode("utf-8")  # type: ignore[arg-type]
-    )
+    result_bytes = bytes(await get_result.bytes_async())
+    result_json: dict[str, Any] = json.loads(result_bytes)
     return result_json
 
 
