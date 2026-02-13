@@ -72,6 +72,16 @@ def main() -> None:
         metavar="VARIANT",
         help="Platform variant suffix (e.g., 'gcp' emits wt-runner-gcp, wt-task-gcp dependencies)",
     )
+    compile_parser.add_argument(
+        "--results-env-var",
+        type=str,
+        default="WT_RESULTS",
+        metavar="ENV_VAR",
+        help=(
+            "Name of the environment variable the generated CLI reads "
+            "for the results URL (default: WT_RESULTS)"
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -119,6 +129,7 @@ def _compile(args: argparse.Namespace) -> None:
         }
         if args.variant:
             compiler_kwargs["variant"] = args.variant
+        compiler_kwargs["results_env_var"] = args.results_env_var
         artifacts = asyncio.run(
             compile_workflow_from_yaml(
                 str(spec_path),

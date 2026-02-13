@@ -100,7 +100,7 @@ class TestCompileCommand:
                 main()
 
         mock_compile.assert_called_once_with(
-            str(spec_file.resolve()), progress=True, pkg_name_prefix="wt"
+            str(spec_file.resolve()), progress=True, pkg_name_prefix="wt", results_env_var="WT_RESULTS"
         )
         mock_artifacts.dump.assert_called_once_with(clobber=False, update=False)
 

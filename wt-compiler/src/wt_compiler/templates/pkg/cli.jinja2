@@ -82,7 +82,7 @@ def cli() -> None:
     help=(
         "Destination for console exporter output. Options: stdout or file. "
         "If 'file' is chosen, the output file will be 'otel_traces.jsonl' in the "
-        "ECOSCOPE_WORKFLOWS_RESULTS results directory."
+        "{{ results_env_var }} results directory."
     ),
 )
 def run(
@@ -111,9 +111,9 @@ def run(
             raise click.BadParameter(f"Invalid configuration: {e}", param_hint="--config-json") from e
 
     # Rest of the function remains unchanged
-    results_url = os.environ.get("ECOSCOPE_WORKFLOWS_RESULTS")
+    results_url = os.environ.get("{{ results_env_var }}")
     if not results_url:
-        raise ValueError("Environment variable ECOSCOPE_WORKFLOWS_RESULTS is required.")
+        raise ValueError("Environment variable {{ results_env_var }} is required.")
     try:
         _version = version(RELEASE_NAME)
     except PackageNotFoundError:
@@ -124,7 +124,7 @@ def run(
         if parsed_results_url.scheme != "file":
             raise ValueError(
                 "When using --otel-exporter console with --otel-console-exporter-dst file, "
-                "ECOSCOPE_WORKFLOWS_RESULTS must be a file URL (file://...)."
+                "{{ results_env_var }} must be a file URL (file://...)."
             )
         otel_exporter_kws |= make_otel_console_exporter_file_dst_kws(
             target_dir=Path(parsed_results_url.path),

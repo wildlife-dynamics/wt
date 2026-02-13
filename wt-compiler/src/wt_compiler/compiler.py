@@ -223,6 +223,7 @@ class DagCompiler(BaseModel):
     variant: str | None = None
     jinja_templates_dir: pathlib.Path = TEMPLATES
     pkg_name_prefix: str = "wt"
+    results_env_var: str = "WT_RESULTS"
 
     def get_dag_config(self, dag_type: DagTypes, mock_io: bool) -> dict[str, Any]:
         """Get configuration dict for rendering a DAG.
@@ -778,7 +779,11 @@ class DagCompiler(BaseModel):
                 "params.json": _mdump(params_schema_flat),
                 "params.py": self.generate_params_model(_mdump(params_mod), self.file_header),
                 "formdata.py": self.generate_params_model(_mdump(formdata_mod), self.file_header),
-                "cli.py": self.ruffrender("pkg/cli.jinja2", release_name=self.release_name),
+                "cli.py": self.ruffrender(
+                    "pkg/cli.jinja2",
+                    release_name=self.release_name,
+                    results_env_var=self.results_env_var,
+                ),
                 "dispatch.py": self.ruffrender("pkg/dispatch.jinja2"),
                 "metadata.py": self.ruffrender("pkg/metadata.jinja2"),
                 "response.py": self.ruffrender("pkg/response.jinja2"),
