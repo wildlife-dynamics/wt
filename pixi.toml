@@ -12,5 +12,5 @@ platforms = ["linux-64", "osx-arm64", "osx-64"]
 preview = ["pixi-build"]
 
 [dependencies]
-python = ">=3.10,<3.13"
+python = ">=3.10,<3.16"
 rattler-index = "*"

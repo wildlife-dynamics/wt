@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "wt-runner"
 dynamic = ["version"]
 description = "FastAPI application for workflow execution using wt-invokers"
-requires-python = ">=3.10"
+requires-python = ">=3.13,<3.16"
 dependencies = [
     "wt-contracts>=0.1.0,<1.0.0",
     "wt-invokers>=0.1.0,<1.0.0",
@@ -74,14 +74,14 @@ asyncio_mode = "auto"
 addopts = "--cov=wt_runner --cov-report=term-missing"
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.13"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
 plugins = ["pydantic.mypy"]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py313"
 line-length = 100
 
 [tool.ruff.lint]
@@ -120,13 +120,13 @@ backend = { name = "pixi-build-python", version = "*", channels = ["conda-forge"
 noarch = true
 
 [tool.pixi.package.host-dependencies]
-python = ">=3.10,<3.13"
+python = ">=3.13,<3.16"
 setuptools = ">=64"
 setuptools-scm = ">=8"
 pip = "*"
 
 [tool.pixi.package.run-dependencies]
-python = ">=3.10,<3.13"
+python = ">=3.13,<3.16"
 fastapi = ">=0.100.0"
 uvicorn = ">=0.20.0"
 pydantic = ">=2.0.0,<3.0.0"

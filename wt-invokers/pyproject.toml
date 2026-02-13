@@ -7,7 +7,7 @@ name = "wt-invokers"
 dynamic = ["version"]
 description = "Abstract invoker interface and implementations for wt workflows"
 readme = "README.md"
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [
     { name = "Workflow Tools Contributors" }
@@ -148,13 +148,13 @@ backend = { name = "pixi-build-python", version = "*", channels = ["conda-forge"
 noarch = true
 
 [tool.pixi.package.host-dependencies]
-python = ">=3.10,<3.13"
+python = ">=3.10,<3.16"
 setuptools = ">=64"
 setuptools-scm = ">=8"
 pip = "*"
 
 [tool.pixi.package.run-dependencies]
-python = ">=3.10,<3.13"
+python = ">=3.10,<3.16"
 py-rattler = ">=0.8.0"
 "ruamel.yaml" = ">=0.17.0"
 wt-contracts = ">=0.1.0,<1.0.0"
