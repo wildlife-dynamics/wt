@@ -19,4 +19,4 @@ def test_cloud_batch_invoker_instantiable():
     from wt_invokers.cloud_batch import CloudBatchInvoker
 
     invoker = CloudBatchInvoker(matchspec=MatchSpec("test-workflow>=1.0.0"))
-    assert invoker.matchspec == MatchSpec("test-workflow>=1.0.0")
+    assert str(invoker.matchspec) == str(MatchSpec("test-workflow>=1.0.0"))
