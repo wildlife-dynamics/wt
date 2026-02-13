@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wt-runner-pubsub"
+dynamic = ["version"]
+description = "Metapackage bundling wt-runner with Pub/Sub support via ecoscope-eda-core"
+requires-python = ">=3.13,<3.16"
+dependencies = [
+    "wt-runner>=0.1.0,<1.0.0",
+    "ecoscope-eda-core @ git+https://github.com/wildlife-dynamics/ecoscope-eda-core.git",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+tag_regex = "^wt-runner-pubsub/v(?P<version>[0-9.]+)$"
+root = ".."
+version_file = "src/wt_runner_pubsub/_version.py"
+
+# ============================================================================
+# Pixi Build Configuration (conda package building)
+# ============================================================================
+
+[tool.pixi.package]
+name = "wt-runner-pubsub"
+version = "0.1.0"
+
+[tool.pixi.package.build]
+backend = { name = "pixi-build-python", version = "*", channels = ["conda-forge", "https://prefix.dev/pixi-build-backends"] }
+
+[tool.pixi.package.build.config]
+noarch = true
+
+[tool.pixi.package.host-dependencies]
+python = ">=3.13,<3.16"
+setuptools = ">=64"
+setuptools-scm = ">=8"
+pip = "*"
+
+[tool.pixi.package.run-dependencies]
+python = ">=3.13,<3.16"
+wt-runner = ">=0.1.0,<1.0.0"
+ecoscope-eda-core = ">=0.2.0"

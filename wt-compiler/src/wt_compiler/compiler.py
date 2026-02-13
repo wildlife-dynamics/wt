@@ -220,6 +220,7 @@ class DagCompiler(BaseModel):
 
     spec: Spec
     wt_runner_channel: str
+    runner_variant: str | None = None
     jinja_templates_dir: pathlib.Path = TEMPLATES
     pkg_name_prefix: str = "wt"
 
@@ -439,11 +440,12 @@ class DagCompiler(BaseModel):
 
         # 4. Build feature.runner.dependencies
         runner_channel = self.wt_runner_channel
+        runner_pkg = f"wt-runner-{self.runner_variant}" if self.runner_variant else "wt-runner"
 
         runner_feature = Feature(
             dependencies={
-                "wt-runner": NamelessMatchSpec.from_match_spec(
-                    MatchSpec(f"{runner_channel}::wt-runner *")
+                runner_pkg: NamelessMatchSpec.from_match_spec(
+                    MatchSpec(f"{runner_channel}::{runner_pkg} *")
                 )
             }
         )

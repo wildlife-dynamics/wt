@@ -10,7 +10,13 @@ for pkg in "${packages[@]}"; do
         # Convert wt-foo to wt_foo for the source path
         src_name="${pkg//-/_}"
         echo "Checking $pkg..."
-        (cd "$pkg" && uv run --python 3.12 --all-extras mypy "src/$src_name") || failed=1
+        # wt-runner requires Python >=3.13; all other packages use 3.12
+        if [ "$pkg" = "wt-runner" ]; then
+            python_version="3.13"
+        else
+            python_version="3.12"
+        fi
+        (cd "$pkg" && uv run --python "$python_version" --all-extras mypy "src/$src_name") || failed=1
     fi
 done
 

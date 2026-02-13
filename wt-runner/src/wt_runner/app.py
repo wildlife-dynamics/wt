@@ -73,14 +73,7 @@ except ImportError:
     RunWorkflowParams = None
     ecoscope_get_results_json = None
 
-# Optional import for storage
-try:
-    import obstore
-
-    HAS_OBSTORE = True
-except ImportError:
-    HAS_OBSTORE = False
-    obstore = None  # type: ignore[assignment]
+import obstore
 
 # Invoker registry mapping invoker names to classes
 INVOKERS: dict[str, type[AbstractInvoker]] = {
@@ -112,12 +105,7 @@ async def get_results_json(results_url: str) -> dict[str, Any]:
         result: dict[str, Any] = await ecoscope_get_results_json(results_url)
         return result
 
-    # Fallback implementation for when ecoscope_eda_core is not available
-    if not HAS_OBSTORE:
-        raise RuntimeError(
-            "Cannot retrieve results: neither ecoscope_eda_core nor obstore is available"
-        )
-
+    # Fallback: use obstore directly
     store = obstore.store.from_url(results_url)
     get_result = await store.get_async("result.json")
     result_json: dict[str, Any] = json.loads(
@@ -604,13 +592,7 @@ async def upload_error_to_gcs(error_details: dict[str, Any], results_url: str) -
     Args:
         error_details: Error information dictionary
         results_url: URL for storing results
-
-    Raises:
-        RuntimeError: If obstore is not available
     """
-    if not HAS_OBSTORE:
-        raise RuntimeError("Cannot upload error: obstore is not available")
-
     # Save error in result.json and upload to GCS
     result_store = obstore.store.from_url(results_url)
     result_bytes = json.dumps(error_details).encode("utf-8")

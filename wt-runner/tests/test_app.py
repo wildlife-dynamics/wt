@@ -191,7 +191,6 @@ def test_is_422_with_invalid_data():
 @pytest.mark.asyncio
 async def test_upload_error_to_gcs():
     """Test error upload to GCS."""
-    pytest.importorskip("obstore", reason="obstore not installed")
     import sys
 
     from wt_runner.app import upload_error_to_gcs
@@ -205,17 +204,16 @@ async def test_upload_error_to_gcs():
     results_url = "gs://test-bucket/results"
 
     with patch.object(app_module, "obstore") as mock_obstore_module:
-        with patch.object(app_module, "HAS_OBSTORE", True):
-            mock_store = AsyncMock()
-            mock_obstore_module.store.from_url.return_value = mock_store
+        mock_store = AsyncMock()
+        mock_obstore_module.store.from_url.return_value = mock_store
 
-            await upload_error_to_gcs(error_details, results_url)
+        await upload_error_to_gcs(error_details, results_url)
 
-            mock_obstore_module.store.from_url.assert_called_once_with(results_url)
-            mock_store.put_async.assert_called_once()
-            call_args = mock_store.put_async.call_args
-            assert call_args[0][0] == "result.json"
-            assert json.loads(call_args[0][1].decode()) == error_details
+        mock_obstore_module.store.from_url.assert_called_once_with(results_url)
+        mock_store.put_async.assert_called_once()
+        call_args = mock_store.put_async.call_args
+        assert call_args[0][0] == "result.json"
+        assert json.loads(call_args[0][1].decode()) == error_details
 
 
 @pytest.mark.asyncio

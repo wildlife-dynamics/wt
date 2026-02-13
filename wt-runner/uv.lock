@@ -1478,6 +1478,7 @@ name = "wt-runner"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
+    { name = "obstore" },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-sdk" },
     { name = "py-rattler" },
@@ -1491,19 +1492,15 @@ dependencies = [
 [package.optional-dependencies]
 gcp = [
     { name = "gcloud-aio-pubsub" },
-    { name = "obstore" },
     { name = "opentelemetry-exporter-gcp-trace" },
     { name = "opentelemetry-sdk" },
 ]
-storage = [
-    { name = "obstore" },
+pubsub = [
+    { name = "ecoscope-eda-core" },
 ]
 tracing = [
     { name = "opentelemetry-exporter-gcp-trace" },
     { name = "opentelemetry-sdk" },
-]
-workflows = [
-    { name = "ecoscope-eda-core" },
 ]
 
 [package.dev-dependencies]
@@ -1518,11 +1515,10 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "ecoscope-eda-core", marker = "extra == 'workflows'", git = "https://github.com/wildlife-dynamics/ecoscope-eda-core.git" },
+    { name = "ecoscope-eda-core", marker = "extra == 'pubsub'", git = "https://github.com/wildlife-dynamics/ecoscope-eda-core.git" },
     { name = "fastapi", specifier = ">=0.100.0" },
     { name = "gcloud-aio-pubsub", marker = "extra == 'gcp'", specifier = ">=6.1.0,<7" },
-    { name = "obstore", marker = "extra == 'gcp'", specifier = ">=0.6.0" },
-    { name = "obstore", marker = "extra == 'storage'", specifier = ">=0.6.0" },
+    { name = "obstore", specifier = ">=0.6.0" },
     { name = "opentelemetry-api", specifier = ">=1.0.0" },
     { name = "opentelemetry-exporter-gcp-trace", marker = "extra == 'gcp'", specifier = ">=1.9.0,<2" },
     { name = "opentelemetry-exporter-gcp-trace", marker = "extra == 'tracing'", specifier = ">=1.9.0,<2" },
@@ -1536,7 +1532,7 @@ requires-dist = [
     { name = "wt-contracts", editable = "../wt-contracts" },
     { name = "wt-invokers", editable = "../wt-invokers" },
 ]
-provides-extras = ["storage", "tracing", "gcp", "workflows"]
+provides-extras = ["tracing", "gcp", "pubsub"]
 
 [package.metadata.requires-dev]
 dev = [

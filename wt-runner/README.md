@@ -29,26 +29,38 @@ pip install wt-runner
 # For Google Cloud Platform support
 pip install wt-runner[gcp]
 
-# For storage support (obstore)
-pip install wt-runner[storage]
-
 # For OpenTelemetry tracing
 pip install wt-runner[tracing]
 
-# For workflow integration
-pip install wt-runner[workflows]
+# For Pub/Sub support (ecoscope-eda-core)
+pip install wt-runner[pubsub]
 
 # All optional dependencies
-pip install wt-runner[gcp,storage,tracing,workflows]
+pip install wt-runner[gcp,tracing,pubsub]
 ```
 
 ### Development Installation
 
 ```bash
 cd wt-runner
-uv sync
+uv sync --dev
 uv run pytest
 ```
+
+## Variants
+
+`wt-runner` ships as a base package with an optional Pub/Sub variant:
+
+| Variant | Package | Adds |
+|---------|---------|------|
+| **Base** | `wt-runner` | Workflow execution, result retrieval (obstore), all endpoints except Pub/Sub |
+| **Pub/Sub** | `wt-runner-pubsub` | Pub/Sub endpoint (`/run-from-pubsub`) via ecoscope-eda-core |
+
+### Installing variants
+
+- **pip**: `pip install wt-runner[pubsub]`
+- **conda**: `pixi add wt-runner-pubsub` (metapackage that pulls in `wt-runner` + `ecoscope-eda-core`)
+- **Compiled workflows**: `wt-compiler compile --spec spec.yaml --runner-variant pubsub`
 
 ## Usage
 
@@ -263,7 +275,12 @@ configure_tracer(
 ### Running Tests
 
 ```bash
-# Run all tests
+# Core tests (Pub/Sub tests skipped)
+uv sync --dev
+uv run pytest
+
+# Full tests including Pub/Sub
+uv sync --extra pubsub --dev
 uv run pytest
 
 # Run with coverage
@@ -302,7 +319,7 @@ uv run ruff format src/wt_runner
 - **Uvicorn**: ASGI server for running the application
 - **Rattler**: Conda package management
 - **OpenTelemetry**: Distributed tracing (optional)
-- **obstore**: Object storage abstraction (optional)
+- **obstore**: Object storage for result retrieval (required)
 
 ### Package Structure
 
