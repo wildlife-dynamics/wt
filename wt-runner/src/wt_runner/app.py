@@ -48,14 +48,14 @@ from wt_runner.tracing import (
 
 # Optional imports for ecoscope integration
 try:
-    from ecoscope_eda_core.messages.commands import (  # type: ignore[import-untyped]
+    from ecoscope_eda_core.messages.commands import (  # type: ignore[import-untyped,import-not-found,unused-ignore]
         InvokerType as EcoscopeInvokerType,
     )
     from ecoscope_eda_core.messages.commands import (
         RunWorkflow,
         RunWorkflowParams,
     )
-    from ecoscope_eda_core.workflows import (  # type: ignore[import-untyped]
+    from ecoscope_eda_core.workflows import (  # type: ignore[import-untyped,import-not-found,unused-ignore]
         get_results_json as ecoscope_get_results_json,
     )
 

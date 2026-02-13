@@ -20,11 +20,13 @@ from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapProp
 
 # Optional GCP exporter
 try:
-    from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
+    from opentelemetry.exporter.cloud_trace import (
+        CloudTraceSpanExporter,  # type: ignore[import-not-found,unused-ignore]
+    )
 
     HAS_GCP_EXPORTER = True
 except ImportError:
-    CloudTraceSpanExporter = None  # type: ignore
+    CloudTraceSpanExporter = None  # type: ignore[misc,assignment,unused-ignore]
     HAS_GCP_EXPORTER = False
 
 OtelExporterChoice = Literal["console", "gcp"]
@@ -110,7 +112,7 @@ def configure_tracer(
                         "GCP exporter requested but opentelemetry-exporter-gcp-trace "
                         "is not installed. Install with: pip install wt-runner[tracing]"
                     )
-                _exporter = CloudTraceSpanExporter(**_exporter_kws)  # type: ignore[no-untyped-call]
+                _exporter = CloudTraceSpanExporter(**_exporter_kws)  # type: ignore[no-untyped-call,unused-ignore]
             case _:
                 raise ValueError(f"Unknown exporter: {exporter}")
 
