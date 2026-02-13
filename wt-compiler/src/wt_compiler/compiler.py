@@ -18,15 +18,9 @@ import io
 import json
 import os
 import pathlib
-import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-
-if sys.version_info >= (3, 11):
-    pass
-else:
-    pass
 
 import pydot as dot
 import ruamel.yaml
