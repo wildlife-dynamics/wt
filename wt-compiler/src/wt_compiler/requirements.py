@@ -1,15 +1,9 @@
 """Requirement handling for rattler channels and match specifications."""
 
 import os
-import sys
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Annotated, cast
+from typing import TYPE_CHECKING, Annotated, TypedDict, cast
 from urllib.parse import urlparse
-
-if sys.version_info < (3, 12):
-    from typing_extensions import TypedDict
-else:
-    from typing import TypedDict
 
 from pydantic.functional_serializers import PlainSerializer
 from pydantic.functional_validators import BeforeValidator
