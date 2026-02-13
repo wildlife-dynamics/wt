@@ -9,7 +9,7 @@ import hashlib
 import keyword
 from collections.abc import Generator
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Any, Literal, TypeAlias, TypedDict, cast
+from typing import TYPE_CHECKING, Annotated, Any, Literal, TypedDict, cast
 
 from pydantic import (
     BaseModel,
@@ -551,7 +551,7 @@ DictOrVarsOrInlineValue = Annotated[
 ]
 VariableValuesList.model_rebuild()
 VariableValuesDict.model_rebuild()
-PartialKwargs: TypeAlias = dict[KnownTaskArgName, DictOrVarsOrInlineValue]
+type PartialKwargs = dict[KnownTaskArgName, DictOrVarsOrInlineValue]
 SpecId = Annotated[str, AfterValidator(_is_not_reserved), AfterValidator(_is_valid_spec_name)]
 ParallelOpArgNames = Annotated[list[KnownTaskArgName], BeforeValidator(_singleton_or_list_aslist)]
 
