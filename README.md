@@ -1,6 +1,10 @@
 # wt
 Workflow template engine with support for web-form configuration, parallel operators, and flexible execution targets.
 
+## Architecture
+
+For package architecture diagrams, dependency graphs, and development guidelines, see [CLAUDE.md](CLAUDE.md).
+
 ## Pre-commit Hooks
 
 ### Mypy
