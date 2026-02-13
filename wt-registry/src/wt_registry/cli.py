@@ -37,10 +37,11 @@ def discover_public_paths(
         Dict mapping (private_module_path, function_name) -> public_module_path
 
     Examples:
-        >>> # Assuming a package structure where pkg.tasks.__init__.py re-exports
-        >>> # a function from pkg.tasks._internal:
-        >>> # discover_public_paths(registry, ["pkg.tasks"])  # doctest: +SKIP
-        >>> # {("pkg.tasks._internal", "my_func"): "pkg.tasks"}  # doctest: +SKIP
+        Assuming a package structure where ``pkg.tasks.__init__.py`` re-exports
+        a function from ``pkg.tasks._internal``::
+
+            discover_public_paths(registry, ["pkg.tasks"])
+            # {("pkg.tasks._internal", "my_func"): "pkg.tasks"}
     """
     import importlib
 
@@ -75,7 +76,9 @@ def _traverse_module(
         visited: Set of module ids already visited (prevents infinite recursion)
 
     Examples:
-        >>> # _traverse_module(mymodule, registry, public_paths, set())  # doctest: +SKIP
+        Usage::
+
+            _traverse_module(mymodule, registry, public_paths, set())
     """
     # Avoid infinite recursion on circular imports
     if id(module) in visited:
