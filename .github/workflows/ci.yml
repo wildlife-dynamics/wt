@@ -16,12 +16,18 @@ jobs:
           - wt-contracts
           - wt-registry
           - wt-task
+          - wt-compiler
         python-version:
           - "3.10"
           - "3.11"
           - "3.12"
           - "3.13"
         extras: [""]
+        exclude:
+          - package: wt-compiler
+            python-version: "3.10"
+          - package: wt-compiler
+            python-version: "3.11"
         include:
           # Additional runs WITH gcp extra
           - package: wt-task
