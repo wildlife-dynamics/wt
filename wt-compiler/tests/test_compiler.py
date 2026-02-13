@@ -68,7 +68,7 @@ class TestDagCompiler:
             requirements=[],
             workflow=[],
         )
-        compiler = DagCompiler(spec=spec)
+        compiler = DagCompiler(spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/")
         # Release name: prefix-{id with _ replaced by -}-workflow
         assert compiler.release_name == "wt-my-workflow-workflow"
         # Package name: release name with - replaced by _
@@ -81,7 +81,7 @@ class TestDagCompiler:
             requirements=[],
             workflow=[],
         )
-        compiler = DagCompiler(spec=spec, pkg_name_prefix="custom")
+        compiler = DagCompiler(spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/", pkg_name_prefix="custom")
         assert compiler.release_name == "custom-my-workflow-workflow"
         assert compiler.package_name == "custom_my_workflow_workflow"
 
@@ -118,7 +118,7 @@ class TestDagCompiler:
                 requirements=[],
                 workflow=[instance1, instance2],
             )
-            compiler = DagCompiler(spec=spec)
+            compiler = DagCompiler(spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/")
 
             omit_args = compiler.per_taskinstance_omit_args
             assert "task1" in omit_args
@@ -147,7 +147,7 @@ class TestDagCompiler:
                 requirements=[],
                 workflow=[instance1],
             )
-            compiler = DagCompiler(spec=spec)
+            compiler = DagCompiler(spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/")
 
             graph = compiler.build_pydot_graph()
             assert graph.get_name() == "test_spec"
@@ -167,7 +167,7 @@ class TestDagCompiler:
             ],
             workflow=[],
         )
-        compiler = DagCompiler(spec=spec)
+        compiler = DagCompiler(spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/")
         pixi_toml = compiler.get_pixi_toml()
 
         # Workspace name should be the release name (underscores replaced by dashes)
@@ -203,7 +203,7 @@ class TestDagCompiler:
             ],
             workflow=[],
         )
-        compiler = DagCompiler(spec=spec)
+        compiler = DagCompiler(spec=spec, wt_runner_channel=WT_LOCAL_CHANNEL.base_url)
         pixi_toml = compiler.get_pixi_toml()
 
         # Runner feature should have wt-runner
@@ -636,7 +636,7 @@ class TestRenderDag:
                 ),
             ],
         )
-        return DagCompiler(spec=spec)
+        return DagCompiler(spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/")
 
     def test_sequential_mock_io_skips_validate_for_io_tasks(self):
         """With mock_io=True, IO tasks should NOT have .validate(), non-IO tasks should."""
@@ -766,7 +766,7 @@ class TestRenderDag:
                 ),
             ],
         )
-        return DagCompiler(spec=spec)
+        return DagCompiler(spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/")
 
     def test_sequential_realistic_validate_count(self):
         """mock_io=True: 4 .validate() calls and 1 'validation omitted' comment."""

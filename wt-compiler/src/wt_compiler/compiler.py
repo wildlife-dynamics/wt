@@ -219,6 +219,7 @@ class DagCompiler(BaseModel):
     """
 
     spec: Spec
+    wt_runner_channel: str
     jinja_templates_dir: pathlib.Path = TEMPLATES
     pkg_name_prefix: str = "wt"
 
@@ -416,6 +417,8 @@ class DagCompiler(BaseModel):
             r.channel.base_url == CUSTOM_RELEASE_CHANNEL.base_url for r in self.spec.requirements
         ):
             channels.append(CUSTOM_RELEASE_CHANNEL.base_url)
+        if self.wt_runner_channel.startswith("file://") and self.wt_runner_channel not in channels:
+            channels.append(self.wt_runner_channel)
         # Always add standard channels at the end
         # Note: name can be None for custom channels but not for these standard channels
         assert CONDA_FORGE_CHANNEL.name is not None
@@ -435,11 +438,7 @@ class DagCompiler(BaseModel):
             )
 
         # 4. Build feature.runner.dependencies
-        # Find the wt-registry dependency to get its channel for wt-runner
-        wt_registry_dep = next((r for r in self.spec.requirements if r.name == "wt-registry"), None)
-        runner_channel = (
-            wt_registry_dep.channel.base_url if wt_registry_dep else WT_LOCAL_CHANNEL.base_url
-        )
+        runner_channel = self.wt_runner_channel
 
         runner_feature = Feature(
             dependencies={
@@ -859,6 +858,7 @@ class DagCompiler(BaseModel):
 def compile_workflow(
     spec: Spec,
     spec_relpath: str,
+    wt_runner_channel: str,
     installed_requirements: list[SpecRequirement] | None = None,
     on_progress: Callable[[str], None] | None = None,
     **compiler_kwargs: Any,
@@ -872,6 +872,7 @@ def compile_workflow(
     Args:
         spec: Workflow specification (must have known_tasks already populated)
         spec_relpath: Relative path to spec file
+        wt_runner_channel: Channel URL where wt-runner package is available
         installed_requirements: Optional list of solved/pinned requirements
         on_progress: Optional callback invoked with a status message at each sub-step
         **compiler_kwargs: Additional arguments for DagCompiler
@@ -883,12 +884,14 @@ def compile_workflow(
         >>> from wt_compiler.spec import Spec
         >>> # For manual workflow (requires known_tasks to be populated):
         >>> # spec = Spec.model_validate(data)  # doctest: +SKIP
-        >>> # artifacts = compile_workflow(spec, "spec.yaml")  # doctest: +SKIP
+        >>> # artifacts = compile_workflow(  # doctest: +SKIP
+        ... #     spec, "spec.yaml", wt_runner_channel="...",
+        ... # )
         >>>
         >>> # Prefer using compile_workflow_from_yaml() for automatic discovery:
         >>> # artifacts = compile_workflow_from_yaml("spec.yaml")  # doctest: +SKIP
     """
-    compiler = DagCompiler(spec=spec, **compiler_kwargs)
+    compiler = DagCompiler(spec=spec, wt_runner_channel=wt_runner_channel, **compiler_kwargs)
     return compiler.compile(
         spec_relpath, installed_requirements=installed_requirements, on_progress=on_progress
     )
@@ -1012,6 +1015,17 @@ async def compile_workflow_from_yaml(
             match_specs, channels=unique_channels, on_progress=sp.update
         )
 
+        # Extract wt-runner channel from the solved wt-registry record
+        wt_registry_record = next(
+            (r for r in records if str(r.name.normalized) == "wt-registry"), None
+        )
+        if wt_registry_record is None:
+            raise ValueError(
+                "wt-registry was not found in the solved environment. "
+                "It is required to determine the channel for wt-runner."
+            )
+        wt_runner_channel = str(wt_registry_record.channel)
+
         # Build installed requirements from solved records
         installed_requirements = _build_installed_requirements(requirements, records)
 
@@ -1027,6 +1041,7 @@ async def compile_workflow_from_yaml(
         return compile_workflow(
             spec,
             spec_relpath,
+            wt_runner_channel=wt_runner_channel,
             installed_requirements=installed_requirements,
             on_progress=sp.update,
             **compiler_kwargs,
