@@ -14,7 +14,13 @@ from .executors import (
     PythonExecutor,
     SyncExecutor,
 )
-from .skip import SKIP_SENTINEL, SkipSentinel, skipif, unpack_listlike
+from .skip import (
+    SKIP_SENTINEL,
+    SkippedDependencyFallback,
+    SkipSentinel,
+    skipif,
+    unpack_listlike,
+)
 from .sync_task import SyncTask
 
 __all__ = [
@@ -35,6 +41,7 @@ __all__ = [
     # Skip utilities
     "SkipSentinel",
     "SKIP_SENTINEL",
+    "SkippedDependencyFallback",
     "skipif",
     "unpack_listlike",
 ]

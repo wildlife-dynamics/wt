@@ -8,7 +8,10 @@ from collections.abc import Callable
 from functools import wraps
 from typing import Any
 
+from pydantic import GetCoreSchemaHandler, GetJsonSchemaHandler
 from pydantic.functional_validators import BeforeValidator
+from pydantic.json_schema import JsonSchemaValue
+from pydantic_core import core_schema as cs
 
 
 class SkipSentinel:
@@ -33,6 +36,19 @@ class SkipSentinel:
             String representation of the sentinel
         """
         return "<SkipSentinel>"
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls, source_type: type, handler: GetCoreSchemaHandler
+    ) -> cs.CoreSchema:
+        return cs.is_instance_schema(cls)
+
+    @classmethod
+    def __get_pydantic_json_schema__(
+        cls, core_schema: cs.CoreSchema, handler: GetJsonSchemaHandler
+    ) -> JsonSchemaValue:
+        # SkipSentinel represents "skipped/no value" - maps to null in JSON Schema
+        return {"type": "null", "title": "SkipSentinel"}
 
 
 SKIP_SENTINEL = SkipSentinel()
