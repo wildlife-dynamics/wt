@@ -396,7 +396,7 @@ class DagCompiler(BaseModel):
         - Dynamic channels based on which channels are used in requirements
         - System requirements (linux = "4.4.0" for Docker compatibility)
         - Dependencies with channel specified per dependency
-        - feature.runner with ecoscope-workflows-runner
+        - feature.runner with wt-runner
         - feature.test with test dependencies and tasks
         - Environments: default, runner, test
         - Tasks: docker-build (if local artifacts) and workflow CLI
@@ -435,22 +435,16 @@ class DagCompiler(BaseModel):
             )
 
         # 4. Build feature.runner.dependencies
-        # Find the ecoscope-workflows-core dependency to get its channel and version
-        core_dep = next(
-            (r for r in self.spec.requirements if r.name == "ecoscope-workflows-core"), None
+        # Find the wt-registry dependency to get its channel for wt-runner
+        wt_registry_dep = next((r for r in self.spec.requirements if r.name == "wt-registry"), None)
+        runner_channel = (
+            wt_registry_dep.channel.base_url if wt_registry_dep else WT_LOCAL_CHANNEL.base_url
         )
-        if core_dep:
-            runner_version = str(core_dep.version.version) if core_dep.version.version else "*"
-            runner_channel = core_dep.channel.base_url
-        else:
-            # Fallback to release channel if core not found
-            runner_version = "*"
-            runner_channel = RELEASE_CHANNEL.base_url
 
         runner_feature = Feature(
             dependencies={
-                "ecoscope-workflows-runner": NamelessMatchSpec.from_match_spec(
-                    MatchSpec(f"{runner_channel}::ecoscope-workflows-runner {runner_version}")
+                "wt-runner": NamelessMatchSpec.from_match_spec(
+                    MatchSpec(f"{runner_channel}::wt-runner *")
                 )
             }
         )

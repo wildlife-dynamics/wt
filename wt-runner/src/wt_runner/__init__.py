@@ -9,6 +9,7 @@ wt-invokers. It includes endpoints for:
 """
 
 from wt_runner.app import app
+from wt_runner.testing import Case, CaseRunner
 from wt_runner.tracing import (
     TraceContextHeaders,
     attach_context,
@@ -24,6 +25,8 @@ except ImportError:
 
 __all__ = [
     "app",
+    "Case",
+    "CaseRunner",
     "configure_tracer",
     "attach_context",
     "build_context_headers",

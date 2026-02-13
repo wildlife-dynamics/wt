@@ -25,9 +25,9 @@ from syrupy.location import PyTestLocation
 from syrupy.terminal import reset
 from syrupy.types import SerializedData, SnapshotIndex
 
-from ecoscope_workflows_runner.app import app
-from ecoscope_workflows_runner.testing import Case, CaseRunner
-from ecoscope_workflows_runner.tracing import (
+from wt_runner.app import app
+from wt_runner.testing import Case, CaseRunner
+from wt_runner.tracing import (
     build_context_headers,
     configure_tracer,
     make_otel_console_exporter_file_dst_kws,

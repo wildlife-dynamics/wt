@@ -190,25 +190,25 @@ class TestDagCompiler:
         # Check tasks (task name is the release_name)
         assert "wt-test-spec-workflow" in pixi_toml.tasks
 
-    def test_get_pixi_toml_with_ecoscope_core(self):
-        """Test pixi.toml generation with ecoscope-workflows-core dependency."""
-        from wt_compiler.requirements import RELEASE_CHANNEL
+    def test_get_pixi_toml_with_wt_registry(self):
+        """Test pixi.toml generation with wt-registry dependency."""
+        from wt_compiler.requirements import WT_LOCAL_CHANNEL
 
         spec = Spec(
             id="my_workflow",
             requirements=[
                 SpecRequirement(
-                    requirement=f"{RELEASE_CHANNEL.base_url}::ecoscope-workflows-core>=0.1.0"
+                    requirement=f"{WT_LOCAL_CHANNEL.base_url}::wt-registry>=0.1.0"
                 ),
             ],
             workflow=[],
         )
-        compiler = DagCompiler(spec=spec, pkg_name_prefix="ecoscope-workflows")
+        compiler = DagCompiler(spec=spec)
         pixi_toml = compiler.get_pixi_toml()
 
-        # Runner feature should have ecoscope-workflows-runner with same version
+        # Runner feature should have wt-runner
         assert "runner" in pixi_toml.feature
-        assert "ecoscope-workflows-runner" in pixi_toml.feature["runner"].dependencies
+        assert "wt-runner" in pixi_toml.feature["runner"].dependencies
 
         # Test feature should have test dependencies
         assert "test" in pixi_toml.feature
