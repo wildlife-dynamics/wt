@@ -140,9 +140,40 @@ async def test_run_sets_environment_variables() -> None:
         call_kwargs = mock_popen.call_args[1]
         env = call_kwargs["env"]
 
-        assert "WT_RESULTS" in env
-        assert env["WT_RESULTS"] == results_url
+        assert invoker.results_env_var in env
+        assert env[invoker.results_env_var] == results_url
         assert env["CUSTOM_VAR"] == "custom_value"
+
+
+@pytest.mark.asyncio
+async def test_run_with_custom_results_env_var() -> None:
+    """Test run uses custom results_env_var when configured."""
+    matchspec = MatchSpec("test-workflow>=1.0.0")
+    invoker = LocalSubprocessInvoker(
+        matchspec=matchspec, results_env_var="ECOSCOPE_WORKFLOWS_RESULTS"
+    )
+
+    mock_process = MagicMock()
+    results_url = "file:///tmp/results"
+
+    with (
+        patch.object(subprocess, "Popen", return_value=mock_process) as mock_popen,
+        tempfile.TemporaryDirectory(),
+    ):
+        await invoker.run(
+            workflow_run_id="test-run",
+            config_text="param: value",
+            results_url=results_url,
+            execution_mode="sequential",
+            mock_io=False,
+        )
+
+        call_kwargs = mock_popen.call_args[1]
+        env = call_kwargs["env"]
+
+        assert "ECOSCOPE_WORKFLOWS_RESULTS" in env
+        assert env["ECOSCOPE_WORKFLOWS_RESULTS"] == results_url
+        assert "WT_RESULTS" not in env
 
 
 @pytest.mark.asyncio

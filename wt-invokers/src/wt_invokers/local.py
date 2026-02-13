@@ -197,7 +197,7 @@ class LocalSubprocessInvoker(AbstractInvoker):
         # Setup environment variables
         if extra_env is None:
             extra_env = {}
-        extra_env["WT_RESULTS"] = results_url
+        extra_env[self.results_env_var] = results_url
 
         # Create temporary config files
         with (

@@ -244,9 +244,37 @@ async def test_run_sets_environment_variables(mock_gcp_modules) -> None:
         call_kwargs = mock_create.call_args[1]
         env = call_kwargs["extra_env"]
 
-        assert "WT_RESULTS" in env
-        assert env["WT_RESULTS"] == "gs://bucket/results"
+        assert invoker.results_env_var in env
+        assert env[invoker.results_env_var] == "gs://bucket/results"
         assert env["CUSTOM_VAR"] == "custom_value"
+
+
+@pytest.mark.asyncio
+async def test_run_with_custom_results_env_var(mock_gcp_modules) -> None:
+    """Test run uses custom results_env_var when configured."""
+    from wt_invokers.cloud_batch import CloudBatchInvoker
+
+    matchspec = MatchSpec("test-workflow>=1.0.0")
+    invoker = CloudBatchInvoker(
+        matchspec=matchspec, results_env_var="ECOSCOPE_WORKFLOWS_RESULTS"
+    )
+
+    with patch.object(invoker, "_create_container_job", new=AsyncMock()) as mock_create:
+        await invoker.run(
+            workflow_run_id="test-run",
+            config_text="param: value",
+            results_url="gs://bucket/results",
+            execution_mode="sequential",
+            mock_io=False,
+            docker_image_uri="gcr.io/project/image:latest",
+        )
+
+        call_kwargs = mock_create.call_args[1]
+        env = call_kwargs["extra_env"]
+
+        assert "ECOSCOPE_WORKFLOWS_RESULTS" in env
+        assert env["ECOSCOPE_WORKFLOWS_RESULTS"] == "gs://bucket/results"
+        assert "WT_RESULTS" not in env or env.get("WT_RESULTS") != "gs://bucket/results"
 
 
 @pytest.mark.asyncio

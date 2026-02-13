@@ -256,7 +256,7 @@ class CloudBatchInvoker(AbstractInvoker):
         extra_env = (
             {k: v for k, v in os.environ.items() if k.startswith("WT_")}
             | (extra_env or {})
-            | {"WT_RESULTS": results_url}
+            | {self.results_env_var: results_url}
         )
 
         # Prepare parameters for Cloud Batch job

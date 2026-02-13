@@ -38,6 +38,7 @@ SNAPSHOT_DIRNAME = ARTIFACTS.parent / "__results_snapshots__"
 SNAPSHOT_DIFF_OUTPUT_DIRNAME = ARTIFACTS.parent / "__diff_output__"
 TEST_CASES_YAML = ARTIFACTS.parent / "test-cases.yaml"
 MATCHSPEC_OVERRIDE = "{{ release_name }}"
+RESULTS_ENV_VAR = "{{ results_env_var }}"
 IO_TASKS_IMPORTABLE_REFERENCES = [
     {% for ref in io_tasks_importable_references %}
     "{{ ref }}",
@@ -280,6 +281,7 @@ def _run_test_case(
                     "ECOSCOPE_WORKFLOWS_OTEL_EXPORTER": "console",
                     "ECOSCOPE_WORKFLOWS_OTEL_CONSOLE_EXPORTER_DST": "file",
                     "ECOSCOPE_WORKFLOWS_OTEL_CONSOLE_EXPORTER_FILE_DST_TARGET_DIR": results_subdir.as_posix(),
+                    "WT_INVOKERS__RESULTS_ENV_VAR": RESULTS_ENV_VAR,
                 },
             ):
                 return case_runner.run_app(
@@ -288,7 +290,11 @@ def _run_test_case(
         case "cli":
             if case.raises:
                 pytest.skip("CLI tests do not yet support error handling.")
-            return case_runner.run_cli(matchspec=MatchSpec(matchspec_override))
+            with patch.dict(
+                "os.environ",
+                {"WT_INVOKERS__RESULTS_ENV_VAR": RESULTS_ENV_VAR},
+            ):
+                return case_runner.run_cli(matchspec=MatchSpec(matchspec_override))
         case _ as unknown:
             raise ValueError(f"Unknown API: {unknown}")
 

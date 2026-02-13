@@ -7,8 +7,9 @@ in different execution environments (local subprocess, cloud batch, etc.).
 
 from __future__ import annotations
 
+import os
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from rattler import MatchSpec
@@ -60,6 +61,11 @@ class AbstractInvoker(ABC):
     """
 
     matchspec: MatchSpec
+    results_env_var: str = field(
+        default_factory=lambda: os.environ.get(
+            "WT_INVOKERS__RESULTS_ENV_VAR", "WT_RESULTS"
+        )
+    )
 
     @abstractmethod
     async def is_installed(self) -> bool:

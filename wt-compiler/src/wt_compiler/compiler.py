@@ -802,6 +802,7 @@ class DagCompiler(BaseModel):
                     "tests/conftest.jinja2",
                     package_name=self.package_name,
                     release_name=self.release_name,
+                    results_env_var=self.results_env_var,
                     io_tasks_importable_references=[
                         t.known_task.importable_reference
                         for t in self.spec.flat_workflow
@@ -825,6 +826,7 @@ class DagCompiler(BaseModel):
             pixi_version=os.environ.get("PIXI_VERSION", "latest"),
             requires_local_release_artifacts=self.spec.requires_local_release_artifacts,
             release_name=self.release_name,
+            results_env_var=self.results_env_var,
         )
 
         # Generate .dockerignore
