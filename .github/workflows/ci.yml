@@ -37,8 +37,14 @@ jobs:
           - package: wt-runner
             python-version: "3.12"
         include:
-          # Additional wt-runner run WITH gcp extra
+          # Additional runs WITH gcp extra
           - package: wt-runner
+            python-version: "3.13"
+            extras: "--extra gcp"
+          - package: wt-task
+            python-version: "3.13"
+            extras: "--extra gcp"
+          - package: wt-invokers
             python-version: "3.13"
             extras: "--extra gcp"
 

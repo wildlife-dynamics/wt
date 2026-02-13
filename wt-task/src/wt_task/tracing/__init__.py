@@ -2,7 +2,7 @@
 
 This package provides tracing configuration and decorators for instrumenting
 task execution with OpenTelemetry. Tracing is optional and requires the
-`tracing` extra: `pip install wt-task[tracing]`
+`gcp` extra: `pip install wt-task[gcp]`
 """
 
 from ._config import (

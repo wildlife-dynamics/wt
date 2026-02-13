@@ -109,7 +109,7 @@ def configure_tracer(
     """
     if not TRACING_AVAILABLE:
         raise ImportError(
-            "OpenTelemetry dependencies not installed. Install with: pip install wt-task[tracing]"
+            "OpenTelemetry dependencies not installed. Install with: pip install wt-task[gcp]"
         )
 
     resource = Resource.create(
@@ -160,7 +160,7 @@ def build_context_headers() -> TraceContextHeaders:
     """
     if not TRACING_AVAILABLE:
         raise ImportError(
-            "OpenTelemetry dependencies not installed. Install with: pip install wt-task[tracing]"
+            "OpenTelemetry dependencies not installed. Install with: pip install wt-task[gcp]"
         )
 
     headers: TraceContextHeaders = TraceContextHeaders()
@@ -188,7 +188,7 @@ def attach_context(traceparent: str, tracestate: str | None = None) -> None:
     """
     if not TRACING_AVAILABLE:
         raise ImportError(
-            "OpenTelemetry dependencies not installed. Install with: pip install wt-task[tracing]"
+            "OpenTelemetry dependencies not installed. Install with: pip install wt-task[gcp]"
         )
 
     carrier: dict[str, str] = {"traceparent": traceparent}

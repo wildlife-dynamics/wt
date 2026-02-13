@@ -15,7 +15,7 @@ Task decorator and execution features for the wt ecosystem.
 - **Error handling**: Wrap errors with task instance context
 - **Conditional skipping**: Skip execution based on conditions with `.skipif()`
 - **Custom executors**: Switch execution backends with `.set_executor()`
-- **OpenTelemetry tracing**: Optional tracing support (requires `wt-task[tracing]`)
+- **OpenTelemetry tracing**: Optional tracing support (requires `wt-task[gcp]`)
 
 ## Installation
 
@@ -24,7 +24,7 @@ Task decorator and execution features for the wt ecosystem.
 pip install wt-task
 
 # With tracing support
-pip install wt-task[tracing]
+pip install wt-task[gcp]
 
 # Development installation
 cd wt/wt-task
