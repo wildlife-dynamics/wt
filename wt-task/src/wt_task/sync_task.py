@@ -11,10 +11,6 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, cast, overload
 
-if sys.version_info >= (3, 11):
-    pass
-else:
-    pass
 
 try:
     from opentelemetry import trace
