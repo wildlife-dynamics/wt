@@ -23,8 +23,6 @@ class TestDags:
         dags = Dags(
             **{
                 "__init__.py": "# Init",
-                "run_async_mock_io.py": "# Async mock",
-                "run_async.py": "# Async",
                 "run_sequential_mock_io.py": "# Sequential mock",
                 "run_sequential.py": "# Sequential",
             }
@@ -106,8 +104,6 @@ class TestWorkflowArtifacts:
         dags = Dags(
             **{
                 "__init__.py": "",
-                "run_async_mock_io.py": "",
-                "run_async.py": "",
                 "run_sequential_mock_io.py": "",
                 "run_sequential.py": "",
             }
@@ -157,8 +153,6 @@ class TestWorkflowArtifacts:
         dags = Dags(
             **{
                 "__init__.py": "# Init",
-                "run_async_mock_io.py": "# Async mock",
-                "run_async.py": "# Async",
                 "run_sequential_mock_io.py": "# Sequential mock",
                 "run_sequential.py": "# Sequential",
             }

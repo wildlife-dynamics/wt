@@ -756,8 +756,6 @@ class DagCompiler(BaseModel):
         dags = Dags(
             **{
                 "__init__.py": self.ruffrender("pkg/dags/init.jinja2"),
-                "run_async_mock_io.py": self.render_dag("async", mock_io=True),
-                "run_async.py": self.render_dag("async", mock_io=False),
                 "run_sequential_mock_io.py": self.render_dag("sequential", mock_io=True),
                 "run_sequential.py": self.render_dag("sequential", mock_io=False),
             }
