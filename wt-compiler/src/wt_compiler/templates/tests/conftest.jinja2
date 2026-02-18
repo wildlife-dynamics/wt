@@ -113,7 +113,7 @@ class CustomJSONSnapshot(CustomSnapshotDirnameMixin, JSONSnapshotExtension):
         )
         test_name = original_name.split("[").pop(0)
         execution_mode = next(
-            s for s in original_name.split("-") if s in ["async", "sequential"]
+            s for s in original_name.split("-") if s in ["sequential"]
         )
         hasdata = "nodata" if "nodata" in original_name else "data"
         specifier = hasdata + (f"-{execution_mode}" if "failure" in test_name else "")
@@ -228,7 +228,7 @@ def results_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
 @dataclass
 class RunParams:
     api: Literal["app", "cli"]
-    execution_mode: Literal["async", "sequential"]
+    execution_mode: Literal["sequential"]
     mock_io: bool = True
 
     @property
@@ -240,15 +240,11 @@ class RunParams:
 @pytest.fixture(
     scope="session",
     params=[
-        RunParams(api="app", execution_mode="async"),
         RunParams(api="app", execution_mode="sequential"),
-        RunParams(api="cli", execution_mode="async"),
         RunParams(api="cli", execution_mode="sequential"),
     ],
     ids=[
-        "app-async-mock-io",
         "app-sequential-mock-io",
-        "cli-async-mock-io",
         "cli-sequential-mock-io",
     ],
 )

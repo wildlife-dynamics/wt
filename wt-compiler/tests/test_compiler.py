@@ -276,8 +276,6 @@ class TestFingerprint:
         dags = Dags(
             **{
                 "__init__.py": "",
-                "run_async_mock_io.py": "",
-                "run_async.py": "",
                 "run_sequential_mock_io.py": "",
                 "run_sequential.py": "",
             }
@@ -338,8 +336,6 @@ class TestFingerprint:
         dags = Dags(
             **{
                 "__init__.py": "",
-                "run_async_mock_io.py": "",
-                "run_async.py": "",
                 "run_sequential_mock_io.py": "",
                 "run_sequential.py": "",
             }
@@ -403,8 +399,6 @@ class TestFingerprint:
         dags = Dags(
             **{
                 "__init__.py": "",
-                "run_async_mock_io.py": "",
-                "run_async.py": "",
                 "run_sequential_mock_io.py": "",
                 "run_sequential.py": "",
             }
@@ -479,8 +473,6 @@ class TestFingerprint:
         dags = Dags(
             **{
                 "__init__.py": "",
-                "run_async_mock_io.py": "",
-                "run_async.py": "",
                 "run_sequential_mock_io.py": "",
                 "run_sequential.py": "",
             }

@@ -33,8 +33,6 @@ class Dags(BaseModel):
     """Target directory for the generated DAGs."""
 
     init_dot_py: str = Field(..., alias="__init__.py")
-    run_async_mock_io: str = Field(..., alias="run_async_mock_io.py")
-    run_async: str = Field(..., alias="run_async.py")
     run_sequential_mock_io: str = Field(..., alias="run_sequential_mock_io.py")
     run_sequential: str = Field(..., alias="run_sequential.py")
 
