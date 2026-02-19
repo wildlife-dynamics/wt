@@ -49,6 +49,16 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Clean pixi build caches to prevent stale packages
+# pixi-build-python only tracks pyproject.toml for cache invalidation,
+# not source code changes, so we must invalidate caches ourselves
+clean_build_caches() {
+    log_info "Cleaning pixi build caches to prevent stale packages"
+    rm -rf "$REPO_ROOT/.pixi/build/pkgs-v0"
+    rm -rf "$REPO_ROOT/.pixi/build/metadata-v0"
+    rm -rf "$REPO_ROOT/.pixi/build/work"
+}
+
 # Function to extract version from git tag
 get_version() {
     local pkg="$1"
@@ -161,6 +171,8 @@ setup_output_dir() {
     mkdir -p "$OUTPUT_DIR/linux-64"
     mkdir -p "$OUTPUT_DIR/osx-arm64"
     mkdir -p "$OUTPUT_DIR/osx-64"
+    # Clean old packages to prevent stale artifacts
+    rm -f "$OUTPUT_DIR/noarch"/*.conda
 }
 
 # Main execution
@@ -174,6 +186,9 @@ main() {
 
     # Setup output directory
     setup_output_dir
+
+    # Clean pixi build caches before building
+    clean_build_caches
 
     if [[ -n "$target_pkg" ]]; then
         # Build single package
