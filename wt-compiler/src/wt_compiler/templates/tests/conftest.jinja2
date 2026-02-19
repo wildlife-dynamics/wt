@@ -14,6 +14,9 @@ import numpy as np
 import pytest
 import ruamel.yaml
 from opentelemetry import trace
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider as SDKTracerProvider
+from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
 from PIL import Image
 from playwright.async_api import async_playwright
 from rattler import MatchSpec
@@ -29,7 +32,6 @@ from wt_runner.app import app
 from wt_runner.testing import Case, CaseRunner
 from wt_runner.tracing import (
     build_context_headers,
-    configure_tracer,
     make_otel_console_exporter_file_dst_kws,
 )
 
@@ -360,13 +362,23 @@ def conftest_tracer_dst(results_dir: Path):
     return results_dir / "otel_traces.jsonl"
 
 
-@pytest.fixture(scope="session")
-def conftest_tracer(conftest_tracer_dst: Path) -> trace.Tracer:
+@pytest.fixture(scope="session", autouse=True)
+def conftest_tracer_provider(conftest_tracer_dst: Path):
     otel_exporter_kws = make_otel_console_exporter_file_dst_kws(
         target_dir=conftest_tracer_dst.parent,
     )
-    configure_tracer("conftest", exporter="console", exporter_kws=otel_exporter_kws)
-    return trace.get_tracer(__name__)
+    resource = Resource.create({"service.name": "conftest"})
+    provider = SDKTracerProvider(resource=resource)
+    provider.add_span_processor(
+        SimpleSpanProcessor(ConsoleSpanExporter(**otel_exporter_kws))
+    )
+    trace.set_tracer_provider(provider)
+    return provider
+
+
+@pytest.fixture(scope="session")
+def conftest_tracer(conftest_tracer_provider) -> trace.Tracer:
+    return conftest_tracer_provider.get_tracer(__name__)
 
 
 @pytest.fixture(scope="session")
@@ -380,7 +392,11 @@ def response_json_success(
     io_tasks_importable_references: list[str],
     conftest_tracer: trace.Tracer,
     conftest_tracer_dst: Path,
+    conftest_tracer_provider,
 ) -> Generator[dict]:
+    if conftest_tracer_dst.exists():
+        with conftest_tracer_dst.open("w") as f:
+            pass
     data_connections_env_vars = None
     if no_data:
         import pandas as pd
@@ -408,9 +424,7 @@ def response_json_success(
             data_connections_env_vars,
             traceparent=traceparent,
         )
-    # exit context to close span, and then flush tracer provider
-    provider = trace.get_tracer_provider()
-    provider.force_flush()
+    conftest_tracer_provider.force_flush()
     yield result
     if conftest_tracer_dst.exists():
         with conftest_tracer_dst.open("r+") as f:
