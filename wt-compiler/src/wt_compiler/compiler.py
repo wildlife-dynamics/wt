@@ -433,8 +433,32 @@ class DagCompiler(BaseModel):
                 MatchSpec(f"{r.channel.base_url}::{r.name} {version_str}")
             )
 
-        # 4. Build feature.runner.dependencies
+        # 3b. Add cli.py runtime dependencies (used by generated cli.py)
         runner_channel = self.wt_runner_channel
+        task_pkg = f"wt-task-{self.variant}" if self.variant else "wt-task"
+        cli_runtime_deps: dict[str, NamelessMatchSpec] = {
+            "click": NamelessMatchSpec.from_match_spec(
+                MatchSpec("conda-forge::click >=8.0.0,<9.0.0")
+            ),
+            "obstore": NamelessMatchSpec.from_match_spec(
+                MatchSpec("conda-forge::obstore >=0.6.0,<0.7.0")
+            ),
+            "pydantic": NamelessMatchSpec.from_match_spec(
+                MatchSpec("conda-forge::pydantic >=2.0.0,<3.0.0")
+            ),
+            "ruamel.yaml": NamelessMatchSpec.from_match_spec(
+                MatchSpec("conda-forge::ruamel.yaml >=0.19.0,<0.20.0")
+            ),
+            "opentelemetry-api": NamelessMatchSpec.from_match_spec(
+                MatchSpec("conda-forge::opentelemetry-api >=1.20.0,<2.0.0")
+            ),
+            task_pkg: NamelessMatchSpec.from_match_spec(
+                MatchSpec(f"{runner_channel}::{task_pkg} *")
+            ),
+        }
+        dependencies.update(cli_runtime_deps)
+
+        # 4. Build feature.runner.dependencies
         runner_pkg = f"wt-runner-{self.variant}" if self.variant else "wt-runner"
 
         runner_deps: dict[str, NamelessMatchSpec] = {
