@@ -171,7 +171,9 @@ setup_output_dir() {
     mkdir -p "$OUTPUT_DIR/osx-arm64"
     mkdir -p "$OUTPUT_DIR/osx-64"
     # Clean old packages to prevent stale artifacts
-    rm -f "$OUTPUT_DIR/noarch"/*.conda
+    for pkg in "${ALL_PACKAGES[@]}"; do
+        rm -f "$OUTPUT_DIR/noarch/${pkg}"-*.conda
+    done
 }
 
 # Main execution
