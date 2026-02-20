@@ -7,6 +7,10 @@ repos:
     # spec_path: spec.yaml  # Default: spec.yaml at repo root
     generated_path: ecoscope-workflows-events-workflow
 
+  - url: https://github.com/ecoscope-platform-workflows-releases/events
+    ref: latest-release
+    generated_path: ecoscope-workflows-events-workflow
+
   # Example with custom ref and spec path:
   # - url: https://github.com/example/custom-workflow
   #   ref: v2.0.0
