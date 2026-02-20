@@ -29,13 +29,12 @@ def generate_matrix() -> dict[str, list[dict[str, str]]]:
     refs = ["main", "latest-release"]
 
     entries = []
-    for ref in refs:
-        configs = get_repo_configs(manifest, ref_override=ref)
-        for config in configs:
-            entries.append({
-                "id": config.id,
-                "name": config.id.replace("@", " @ "),
-            })
+    configs = get_repo_configs(manifest)
+    for config in configs:
+        entries.append({
+            "id": config.id,
+            "name": config.id.replace("@", " @ "),
+        })
 
     return {"include": entries}
 
