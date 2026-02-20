@@ -6,11 +6,9 @@ This module provides the SyncTask class for synchronous task execution.
 from __future__ import annotations
 
 import inspect
-import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, cast, overload
-
 
 try:
     from opentelemetry import trace
