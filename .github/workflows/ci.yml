@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - wt-contracts
+          - wt-registry
+          - wt-task
+        python-version:
+          - "3.10"
+          - "3.11"
+          - "3.12"
+          - "3.13"
+        extras: [""]
+        include:
+          # Additional runs WITH gcp extra
+          - package: wt-task
+            python-version: "3.13"
+            extras: "--extra gcp"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.package }}
+        run: uv sync ${{ matrix.extras }} --dev
+
+      - name: Run ruff check
+        working-directory: ${{ matrix.package }}
+        run: uv run ruff check src/
+
+      - name: Run ruff format check
+        working-directory: ${{ matrix.package }}
+        run: uv run ruff format --check src/
+
+      - name: Run mypy
+        working-directory: ${{ matrix.package }}
+        run: uv run mypy src/
+
+      - name: Run pytest
+        working-directory: ${{ matrix.package }}
+        run: uv run pytest

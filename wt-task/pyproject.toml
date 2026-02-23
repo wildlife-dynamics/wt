@@ -1,0 +1,144 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wt-task"
+dynamic = ["version"]
+description = "Task decorator and execution features for wt ecosystem"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "Ecoscope Workflows Team" }
+]
+keywords = ["workflow", "task", "execution", "decorator"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "wt-contracts>=0.1.0,<1.0.0",
+    "pydantic>=2.0.0,<3.0.0",
+    "typing-extensions>=4.0.0; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+gcp = [
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-exporter-gcp-trace>=1.6.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-asyncio>=0.21.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+]
+
+[tool.uv.sources]
+# Development override - uses local editable wt-contracts
+# Published packages will reference PyPI version normally
+wt-contracts = { path = "../wt-contracts", editable = true }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+# Version comes from git tags matching this pattern
+tag_regex = "^wt-task/v(?P<version>[0.9.]+)$"
+# Root is the git repository root (parent of wt/)
+root = ".."
+# Generate version file
+version_file = "src/wt_task/_version.py"
+# Fallback version for development without git
+fallback_version = "0.1.0.dev0"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "--doctest-modules --doctest-continue-on-failure --cov=wt_task --cov-report=term-missing"
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+
+[[tool.mypy.overrides]]
+module = [
+    "opentelemetry",
+    "opentelemetry.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "wt_task.tracing._config",
+    "wt_task.tracing._decorator",
+]
+warn_unused_ignores = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501", # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"] # unused imports in __init__.py are often intentional
+
+# ============================================================================
+# Pixi Build Configuration (conda package building)
+# ============================================================================
+
+[tool.pixi.package]
+name = "wt-task"
+version = "0.1.0"
+
+[tool.pixi.package.build]
+backend = { name = "pixi-build-python", version = "*", channels = ["conda-forge", "https://prefix.dev/pixi-build-backends"] }
+
+[tool.pixi.package.build.config]
+noarch = true
+
+[tool.pixi.package.host-dependencies]
+python = ">=3.10,<3.16"
+setuptools = ">=64"
+setuptools-scm = ">=8"
+pip = "*"
+
+[tool.pixi.package.run-dependencies]
+python = ">=3.10,<3.16"
+pydantic = ">=2.0.0,<3.0.0"
+wt-contracts = ">=0.1.0,<1.0.0"
