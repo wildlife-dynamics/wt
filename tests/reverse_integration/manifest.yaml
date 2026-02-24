@@ -1,0 +1,33 @@
+# Reverse Integration Test Manifest
+# Lists downstream repos to test against the latest wt-compiler
+
+repos:
+  - url: https://github.com/ecoscope-platform-workflows-releases/events
+    # ref: main  # Default: main branch
+    # spec_path: spec.yaml  # Default: spec.yaml at repo root
+    generated_path: ecoscope-workflows-events-workflow
+
+  - url: https://github.com/ecoscope-platform-workflows-releases/events
+    ref: latest-release
+    generated_path: ecoscope-workflows-events-workflow
+
+  # Example with custom ref and spec path:
+  # - url: https://github.com/example/custom-workflow
+  #   ref: v2.0.0
+  #   spec_path: config/spec.yaml
+  #   generated_path: my-workflow-package
+
+  # Example with multiple specs in a monorepo:
+  # - url: https://github.com/example/workflows-monorepo
+  #   specs:
+  #     - spec_path: workflows/etl/spec.yaml
+  #       generated_path: workflows/etl/wf-etl-workflow
+  #     - spec_path: workflows/reports/spec.yaml
+  #       generated_path: workflows/reports/wf-reports-workflow
+
+# Files allowed to have diffs after recompilation
+# These files contain dynamic content (hashes, versions, lock files)
+diff_allowlist:
+  - README.md
+  - pixi.lock
+  - VERSION.yaml
