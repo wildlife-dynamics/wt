@@ -1,0 +1,16 @@
+# Workspace configuration for building conda packages with pixi build
+# See: https://pixi.prefix.dev/dev/python/pyproject_toml/
+#
+# Note: Each wt-* package has its own [tool.pixi.*] configuration in its pyproject.toml.
+# Build packages using: ./scripts/build-conda-packages.sh
+# Or individually: pixi build --manifest-path wt-contracts/pyproject.toml --output-dir ${WT_CONDA_CHANNEL:-/tmp/wt-conda-channel}
+
+[workspace]
+name = "wt-monorepo"
+channels = ["conda-forge", "https://prefix.dev/pixi-build-backends", "https://repo.prefix.dev/ecoscope-workflows"]
+platforms = ["linux-64", "osx-arm64", "osx-64"]
+preview = ["pixi-build"]
+
+[dependencies]
+python = ">=3.10,<3.16"
+rattler-index = "*"
