@@ -1,0 +1,112 @@
+{% macro create_callable(t, partial, method, validate, params, set_executor) %}
+task({{ t.known_task.importable_reference.function }})
+{% if validate %}
+.validate()
+{% else %}
+# 🧪 validation omitted for mocked IO task (returns pre-loaded example data)
+{% endif %}
+.set_task_instance_id("{{ t.id }}")
+.handle_errors()
+.with_tracing()
+{% if t.skipif %}
+.skipif(
+    conditions=[
+        {% for condition in t.skipif.known_tasks %}
+        {{ condition.importable_reference.function }},
+        {% endfor %}
+    ],
+    unpack_depth={{ t.skipif.unpack_depth }},
+)
+{% endif %}
+{% if partial %}
+.partial({% for arg in partial %}{{ arg }}={{ partial[arg]["asstr"] }},{% endfor %} **{{ params }})
+{% elif params %}
+.partial(**{{ params }})
+{% endif %}
+{% if set_executor %}
+.set_executor({{ set_executor }})
+{% endif %}
+{% if method %}
+.{{ method }}
+{% endif %}
+{% endmacro %}
+
+
+{% macro handle_call_method(t, validate, params, indent) %}
+{{ indent }}{{ t.id }} = (
+        {{ create_callable(t, t.partial, t.method, validate, params) }}()
+    )
+{% endmacro %}
+
+
+{% macro handle_parallel_method(t, validate, params, indent, argnames, argvalues) %}
+{{ indent }}{{ t.id }} = (
+        {{ create_callable(t, t.partial, t.method, validate, params) }}(argnames={{ argnames }}, argvalues={{ argvalues }})
+    )
+{% endmacro %}
+
+
+{% macro call_task(t, validate, params, indent) %}
+{% if t.method == "call" %}
+    {{ handle_call_method(t, validate, params, indent) }}
+{% else %}
+    {% if t.method == "map" %}
+        {% set argnames = t.map.argnames %}
+        {% set argvalues = t.map.argvalues["asstr"] %}
+    {% elif t.method == "mapvalues" %}
+        {% set argnames = t.mapvalues.argnames %}
+        {% set argvalues = t.mapvalues.argvalues["asstr"] %}
+    {% endif %}
+    {{ handle_parallel_method(t, validate, params, indent, argnames, argvalues) }}
+{% endif %}
+{% endmacro %}
+
+
+{% macro handle_async_partial_arg_aslist(aslist) %}[
+                    {% for v in aslist %}
+                    {% if v["is_inline_value"] %}
+                    {{ v["asstr"] }},
+                    {% elif v["has_variable_values"] %}
+                    {{ v["asstr"] }},
+                    {% else %}
+                    {% if "os.environ" in v["asstr"] %}
+                    {{ v["aslist"][0] }},
+                    {% else %}
+                    DependsOn("{{ v["aslist"][0] }}"),
+                    {% endif %}
+                    {% endif %}
+                    {% endfor %}
+                ]{% endmacro %}
+
+
+{% macro handle_async_partial_arg(arg, value) %}
+    {% if value["has_variable_values"] %}
+    {% if value["asdict"] %}
+    "{{ arg }}": {
+        {% for nested_arg, nested_value in value["asdict"].items() %}
+        {{ handle_async_partial_arg(nested_arg, nested_value) }}
+        {% endfor %}
+    },
+    {% elif value["aslist"] %}
+    "{{ arg }}": {{ handle_async_partial_arg_aslist(value["aslist"]) }},
+    {% endif %}
+    {% elif value["is_inline_value"] %}
+    "{{ arg }}": {{ value["asstr"] }},
+    {% else %}
+    {% if value["aslist"]|length > 1 %}
+    "{{ arg }}": DependsOnSequence(
+        [
+            {% for v in value["aslist"] %}
+            DependsOn("{{ v }}"),
+            {% endfor %}
+        ],
+    ),
+    {% else %}
+    {% if "os.environ" in value["asstr"] %}
+    "{{ arg }}": {{ value["aslist"][0]  }},
+    {% else %}
+    "{{ arg }}": DependsOn("{{ value["aslist"][0] }}"),
+    {% endif %}
+    {% endif %}
+    {% endif %}
+{% endmacro %}
