@@ -46,6 +46,8 @@ wt-compiler/src/wt_compiler/wizard/
 Self-describing types for yielded question dicts. Live in `abstract.py` alongside the ABC. The question dict nests argparse-compatible kwargs and wizard-specific kwargs under separate keys for clarity.
 
 ```python
+from __future__ import annotations  # required for circular WizardQuestion reference
+
 class ArgparseKwargs(TypedDict, total=False):
     """Kwargs passable directly to argparse.ArgumentParser.add_argument()."""
     type: type | Callable[[str], Any]  # Coercion callable (e.g., str, int)
@@ -59,13 +61,36 @@ class ArgparseKwargs(TypedDict, total=False):
 class WizardKwargs(TypedDict, total=False):
     """Wizard-specific metadata not passed to argparse."""
     error: str                          # Validation error (present on re-yield)
-    loop: bool                          # True = repeating question (e.g., requirements)
     condition: Callable[[MappingProxyType[str, Any]], bool]  # Gate: skip if returns False
 
-class WizardQuestion(TypedDict):
+class SingleWizardQuestion(TypedDict):
+    """A single question yielded by the wizard."""
     dest: str                           # Answer key, usable as argparse dest
     argparse: ArgparseKwargs            # Kwargs for argparse.add_argument()
     wizard: WizardKwargs                # Wizard-specific metadata
+
+class WizardQuestionLoop(TypedDict, total=False):
+    """A repeating group of questions that collects a list of dicts.
+
+    The ``questions`` list is asked as a group, repeated until the user
+    signals "done" by sending an empty/None answer to the first question.
+
+    Constraint: the first question's ``type`` callable MUST reject
+    empty/None input (e.g., ``non_empty_str``), so empty/None
+    unambiguously signals loop termination.
+
+    Recursive nesting is supported: a question in ``questions`` can
+    itself be a ``WizardQuestionLoop``.
+
+    Argparse representation is auto-derived from ``questions`` —
+    ``--{dest}`` flag with ``action="append"`` and a composite JSON
+    type validator built from sub-questions' ``type``/``choices``.
+    No explicit ``argparse`` field is needed on ``WizardQuestionLoop``."""
+    dest: str                           # Key for the collected list (e.g., "requirements") [required]
+    questions: list[WizardQuestion]     # Body questions asked per iteration (recursive) [required]
+    condition: Callable[[MappingProxyType[str, Any]], bool]  # Gate: skip entire loop if returns False
+
+WizardQuestion = SingleWizardQuestion | WizardQuestionLoop
 
 def with_condition(
     questions: list[WizardQuestion],
@@ -73,10 +98,13 @@ def with_condition(
 ) -> list[WizardQuestion]:
     """Apply a condition gate to all questions in a branch.
     Enables composing question branches separately and splicing
-    them together with a conditional gate."""
+    them together with a conditional gate.
+
+    Handles both ``SingleWizardQuestion`` (sets ``wizard.condition``)
+    and ``WizardQuestionLoop`` (sets top-level ``condition``)."""
 ```
 
-A future CLI extracts `question["argparse"]` and passes it directly as `**kwargs` to `parser.add_argument(f'--{question["dest"]}', **question["argparse"])`.
+A future CLI extracts `question["argparse"]` from each `SingleWizardQuestion` and passes it directly as `**kwargs` to `parser.add_argument(f'--{question["dest"]}', **question["argparse"])`. For `WizardQuestionLoop`, the argparse representation is auto-derived via `_make_loop_type()` (see below).
 
 ### AbstractWizardProvider
 
@@ -95,9 +123,20 @@ class AbstractWizardProvider(ABC):
     @abstractmethod
     def get_questions(self) -> list[WizardQuestion]: ...
 
-    def input_generator(self) -> Generator[WizardQuestion, str | None, None]:
+    def _validate_answer(self, question: SingleWizardQuestion, answer: str | None) -> Generator[SingleWizardQuestion, str | None, Any]:
+        """Validate/coerce answer via the question's type callable.
+        Re-yields question with error on validation failure until a valid answer is received."""
+        ...
+
+    def _process_question(self, question: WizardQuestion) -> Generator[SingleWizardQuestion, str | None, Any]:
+        """Process a single question or loop group, recursively via yield from."""
+        ...
+
+    def input_generator(self) -> Generator[SingleWizardQuestion, str | None, None]:
         """Generic generator loop. Iterates get_questions(), validates via type callables,
-        handles re-yields on error and loop questions. Concrete — rarely needs overriding."""
+        handles re-yields on error and loop questions. Uses _process_question() with
+        yield from for recursive WizardQuestionLoop support.
+        Concrete — rarely needs overriding."""
         ...
 
     def dump(self, workdir: Path) -> None:
