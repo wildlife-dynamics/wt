@@ -235,7 +235,8 @@ def input_generator(self) -> Generator[WizardQuestion, str | None, None]:
                 except (ValueError, argparse.ArgumentTypeError) as e:
                     answer = yield {**question, "wizard": {**question.get("wizard", {}), "error": str(e)}}
         else:
-            self._answers[question["dest"]] = coerced or question.get("argparse", {}).get("default")
+            default = question.get("argparse", {}).get("default")
+            self._answers[question["dest"]] = coerced if coerced is not None else default
 ```
 
 ### Validation via `argparse.type` callables
