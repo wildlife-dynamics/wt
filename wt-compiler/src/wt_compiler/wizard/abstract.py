@@ -272,7 +272,10 @@ class AbstractWizardProvider(ABC):
             single = cast(SingleWizardQuestion, question)
             answer = yield single
             coerced = yield from self._validate_answer(single, answer)
-            return coerced or single.get("argparse", {}).get("default")
+            default = single.get("argparse", {}).get("default")
+            if coerced is None or coerced == "":
+                return default
+            return coerced
 
     def input_generator(
         self,
