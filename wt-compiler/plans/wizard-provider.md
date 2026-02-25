@@ -242,7 +242,7 @@ def input_generator(self) -> Generator[WizardQuestion, str | None, None]:
 
 Validation is done through argparse-idiomatic `type` callables that raise `ArgumentTypeError` or `ValueError` on invalid input. The generator catches these and re-yields with the error message. Defined as standalone functions referenced in `get_questions()`:
 
-- `workflow_id` → `workflow_id_type(value)` — raises if not identifier, >64 chars, keyword, or builtin (mirrors `spec.py` lines 339-376)
+- `workflow_id` → `workflow_id_type(value)` — raises if not identifier, >64 chars, keyword, or builtin (mirrors `spec.py` `_is_not_reserved` (lines 339–353, which calls `_is_identifier`) and `_is_valid_spec_name` (lines 372–376))
 - `workflow_name`, `author_name` → `non_empty_str(value)` — raises if empty/whitespace
 - `license_type` → argparse handles via `choices` list (no custom type needed)
 - `requirement` (loop) → `type=str` (no validation; empty string signals done)
