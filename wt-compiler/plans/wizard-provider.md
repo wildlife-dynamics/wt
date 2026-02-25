@@ -241,14 +241,15 @@ def input_generator(self) -> Generator[WizardQuestion, str | None, None]:
                     except (ValueError, argparse.ArgumentTypeError) as e:
                         answer = yield {**question, "wizard": {**question.get("wizard", {}), "error": str(e)}}
         else:
-            self._answers[question["dest"]] = coerced or question.get("argparse", {}).get("default")
+            default = question.get("argparse", {}).get("default")
+            self._answers[question["dest"]] = coerced if coerced is not None else default
 ```
 
 ### Validation via `argparse.type` callables
 
 Validation is done through argparse-idiomatic `type` callables that raise `ArgumentTypeError` or `ValueError` on invalid input. The generator catches these and re-yields with the error message. Defined as standalone functions referenced in `get_questions()`:
 
-- `workflow_id` → `workflow_id_type(value)` — raises if not identifier, >64 chars, keyword, or builtin (mirrors `spec.py` lines 339-376)
+- `workflow_id` → `workflow_id_type(value)` — raises if not identifier, >64 chars, keyword, or builtin (mirrors `spec.py` `_is_not_reserved` (lines 339–353, which calls `_is_identifier`) and `_is_valid_spec_name` (lines 372–376))
 - `workflow_name`, `author_name` → `non_empty_str(value)` — raises if empty/whitespace
 - `license_type` → argparse handles via `choices` list (no custom type needed)
 - `requirement` (loop) → `matchspec_or_empty(value)` — if non-empty, validates via `rattler.MatchSpec(value)` and raises `ArgumentTypeError` on failure; returns the string on success. Empty/falsy input bypasses validation and signals loop termination (handled by the generator, not this callable).
