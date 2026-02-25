@@ -1,0 +1,16 @@
+# Test cases for {{ workflow_id }}
+# Each top-level key is a test case name. Fields per case:
+#   name: str                  - Human-readable name
+#   description: str           - What the test case covers
+#   params: dict               - Workflow parameters
+#   raises: bool               - Whether an error is expected (default: false)
+#   expected_status_code: int  - Expected HTTP status (default: 200)
+#
+# Example:
+# my-test-case:
+#   name: My Test Case
+#   description: Tests the default workflow behavior
+#   params:
+#     param_name: value
+#   raises: false
+#   expected_status_code: 200
