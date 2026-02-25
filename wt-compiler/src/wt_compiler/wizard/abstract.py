@@ -302,6 +302,15 @@ class AbstractWizardProvider(ABC):
             if condition and not condition(self.answers):
                 continue
             result = yield from self._process_question(question)
+            # Enforce argparse.choices for single questions in interactive mode
+            if not _is_loop(question):
+                argparse_kwargs = cast(SingleWizardQuestion, question).get("argparse", {})
+                choices = argparse_kwargs.get("choices")
+                if choices is not None and result not in choices:
+                    raise ValueError(
+                        f"Invalid choice {result!r} for {question['dest']!r}; "
+                        f"expected one of {choices!r}"
+                    )
             self._answers[question["dest"]] = result
 
     def dump(self, workdir: Path) -> None:
