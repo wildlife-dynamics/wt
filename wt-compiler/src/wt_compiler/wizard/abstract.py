@@ -155,9 +155,7 @@ def _make_loop_type(
         except json.JSONDecodeError as e:
             raise argparse.ArgumentTypeError(f"Invalid JSON: {e}") from e
         if not isinstance(d, dict):
-            raise argparse.ArgumentTypeError(
-                f"Expected a JSON object (got {type(d).__name__})"
-            )
+            raise argparse.ArgumentTypeError(f"Expected a JSON object (got {type(d).__name__})")
         for _sub_q in questions:
             sq = cast(SingleWizardQuestion, _sub_q)
             dest = sq["dest"]
