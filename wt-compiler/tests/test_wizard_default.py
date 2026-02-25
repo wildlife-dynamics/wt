@@ -54,6 +54,40 @@ class TestWorkflowIdValidation:
             workflow_id_type("")
 
 
+class TestGetQuestionsIsolation:
+    """Tests verifying that get_questions() returns independent copies."""
+
+    def test_get_questions_returns_deep_copy(self) -> None:
+        """Mutating returned questions does not affect subsequent calls."""
+        provider = DefaultWizardProvider()
+        qs1 = provider.get_questions()
+        # Mutate the choices list of license_type in the first copy
+        for q in qs1:
+            if q["dest"] == "license_type":
+                q["argparse"]["choices"] = ["Custom"]
+
+        # Second call must return the original choices
+        qs2 = provider.get_questions()
+        for q in qs2:
+            if q["dest"] == "license_type":
+                assert q["argparse"]["choices"] == ["BSD-3-Clause", "MIT", "Apache-2.0"]
+
+    def test_get_questions_independent_instances(self) -> None:
+        """Two separate providers return independent question lists."""
+        p1 = DefaultWizardProvider()
+        p2 = DefaultWizardProvider()
+        qs1 = p1.get_questions()
+        qs2 = p2.get_questions()
+        # Mutate p1's list
+        for q in qs1:
+            if q["dest"] == "license_type":
+                q["argparse"]["choices"] = ["Custom"]
+        # p2's list must be unaffected
+        for q in qs2:
+            if q["dest"] == "license_type":
+                assert q["argparse"]["choices"] == ["BSD-3-Clause", "MIT", "Apache-2.0"]
+
+
 class TestRequirementsLoop:
     """Tests for the requirements WizardQuestionLoop."""
 
