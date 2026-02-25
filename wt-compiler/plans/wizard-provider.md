@@ -104,7 +104,47 @@ def with_condition(
     and ``WizardQuestionLoop`` (sets top-level ``condition``)."""
 ```
 
-A future CLI extracts `question["argparse"]` from each `SingleWizardQuestion` and passes it directly as `**kwargs` to `parser.add_argument(f"--{question['dest'].replace('_', '-')}", **question["argparse"])`. Argparse automatically maps hyphenated flags (e.g., `--workflow-id`) back to underscore-based `dest` attributes. For `WizardQuestionLoop`, the argparse representation is auto-derived via `_make_loop_type()` (see below).
+A future CLI extracts `question["argparse"]` from each `SingleWizardQuestion` and passes it directly as `**kwargs` to `parser.add_argument(f"--{question['dest'].replace('_', '-')}", **question["argparse"])`. Argparse automatically maps hyphenated flags (e.g., `--workflow-id`) back to underscore-based `dest` attributes. For `WizardQuestionLoop`, the argparse representation is auto-derived via `_make_loop_type()`:
+
+```python
+def _make_loop_type(questions: list[WizardQuestion]) -> Callable[[str], dict]:
+    """Build a composite argparse type callable from loop sub-questions.
+    Parses JSON, then validates each sub-field using its question's type/choices."""
+    def type_fn(value: str) -> dict:
+        try:
+            d = json.loads(value)
+        except json.JSONDecodeError as e:
+            raise ArgumentTypeError(f"Invalid JSON: {e}")
+        for sub_q in questions:
+            dest = sub_q["dest"]
+            if dest not in d:
+                default = sub_q.get("argparse", {}).get("default")
+                if default is not None:
+                    d[dest] = default
+                    continue
+                raise ArgumentTypeError(f"Missing required field: {dest}")
+            sub_type_fn = sub_q.get("argparse", {}).get("type", str)
+            try:
+                d[dest] = sub_type_fn(d[dest])
+            except (ValueError, ArgumentTypeError) as e:
+                raise ArgumentTypeError(f"Invalid {dest}: {e}")
+            choices = sub_q.get("argparse", {}).get("choices")
+            if choices and d[dest] not in choices:
+                raise ArgumentTypeError(f"Invalid {dest}: must be one of {choices}")
+        return d
+    return type_fn
+```
+
+When building the argparse parser, detect `WizardQuestionLoop` and auto-generate:
+```python
+parser.add_argument(
+    f'--{loop_q["dest"].replace("_", "-")}',
+    type=_make_loop_type(loop_q["questions"]),
+    action="append",
+    default=[],
+    help=f"JSON: {', '.join(q['dest'] for q in loop_q['questions'])}",
+)
+```
 
 ### AbstractWizardProvider
 
@@ -203,46 +243,97 @@ class MyProvider(DefaultWizardProvider):
 | 3 | `workflow_description` | free text | None (optional, defaults to `""`) | For README |
 | 4 | `author_name` | free text | Non-empty | For README + LICENSE |
 | 5 | `license_type` | select | Must be in choices list | Choices: `BSD-3-Clause`, `MIT`, `Apache-2.0`. Default: `BSD-3-Clause` |
-| 6 | `requirement` | free text (loop) | Optional: validate as conda MatchSpec if non-empty | Repeats until empty input. Collects into `self.answers["requirements"]` list |
+| 6 | `requirements` | `WizardQuestionLoop` | See sub-questions below | Loop of structured sub-questions; collects into `self._answers["requirements"]` as list of dicts |
 
-### Generic `input_generator()` loop
+**Question 6 detail — `WizardQuestionLoop`:**
 
 ```python
-def input_generator(self) -> Generator[WizardQuestion, str | None, None]:
+WizardQuestionLoop(
+    dest="requirements",
+    questions=[
+        SingleWizardQuestion(
+            dest="name",
+            argparse={"help": "Package name", "type": non_empty_str},
+            wizard={},
+        ),
+        SingleWizardQuestion(
+            dest="version",
+            argparse={"help": "Version spec", "type": requirement_version_type, "default": "*"},
+            wizard={},
+        ),
+        SingleWizardQuestion(
+            dest="channel",
+            argparse={"help": "Channel", "choices": CHANNEL_CHOICES, "default": "conda-forge"},
+            wizard={},
+        ),
+    ],
+)
+```
+
+| # | dest | type | validation | notes |
+|---|------|------|------------|-------|
+| 6.questions[0] | `name` | free text | `non_empty_str` | First question — empty input ends the loop |
+| 6.questions[1] | `version` | free text | `requirement_version_type` — validates via `rattler.NamelessMatchSpec(value)` | Default: `"*"` |
+| 6.questions[2] | `channel` | select | `choices` list built from `requirements.CHANNELS` at runtime via `_serialize_channel()` | Default: `"conda-forge"` |
+
+Collected as `self._answers["requirements"] = [{"name": "pkg1", "version": "*", "channel": "conda-forge"}, ...]`
+
+### Recursive `_process_question()` and `input_generator()` loop
+
+The generator logic is split into three methods. `_validate_answer()` handles validation/coercion with re-yield on error. `_process_question()` handles a single question or loop group recursively via `yield from`. `input_generator()` iterates the top-level question list.
+
+The generator only yields `SingleWizardQuestion` dicts to the caller (never `WizardQuestionLoop`). The loop structure is handled internally — the caller just sees a sequence of individual questions.
+
+`yield from` propagates `send()` values through to sub-generators, so recursive nesting works correctly at arbitrary depth.
+
+```python
+def _validate_answer(self, question: SingleWizardQuestion, answer: str | None):
+    """Validate/coerce answer via the question's type callable.
+    Re-yields question with error on validation failure until a valid answer is received."""
+    type_fn = question.get("argparse", {}).get("type", str)
+    while True:
+        try:
+            return type_fn(answer) if answer else answer
+        except (ValueError, argparse.ArgumentTypeError) as e:
+            answer = yield {**question, "wizard": {**question.get("wizard", {}), "error": str(e)}}
+
+def _process_question(self, question: WizardQuestion) -> Generator[SingleWizardQuestion, str | None, Any]:
+    """Process a single question or loop group, recursively via yield from."""
+    if "questions" in question:
+        # WizardQuestionLoop: repeat body questions until first answer is empty.
+        # Constraint: first question's type callable must reject empty/None,
+        # so empty/None unambiguously signals loop termination.
+        results = []
+        first_q = question["questions"][0]
+        answer = yield first_q
+        while answer:  # empty/None on first question = done
+            coerced = yield from self._validate_answer(first_q, answer)
+            entry = {first_q["dest"]: coerced}
+            for sub_q in question["questions"][1:]:
+                sub_value = yield from self._process_question(sub_q)  # recursive
+                entry[sub_q["dest"]] = sub_value
+            results.append(entry)
+            answer = yield first_q  # re-yield first question for next iteration
+        return results
+    else:
+        # SingleWizardQuestion
+        answer = yield question
+        coerced = yield from self._validate_answer(question, answer)
+        return coerced or question.get("argparse", {}).get("default")
+
+def input_generator(self) -> Generator[SingleWizardQuestion, str | None, None]:
     for question in self.get_questions():
-        # Conditional gating: skip if condition returns False
-        condition = question.get("wizard", {}).get("condition")
+        # Condition check — works for both SingleWizardQuestion and WizardQuestionLoop
+        if "wizard" in question:
+            condition = question["wizard"].get("condition")
+        elif "condition" in question:
+            condition = question["condition"]
+        else:
+            condition = None
         if condition and not condition(self.answers):
             continue
-        is_loop = question.get("wizard", {}).get("loop", False)
-        type_fn = question.get("argparse", {}).get("type", str)
-        answer = yield question
-        # Validate via type callable; re-yield with error on exception.
-        # Always call type_fn — let the callable itself decide how to
-        # handle empty/None input (e.g., non_empty_str raises on empty).
-        while True:
-            try:
-                coerced = type_fn(answer)
-                break
-            except (ValueError, argparse.ArgumentTypeError) as e:
-                answer = yield {**question, "wizard": {**question.get("wizard", {}), "error": str(e)}}
-        # Store answer
-        if is_loop:
-            self._answers.setdefault(question["dest"] + "s", [])
-            while coerced:
-                self._answers[question["dest"] + "s"].append(coerced)
-                answer = yield question
-                # Validate loop iteration; re-yield with error until valid.
-                # Empty/falsy answer bypasses type_fn and signals loop termination.
-                while True:
-                    try:
-                        coerced = type_fn(answer) if answer else answer
-                        break
-                    except (ValueError, argparse.ArgumentTypeError) as e:
-                        answer = yield {**question, "wizard": {**question.get("wizard", {}), "error": str(e)}}
-        else:
-            default = question.get("argparse", {}).get("default")
-            self._answers[question["dest"]] = coerced if coerced is not None else default
+        result = yield from self._process_question(question)
+        self._answers[question["dest"]] = result
 ```
 
 ### Validation via `argparse.type` callables
@@ -252,8 +343,24 @@ Validation is done through argparse-idiomatic `type` callables that raise `Argum
 - `workflow_id` → `workflow_id_type(value)` — raises if not identifier, >64 chars, keyword, or builtin (mirrors `spec.py` `_is_not_reserved` (lines 339–353, which calls `_is_identifier`) and `_is_valid_spec_name` (lines 372–376))
 - `workflow_name`, `author_name` → `non_empty_str(value)` — raises if empty/whitespace
 - `license_type` → argparse handles via `choices` list (no custom type needed)
-- `requirement` (loop) → `matchspec_or_empty(value)` — if non-empty, validates via `rattler.MatchSpec(value)` and raises `ArgumentTypeError` on failure; returns the string on success. Empty/falsy input bypasses validation and signals loop termination (handled by the generator, not this callable).
 - `workflow_description` → `type=str` (optional, no validation)
+
+New validation callables for requirements loop (in `default.py`):
+
+```python
+from rattler import NamelessMatchSpec
+from wt_compiler.requirements import CHANNELS, _serialize_channel
+
+def requirement_version_type(value: str) -> str:
+    """Validate a version string as a NamelessMatchSpec."""
+    NamelessMatchSpec(value)  # raises ValueError if invalid
+    return value
+
+CHANNEL_CHOICES: list[str] = [_serialize_channel(c) for c in CHANNELS]
+```
+
+- `requirement_version_type(value)` — validates via `rattler.NamelessMatchSpec(value)`, raises `ValueError` on invalid input
+- `CHANNEL_CHOICES` — channel choices list built from `requirements.CHANNELS` via `_serialize_channel()`; validated by argparse `choices`
 
 ### `.dump(workdir)` method (inherited from ABC)
 
@@ -261,7 +368,7 @@ Inherited concrete `dump()` scans `wt_compiler/wizard/templates/` for top-level 
 
 | File | Template | Template variables |
 |------|----------|--------------------|
-| `spec.yaml` | `spec.yaml.jinja2` | `workflow_id`, `requirements` (list of strings) |
+| `spec.yaml` | `spec.yaml.jinja2` | `workflow_id`, `requirements` (list of dicts with `name`/`version`/`channel`) |
 | `test-cases.yaml` | `test-cases.yaml.jinja2` | `workflow_id` |
 | `README.md` | `README.md.jinja2` | `workflow_name`, `workflow_description`, `author_name`, `license_type` |
 | `LICENSE` | `LICENSE.jinja2` (uses `{% include "licenses/" ~ license_type ~ ".txt" %}`) | `author_name`, `year`, `license_type` |
@@ -275,10 +382,12 @@ Inherited concrete `dump()` scans `wt_compiler/wizard/templates/` for top-level 
 id: {{ workflow_id }}
 requirements:
 {% for req in requirements %}
-- requirement: "{{ req }}"
+  - name: "{{ req.name }}"
+    version: "{{ req.version }}"
+    channel: "{{ req.channel }}"
 {% endfor %}
 {% if not requirements %}
-[]
+  []
 {% endif %}
 workflow: []
 ```
@@ -357,8 +466,10 @@ pixi.lock
 from wt_compiler.wizard.abstract import (
     AbstractWizardProvider,
     ArgparseKwargs,
+    SingleWizardQuestion,
     WizardKwargs,
     WizardQuestion,
+    WizardQuestionLoop,
     with_condition,
 )
 from wt_compiler.wizard.default import DefaultWizardProvider
@@ -367,8 +478,10 @@ __all__ = [
     "AbstractWizardProvider",
     "ArgparseKwargs",
     "DefaultWizardProvider",
+    "SingleWizardQuestion",
     "WizardKwargs",
     "WizardQuestion",
+    "WizardQuestionLoop",
     "with_condition",
 ]
 ```
@@ -395,10 +508,21 @@ A README within the wizard directory focused on what custom provider implementor
 - **Reorder**: rearrange the list
 
 ### WizardQuestion Structure
+
+`WizardQuestion = SingleWizardQuestion | WizardQuestionLoop`
+
+**`SingleWizardQuestion`:**
 - `dest`: answer key, also used as argparse flag name
 - `argparse`: dict of kwargs for `argparse.add_argument()` — `type`, `choices`, `help`, `default`, etc.
-- `wizard`: dict of wizard-specific metadata — `loop`, `condition`, `error`
+- `wizard`: dict of wizard-specific metadata — `condition`, `error`
 - The `argparse.type` callable serves dual duty: coercion AND validation (raise `ArgumentTypeError` on invalid input)
+
+**`WizardQuestionLoop`:**
+- `dest`: key for the collected list (e.g., `"requirements"`)
+- `questions`: list of `WizardQuestion` (sub-questions asked per iteration; recursive nesting supported)
+- `condition`: optional gate to skip the entire loop
+- Termination: empty/None answer on first sub-question ends the loop
+- Argparse: auto-derived `--{dest}` with `action="append"` and composite JSON type validator
 
 ### Conditional Questions
 - Add `condition: Callable[[MappingProxyType], bool]` to `wizard` dict
@@ -415,11 +539,17 @@ def with_condition(
     questions: list[WizardQuestion],
     condition: Callable[[MappingProxyType[str, Any]], bool],
 ) -> list[WizardQuestion]:
-    """Apply a condition gate to all questions in a branch."""
-    return [
-        {**q, "wizard": {**q.get("wizard", {}), "condition": condition}}
-        for q in questions
-    ]
+    """Apply a condition gate to all questions in a branch.
+
+    Handles both SingleWizardQuestion (sets wizard.condition)
+    and WizardQuestionLoop (sets top-level condition)."""
+    result = []
+    for q in questions:
+        if "questions" in q:  # WizardQuestionLoop
+            result.append({**q, "condition": condition})
+        else:  # SingleWizardQuestion
+            result.append({**q, "wizard": {**q.get("wizard", {}), "condition": condition}})
+    return result
 ```
 
 Example usage:
@@ -483,12 +613,14 @@ class MyProvider(DefaultWizardProvider):
 ### `test_wizard_default.py` — DefaultWizardProvider behavior
 
 - `test_workflow_id_validation_*`: Test each validation case via `_validate_workflow_id` — valid, not identifier, too long, keyword, builtin, empty
-- `test_requirements_loop_multiple`: Send 3 requirements then empty → `answers["requirements"]` has 3 items
-- `test_requirements_loop_empty_immediately`: Send empty → empty list
+- `test_requirements_loop_multiple`: Drive name + version + channel per iteration for 3 requirements, then send empty on next `name` prompt → `answers["requirements"]` is a list of 3 dicts, each with `name`/`version`/`channel` keys
+- `test_requirements_loop_empty_immediately`: Send empty on first `name` prompt → `answers["requirements"]` is empty list
+- `test_requirement_version_validation`: Send invalid version string for `version` sub-question, verify re-yield with error from `rattler.NamelessMatchSpec`
+- `test_requirement_channel_choices`: Verify the channel sub-question's `choices` list matches all channels from `requirements.CHANNELS` via `_serialize_channel()`
 - `test_license_default`: Send `None`/empty for license → defaults to `BSD-3-Clause`
 - `test_license_invalid_choice_reyields`: Send invalid string → re-yield with error
 - `test_dump_creates_all_files` (uses `tmp_path`): All 6 files exist after dump
-- `test_dump_spec_yaml_valid_structure`: Parse generated spec.yaml, verify `id`, `requirements`, `workflow` keys
+- `test_dump_spec_yaml_valid_structure`: Parse generated spec.yaml, verify `id`, `requirements`, `workflow` keys; verify each requirement has `name`/`version`/`channel` keys matching `SpecRequirement` format
 - `test_dump_test_cases_yaml_structure`: Verify it's valid commented YAML
 - `test_dump_readme_contains_metadata`: Verify workflow name, description, author present
 - `test_dump_gitignore_contents`: Has `__pycache__/`, `.pixi/`
@@ -507,7 +639,7 @@ class MyProvider(DefaultWizardProvider):
 - `test_conditional_question_skipped_when_condition_false`: Same setup, drive with `workflow_id="my_wf"`, verify the conditional question is NOT yielded.
 - `test_mutually_exclusive_branches`: Subclass adds two sets of questions with mutually exclusive conditions (e.g., `variant == "gcp"` vs `variant == "local"`). Drive with each variant value, verify only the correct branch's questions are asked.
 - `test_condition_inspects_answers_proxy`: Verify that the `condition` callable receives the read-only `MappingProxyType` (not the mutable `_answers` dict).
-- `test_with_condition_composes_branches`: Use `with_condition()` to compose two question branches with mutually exclusive conditions. Drive wizard with each variant, verify correct branch is followed.
+- `test_with_condition_composes_branches`: Use `with_condition()` to compose two question branches with mutually exclusive conditions. Drive wizard with each variant, verify correct branch is followed. Verify `with_condition()` handles both `SingleWizardQuestion` (sets `wizard.condition`) and `WizardQuestionLoop` (sets top-level `condition`).
 - `test_custom_template_overrides_default`: Subclass provides a `templates/spec.yaml.jinja2` with different content. Verify the overridden template is rendered instead of the default.
 - `test_custom_template_adds_new_artifact`: Subclass provides a `templates/extra.yaml.jinja2`. Verify the new artifact is rendered alongside all default artifacts.
 - `test_default_templates_inherited`: Subclass provides only one custom template. Verify all other default templates are still rendered.
@@ -524,8 +656,8 @@ class MyProvider(DefaultWizardProvider):
 - `test_argparse_add_argument_compatibility`: For each question from `get_questions()`, verify that `parser.add_argument(f"--{dest.replace('_', '-')}", **question["argparse"])` succeeds without error.
 - `test_argparse_parse_args_valid`: Build an argparse parser from all questions, parse a valid set of args (e.g., `['--workflow-id', 'my_wf', '--workflow-name', 'My Workflow', ...]`), verify namespace has correct values.
 - `test_argparse_parse_args_with_type_validation`: Build parser, parse args with invalid `workflow_id` (e.g., `123bad`), verify argparse raises `SystemExit` (its standard error behavior for invalid `type`).
-- `test_argparse_to_generator_bridge`: Given a parsed argparse `Namespace`, feed its values into the generator via `.send()` in order, verify the wizard completes with the same answers.
-- `test_loop_question_argparse_nargs`: For the requirements loop question, verify it can be represented in argparse with `nargs='*'` or `action='append'` for batch mode (e.g., `--requirement pkg1 --requirement pkg2`).
+- `test_argparse_to_generator_bridge`: Given a parsed argparse `Namespace`, feed its values into the generator via `.send()` in order, verify the wizard completes with the same answers. For loop questions, the bridge feeds JSON dict fields into the generator as individual sub-question answers.
+- `test_loop_question_argparse_json_append`: For the requirements `WizardQuestionLoop`, verify auto-derived argparse uses `action="append"` with a composite JSON `type` validator built from sub-questions' `type`/`choices`. Batch mode usage: `--requirements '{"name": "pkg1", "version": "*", "channel": "conda-forge"}' --requirements '{"name": "pkg2", ...}'`. Verify the type validator rejects invalid JSON, missing fields, and invalid sub-field values.
 
 ### Test helper
 
