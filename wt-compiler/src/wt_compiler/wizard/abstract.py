@@ -158,7 +158,6 @@ def _make_loop_type(
             raise argparse.ArgumentTypeError(
                 f"Expected a JSON object (got {type(d).__name__})"
             )
-        d = cast(dict[str, Any], d)
         for _sub_q in questions:
             sq = cast(SingleWizardQuestion, _sub_q)
             dest = sq["dest"]

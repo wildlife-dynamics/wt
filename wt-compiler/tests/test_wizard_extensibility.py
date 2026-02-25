@@ -378,8 +378,8 @@ class TestCustomTemplates:
             "# Custom spec\nid: {{ workflow_id }}\n"
         )
 
-        monkeypatch.syspath_prepend(str(tmp_path))
         monkeypatch.delitem(sys.modules, pkg_name, raising=False)
+        monkeypatch.syspath_prepend(str(tmp_path))
 
         pkg = importlib.import_module(pkg_name)
         OverrideProvider = pkg.OverrideProvider  # type: ignore[attr-defined]
@@ -427,8 +427,8 @@ class TestCustomTemplates:
             "# Extra artifact for {{ workflow_id }}\n"
         )
 
-        monkeypatch.syspath_prepend(str(tmp_path))
         monkeypatch.delitem(sys.modules, pkg_name, raising=False)
+        monkeypatch.syspath_prepend(str(tmp_path))
 
         pkg = importlib.import_module(pkg_name)
         ExtraProvider = pkg.ExtraProvider  # type: ignore[attr-defined]
