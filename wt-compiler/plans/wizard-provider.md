@@ -83,7 +83,7 @@ class WizardQuestionLoop(TypedDict, total=False):
     itself be a ``WizardQuestionLoop``.
 
     Argparse representation is auto-derived from ``questions`` —
-    ``--{dest}`` flag with ``action="append"`` and a composite JSON
+    ``--{dest.replace('_', '-')}`` flag with ``action="append"`` and a composite JSON
     type validator built from sub-questions' ``type``/``choices``.
     No explicit ``argparse`` field is needed on ``WizardQuestionLoop``."""
     dest: str                           # Key for the collected list (e.g., "requirements") [required]
@@ -104,7 +104,7 @@ def with_condition(
     and ``WizardQuestionLoop`` (sets top-level ``condition``)."""
 ```
 
-A future CLI extracts `question["argparse"]` from each `SingleWizardQuestion` and passes it directly as `**kwargs` to `parser.add_argument(f'--{question["dest"]}', **question["argparse"])`. For `WizardQuestionLoop`, the argparse representation is auto-derived via `_make_loop_type()` (see below).
+A future CLI extracts `question["argparse"]` from each `SingleWizardQuestion` and passes it directly as `**kwargs` to `parser.add_argument(f"--{question['dest'].replace('_', '-')}", **question["argparse"])`. Argparse automatically maps hyphenated flags (e.g., `--workflow-id`) back to underscore-based `dest` attributes. For `WizardQuestionLoop`, the argparse representation is auto-derived via `_make_loop_type()` (see below).
 
 ### AbstractWizardProvider
 
@@ -217,10 +217,12 @@ def input_generator(self) -> Generator[WizardQuestion, str | None, None]:
         is_loop = question.get("wizard", {}).get("loop", False)
         type_fn = question.get("argparse", {}).get("type", str)
         answer = yield question
-        # Validate via type callable; re-yield with error on exception
+        # Validate via type callable; re-yield with error on exception.
+        # Always call type_fn — let the callable itself decide how to
+        # handle empty/None input (e.g., non_empty_str raises on empty).
         while True:
             try:
-                coerced = type_fn(answer) if answer else answer
+                coerced = type_fn(answer)
                 break
             except (ValueError, argparse.ArgumentTypeError) as e:
                 answer = yield {**question, "wizard": {**question.get("wizard", {}), "error": str(e)}}
@@ -230,10 +232,14 @@ def input_generator(self) -> Generator[WizardQuestion, str | None, None]:
             while coerced:
                 self._answers[question["dest"] + "s"].append(coerced)
                 answer = yield question
-                try:
-                    coerced = type_fn(answer) if answer else answer
-                except (ValueError, argparse.ArgumentTypeError) as e:
-                    answer = yield {**question, "wizard": {**question.get("wizard", {}), "error": str(e)}}
+                # Validate loop iteration; re-yield with error until valid.
+                # Empty/falsy answer bypasses type_fn and signals loop termination.
+                while True:
+                    try:
+                        coerced = type_fn(answer) if answer else answer
+                        break
+                    except (ValueError, argparse.ArgumentTypeError) as e:
+                        answer = yield {**question, "wizard": {**question.get("wizard", {}), "error": str(e)}}
         else:
             self._answers[question["dest"]] = coerced or question.get("argparse", {}).get("default")
 ```
@@ -245,7 +251,7 @@ Validation is done through argparse-idiomatic `type` callables that raise `Argum
 - `workflow_id` → `workflow_id_type(value)` — raises if not identifier, >64 chars, keyword, or builtin (mirrors `spec.py` lines 339-376)
 - `workflow_name`, `author_name` → `non_empty_str(value)` — raises if empty/whitespace
 - `license_type` → argparse handles via `choices` list (no custom type needed)
-- `requirement` (loop) → `type=str` (no validation; empty string signals done)
+- `requirement` (loop) → `matchspec_or_empty(value)` — if non-empty, validates via `rattler.MatchSpec(value)` and raises `ArgumentTypeError` on failure; returns the string on success. Empty/falsy input bypasses validation and signals loop termination (handled by the generator, not this callable).
 - `workflow_description` → `type=str` (optional, no validation)
 
 ### `.dump(workdir)` method (inherited from ABC)
@@ -469,9 +475,9 @@ class MyProvider(DefaultWizardProvider):
 - `test_default_provider_is_subclass`: `issubclass(DefaultWizardProvider, AbstractWizardProvider)` is `True`
 - `test_abstract_methods_enforced`: Attempting to instantiate `AbstractWizardProvider` directly raises `TypeError`
 - `test_input_generator_yields_dicts_with_required_keys`: Every yielded dict has `dest` (str) and `argparse` (dict with `help`)
-- `test_argparse_compatibility`: For each yielded question, pass `question["argparse"]` as `**kwargs` to `argparse.ArgumentParser().add_argument(f'--{dest}', ...)` — no errors raised
+- `test_argparse_compatibility`: For each yielded question, pass `question["argparse"]` as `**kwargs` to `argparse.ArgumentParser().add_argument(f"--{dest.replace('_', '-')}", ...)` — no errors raised
 - `test_send_based_flow_complete`: Drive generator with valid answers, verify `StopIteration` and `provider.answers` fully populated
-- `test_invalid_answer_reyields_with_error`: Send invalid workflow_id, verify re-yielded dict has `error` key
+- `test_invalid_answer_reyields_with_error`: Send invalid workflow_id, verify re-yielded dict has `question["wizard"]["error"]` set
 
 ### `test_wizard_default.py` — DefaultWizardProvider behavior
 
@@ -514,7 +520,7 @@ class MyProvider(DefaultWizardProvider):
 - `test_interactive_loop_handles_loop_question`: For the requirements loop question, verify the interactive loop keeps prompting until empty input.
 
 **Static/batch mode tests** (argparse flags):
-- `test_argparse_add_argument_compatibility`: For each question from `get_questions()`, verify that `parser.add_argument(f'--{dest}', **question["argparse"])` succeeds without error.
+- `test_argparse_add_argument_compatibility`: For each question from `get_questions()`, verify that `parser.add_argument(f"--{dest.replace('_', '-')}", **question["argparse"])` succeeds without error.
 - `test_argparse_parse_args_valid`: Build an argparse parser from all questions, parse a valid set of args (e.g., `['--workflow-id', 'my_wf', '--workflow-name', 'My Workflow', ...]`), verify namespace has correct values.
 - `test_argparse_parse_args_with_type_validation`: Build parser, parse args with invalid `workflow_id` (e.g., `123bad`), verify argparse raises `SystemExit` (its standard error behavior for invalid `type`).
 - `test_argparse_to_generator_bridge`: Given a parsed argparse `Namespace`, feed its values into the generator via `.send()` in order, verify the wizard completes with the same answers.
