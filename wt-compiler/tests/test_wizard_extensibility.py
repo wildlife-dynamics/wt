@@ -10,6 +10,8 @@ from typing import Any
 
 import pytest
 
+from conftest import drive_wizard
+
 from wt_compiler.wizard.abstract import (
     AbstractWizardProvider,
     SingleWizardQuestion,
@@ -18,23 +20,6 @@ from wt_compiler.wizard.abstract import (
     with_condition,
 )
 from wt_compiler.wizard.default import DefaultWizardProvider, non_empty_str
-
-
-def drive_wizard(
-    provider: AbstractWizardProvider, answers: list[str | None]
-) -> list[dict]:
-    """Drive wizard generator with a sequence of answers. Returns all yielded questions."""
-    gen = provider.input_generator()
-    questions: list[dict] = []
-    try:
-        q = next(gen)
-        questions.append(q)
-        for ans in answers:
-            q = gen.send(ans)
-            questions.append(q)
-    except StopIteration:
-        pass
-    return questions
 
 
 class TestCustomProviderConformance:
@@ -46,13 +31,11 @@ class TestCustomProviderConformance:
         class CustomProvider(AbstractWizardProvider):
             def get_questions(self) -> list[WizardQuestion]:
                 return [
-                    SingleWizardQuestion(
-                        {
-                            "dest": "custom_field",
-                            "argparse": {"help": "Custom field", "type": str},
-                            "wizard": {},
-                        }
-                    )
+                    {
+                        "dest": "custom_field",
+                        "argparse": {"help": "Custom field", "type": str},
+                        "wizard": {},
+                    }
                 ]
 
         assert issubclass(CustomProvider, AbstractWizardProvider)
@@ -73,13 +56,11 @@ class TestOverrideGetQuestions:
                 qs = super().get_questions()
                 qs.insert(
                     1,
-                    SingleWizardQuestion(
-                        {
-                            "dest": "custom_field",
-                            "argparse": {"help": "Custom field", "type": str},
-                            "wizard": {},
-                        }
-                    ),
+                    {
+                        "dest": "custom_field",
+                        "argparse": {"help": "Custom field", "type": str},
+                        "wizard": {},
+                    },
                 )
                 return qs
 
@@ -170,13 +151,11 @@ class TestCustomTypeCallable:
         class CustomTypeProvider(AbstractWizardProvider):
             def get_questions(self) -> list[WizardQuestion]:
                 return [
-                    SingleWizardQuestion(
-                        {
-                            "dest": "count",
-                            "argparse": {"help": "Count", "type": positive_int},
-                            "wizard": {},
-                        }
-                    )
+                    {
+                        "dest": "count",
+                        "argparse": {"help": "Count", "type": positive_int},
+                        "wizard": {},
+                    }
                 ]
 
         provider = CustomTypeProvider()
@@ -198,24 +177,20 @@ class TestConditionalQuestions:
         class ConditionalProvider(AbstractWizardProvider):
             def get_questions(self) -> list[WizardQuestion]:
                 return [
-                    SingleWizardQuestion(
-                        {
-                            "dest": "workflow_id",
-                            "argparse": {"help": "Workflow ID", "type": str},
-                            "wizard": {},
-                        }
-                    ),
-                    SingleWizardQuestion(
-                        {
-                            "dest": "test_detail",
-                            "argparse": {"help": "Test detail", "type": str},
-                            "wizard": {
-                                "condition": lambda a: a.get("workflow_id", "").startswith(
-                                    "test_"
-                                )
-                            },
-                        }
-                    ),
+                    {
+                        "dest": "workflow_id",
+                        "argparse": {"help": "Workflow ID", "type": str},
+                        "wizard": {},
+                    },
+                    {
+                        "dest": "test_detail",
+                        "argparse": {"help": "Test detail", "type": str},
+                        "wizard": {
+                            "condition": lambda a: a.get("workflow_id", "").startswith(
+                                "test_"
+                            )
+                        },
+                    },
                 ]
 
         return ConditionalProvider
@@ -242,35 +217,29 @@ class TestConditionalQuestions:
         class BranchProvider(AbstractWizardProvider):
             def get_questions(self) -> list[WizardQuestion]:
                 return [
-                    SingleWizardQuestion(
-                        {
-                            "dest": "variant",
-                            "argparse": {
-                                "help": "Variant",
-                                "type": str,
-                                "choices": ["gcp", "local"],
-                            },
-                            "wizard": {},
-                        }
-                    ),
-                    SingleWizardQuestion(
-                        {
-                            "dest": "gcp_project",
-                            "argparse": {"help": "GCP project", "type": str},
-                            "wizard": {
-                                "condition": lambda a: a.get("variant") == "gcp"
-                            },
-                        }
-                    ),
-                    SingleWizardQuestion(
-                        {
-                            "dest": "local_path",
-                            "argparse": {"help": "Local path", "type": str},
-                            "wizard": {
-                                "condition": lambda a: a.get("variant") == "local"
-                            },
-                        }
-                    ),
+                    {
+                        "dest": "variant",
+                        "argparse": {
+                            "help": "Variant",
+                            "type": str,
+                            "choices": ["gcp", "local"],
+                        },
+                        "wizard": {},
+                    },
+                    {
+                        "dest": "gcp_project",
+                        "argparse": {"help": "GCP project", "type": str},
+                        "wizard": {
+                            "condition": lambda a: a.get("variant") == "gcp"
+                        },
+                    },
+                    {
+                        "dest": "local_path",
+                        "argparse": {"help": "Local path", "type": str},
+                        "wizard": {
+                            "condition": lambda a: a.get("variant") == "local"
+                        },
+                    },
                 ]
 
         # GCP branch
@@ -299,20 +268,16 @@ class TestConditionalQuestions:
         class InspectorProvider(AbstractWizardProvider):
             def get_questions(self) -> list[WizardQuestion]:
                 return [
-                    SingleWizardQuestion(
-                        {
-                            "dest": "first",
-                            "argparse": {"help": "First", "type": str},
-                            "wizard": {},
-                        }
-                    ),
-                    SingleWizardQuestion(
-                        {
-                            "dest": "second",
-                            "argparse": {"help": "Second", "type": str},
-                            "wizard": {"condition": capture_type},
-                        }
-                    ),
+                    {
+                        "dest": "first",
+                        "argparse": {"help": "First", "type": str},
+                        "wizard": {},
+                    },
+                    {
+                        "dest": "second",
+                        "argparse": {"help": "Second", "type": str},
+                        "wizard": {"condition": capture_type},
+                    },
                 ]
 
         provider = InspectorProvider()
@@ -327,23 +292,21 @@ class TestWithCondition:
         """with_condition() applies condition to both SingleWizardQuestion and WizardQuestionLoop."""
         cond = lambda a: a.get("mode") == "advanced"
 
-        single_q = SingleWizardQuestion(
-            {"dest": "detail", "argparse": {"help": "Detail", "type": str}, "wizard": {}}
-        )
-        loop_q = WizardQuestionLoop(
-            {
-                "dest": "items",
-                "questions": [
-                    SingleWizardQuestion(
-                        {
-                            "dest": "item_name",
-                            "argparse": {"help": "Item name", "type": non_empty_str},
-                            "wizard": {},
-                        }
-                    )
-                ],
-            }
-        )
+        single_q: WizardQuestion = {
+            "dest": "detail",
+            "argparse": {"help": "Detail", "type": str},
+            "wizard": {},
+        }
+        loop_q: WizardQuestion = {
+            "dest": "items",
+            "questions": [
+                {
+                    "dest": "item_name",
+                    "argparse": {"help": "Item name", "type": non_empty_str},
+                    "wizard": {},
+                }
+            ],
+        }
 
         gated = with_condition([single_q, loop_q], cond)
 
@@ -357,27 +320,23 @@ class TestWithCondition:
 
         class BranchProvider(AbstractWizardProvider):
             def get_questions(self) -> list[WizardQuestion]:
-                base = [
-                    SingleWizardQuestion(
-                        {
-                            "dest": "mode",
-                            "argparse": {
-                                "help": "Mode",
-                                "type": str,
-                                "choices": ["simple", "advanced"],
-                            },
-                            "wizard": {},
-                        }
-                    ),
+                base: list[WizardQuestion] = [
+                    {
+                        "dest": "mode",
+                        "argparse": {
+                            "help": "Mode",
+                            "type": str,
+                            "choices": ["simple", "advanced"],
+                        },
+                        "wizard": {},
+                    },
                 ]
                 advanced_qs: list[WizardQuestion] = [
-                    SingleWizardQuestion(
-                        {
-                            "dest": "extra",
-                            "argparse": {"help": "Extra", "type": str},
-                            "wizard": {},
-                        }
-                    )
+                    {
+                        "dest": "extra",
+                        "argparse": {"help": "Extra", "type": str},
+                        "wizard": {},
+                    }
                 ]
                 return base + with_condition(
                     advanced_qs, lambda a: a.get("mode") == "advanced"

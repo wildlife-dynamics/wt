@@ -20,50 +20,53 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Generator
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import Any, TypedDict, TypeGuard, cast
 
 import jinja2
 
 
-class ArgparseKwargs(dict[str, Any]):
+class ArgparseKwargs(TypedDict, total=False):
     """Kwargs passable directly to ``argparse.ArgumentParser.add_argument()``.
 
-    Keys:
-        type: Coercion callable (e.g., ``str``, ``int``).
-        choices: Restrict to these values.
-        nargs: e.g., ``"+"`` for one-or-more.
-        default: Default if no answer given.
-        action: e.g., ``"store_true"``.
-        metavar: Placeholder in help text.
-        help: Help text / prompt string.
+    All fields are optional since different question types use different
+    subsets of argparse kwargs.
     """
 
+    type: Callable[[str], Any]
+    choices: list[str]
+    nargs: str
+    default: Any
+    action: str
+    metavar: str
+    help: str
 
-class WizardKwargs(dict[str, Any]):
+
+class WizardKwargs(TypedDict, total=False):
     """Wizard-specific metadata not passed to argparse.
 
-    Keys:
-        error: Validation error (present on re-yield).
-        condition: Gate callable — skip question if returns ``False``.
+    All fields are optional — ``error`` is only present on re-yield after
+    validation failure, and ``condition`` is only present on gated questions.
     """
 
-
-class SingleWizardQuestion(dict[str, Any]):
-    """A single question yielded by the wizard.
-
-    Keys:
-        dest (str): Answer key, usable as argparse dest.
-        argparse (ArgparseKwargs): Kwargs for ``argparse.add_argument()``.
-        wizard (WizardKwargs): Wizard-specific metadata.
-    """
+    error: str
+    condition: Callable[[MappingProxyType[str, Any]], bool]
 
 
-class WizardQuestionLoop(dict[str, Any]):
+class SingleWizardQuestion(TypedDict):
+    """A single question yielded by the wizard."""
+
+    dest: str
+    argparse: ArgparseKwargs
+    wizard: WizardKwargs
+
+
+class WizardQuestionLoop(TypedDict, total=False):
     """A repeating group of questions that collects a list of dicts.
 
     The ``questions`` list is asked as a group, repeated until the user
@@ -75,16 +78,20 @@ class WizardQuestionLoop(dict[str, Any]):
 
     Recursive nesting is supported: a question in ``questions`` can
     itself be a ``WizardQuestionLoop``.
-
-    Keys:
-        dest (str): Key for the collected list (e.g., ``"requirements"``).
-        questions (list[WizardQuestion]): Body questions asked per iteration.
-        condition: Optional gate to skip the entire loop.
     """
+
+    dest: str  # pyright: ignore[reportGeneralTypeIssues]  # Required
+    questions: list[WizardQuestion]  # pyright: ignore[reportGeneralTypeIssues]  # Required
+    condition: Callable[[MappingProxyType[str, Any]], bool]
 
 
 WizardQuestion = SingleWizardQuestion | WizardQuestionLoop
 """Union type for questions yielded by a wizard provider."""
+
+
+def _is_loop(q: WizardQuestion) -> TypeGuard[WizardQuestionLoop]:
+    """Runtime type guard: ``True`` if *q* is a ``WizardQuestionLoop``."""
+    return "questions" in q
 
 
 def with_condition(
@@ -114,12 +121,14 @@ def with_condition(
     """
     result: list[WizardQuestion] = []
     for q in questions:
-        if "questions" in q:  # WizardQuestionLoop
-            result.append(WizardQuestionLoop({**q, "condition": condition}))
-        else:  # SingleWizardQuestion
+        if _is_loop(q):
+            result.append(cast(WizardQuestion, {**q, "condition": condition}))
+        else:
+            wiz = cast(SingleWizardQuestion, q)
             result.append(
-                SingleWizardQuestion(
-                    {**q, "wizard": {**q.get("wizard", {}), "condition": condition}}
+                cast(
+                    WizardQuestion,
+                    {**wiz, "wizard": {**wiz.get("wizard", {}), "condition": condition}},
                 )
             )
     return result
@@ -145,20 +154,21 @@ def _make_loop_type(
             d: dict[str, Any] = json.loads(value)
         except json.JSONDecodeError as e:
             raise argparse.ArgumentTypeError(f"Invalid JSON: {e}") from e
-        for sub_q in questions:
-            dest = sub_q["dest"]
+        for _sub_q in questions:
+            sq = cast(SingleWizardQuestion, _sub_q)
+            dest = sq["dest"]
             if dest not in d:
-                default = sub_q.get("argparse", {}).get("default")
+                default = sq.get("argparse", {}).get("default")
                 if default is not None:
                     d[dest] = default
                     continue
                 raise argparse.ArgumentTypeError(f"Missing required field: {dest}")
-            sub_type_fn = sub_q.get("argparse", {}).get("type", str)
+            sub_type_fn = sq.get("argparse", {}).get("type", str)
             try:
                 d[dest] = sub_type_fn(d[dest])
             except (ValueError, argparse.ArgumentTypeError) as e:
                 raise argparse.ArgumentTypeError(f"Invalid {dest}: {e}") from e
-            choices = sub_q.get("argparse", {}).get("choices")
+            choices = sq.get("argparse", {}).get("choices")
             if choices and d[dest] not in choices:
                 raise argparse.ArgumentTypeError(f"Invalid {dest}: must be one of {choices}")
         return d
@@ -227,12 +237,10 @@ class AbstractWizardProvider(ABC):
             try:
                 return type_fn(answer) if answer else answer
             except (ValueError, argparse.ArgumentTypeError) as e:
-                answer = yield SingleWizardQuestion(
-                    {
-                        **question,
-                        "wizard": {**question.get("wizard", {}), "error": str(e)},
-                    }
-                )
+                answer = yield {
+                    **question,
+                    "wizard": {**question.get("wizard", {}), "error": str(e)},
+                }
 
     def _process_question(
         self, question: WizardQuestion
@@ -245,10 +253,10 @@ class AbstractWizardProvider(ABC):
         Returns:
             The validated answer (single value or list of dicts for loops).
         """
-        if "questions" in question:
+        if _is_loop(question):
             # WizardQuestionLoop
             results: list[dict[str, Any]] = []
-            first_q: SingleWizardQuestion = question["questions"][0]
+            first_q = cast(SingleWizardQuestion, question["questions"][0])
             answer = yield first_q
             while answer:  # empty/None on first question = done
                 coerced = yield from self._validate_answer(first_q, answer)
@@ -261,10 +269,10 @@ class AbstractWizardProvider(ABC):
             return results
         else:
             # SingleWizardQuestion
-            single_q = SingleWizardQuestion(question)
-            answer = yield single_q
-            coerced = yield from self._validate_answer(single_q, answer)
-            return coerced or question.get("argparse", {}).get("default")
+            single = cast(SingleWizardQuestion, question)
+            answer = yield single
+            coerced = yield from self._validate_answer(single, answer)
+            return coerced or single.get("argparse", {}).get("default")
 
     def input_generator(
         self,
@@ -284,12 +292,10 @@ class AbstractWizardProvider(ABC):
         for question in self.get_questions():
             # Condition check — works for both SingleWizardQuestion and
             # WizardQuestionLoop
-            if "wizard" in question:
-                condition = question["wizard"].get("condition")
-            elif "condition" in question:
-                condition = question["condition"]
+            if _is_loop(question):
+                condition = question.get("condition")
             else:
-                condition = None
+                condition = cast(SingleWizardQuestion, question).get("wizard", {}).get("condition")
             if condition and not condition(self.answers):
                 continue
             result = yield from self._process_question(question)
@@ -317,27 +323,20 @@ class AbstractWizardProvider(ABC):
         Raises:
             jinja2.UndefinedError: If answers are missing for a template.
         """
-        import datetime
-
         # Build loaders from MRO (subclass-first)
-        loaders: list[jinja2.FileSystemLoader] = []
-        seen_template_dirs: set[str] = set()
+        loaders: list[jinja2.PackageLoader] = []
+        seen_modules: set[str] = set()
         for cls in type(self).__mro__:
             if cls is object:
                 continue
             mod = cls.__module__
+            if mod in seen_modules:
+                continue
+            seen_modules.add(mod)
             try:
-                import importlib
-
-                module = importlib.import_module(mod)
-            except ImportError:
+                loaders.append(jinja2.PackageLoader(mod, "templates"))
+            except ValueError:
                 continue
-            if module.__file__ is None:
-                continue
-            template_dir = Path(module.__file__).parent / "templates"
-            if template_dir.is_dir() and str(template_dir) not in seen_template_dirs:
-                seen_template_dirs.add(str(template_dir))
-                loaders.append(jinja2.FileSystemLoader(str(template_dir)))
 
         if not loaders:
             return
@@ -348,14 +347,12 @@ class AbstractWizardProvider(ABC):
             undefined=jinja2.StrictUndefined,
         )
 
-        # Collect union of top-level *.jinja2 filenames
+        # Collect union of all *.jinja2 template names
         template_names: set[str] = set()
         for loader in loaders:
-            for searchpath in loader.searchpath:
-                tdir = Path(searchpath)
-                for f in tdir.iterdir():
-                    if f.is_file() and f.name.endswith(".jinja2"):
-                        template_names.add(f.name)
+            template_names.update(
+                name for name in loader.list_templates() if name.endswith(".jinja2")
+            )
 
         # Render each template
         context = {**self._answers, "year": datetime.datetime.now().year}

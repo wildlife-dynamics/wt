@@ -21,16 +21,13 @@ from __future__ import annotations
 import argparse
 import builtins
 import keyword
-from typing import Any
 
 from rattler import NamelessMatchSpec
 
 from wt_compiler.requirements import CHANNELS, _serialize_channel
 from wt_compiler.wizard.abstract import (
     AbstractWizardProvider,
-    SingleWizardQuestion,
     WizardQuestion,
-    WizardQuestionLoop,
 )
 
 # --- Validation callables ---------------------------------------------------
@@ -127,6 +124,76 @@ def requirement_version_type(value: str) -> str:
 CHANNEL_CHOICES: list[str] = [_serialize_channel(c) for c in CHANNELS]
 """Channel choices list built from ``requirements.CHANNELS``."""
 
+# --- Default question definitions --------------------------------------------
+
+_Q_WORKFLOW_ID: WizardQuestion = {
+    "dest": "workflow_id",
+    "argparse": {
+        "help": "Workflow ID (valid Python identifier, ≤64 chars)",
+        "type": workflow_id_type,
+    },
+    "wizard": {},
+}
+
+_Q_WORKFLOW_NAME: WizardQuestion = {
+    "dest": "workflow_name",
+    "argparse": {"help": "Workflow name (human-readable)", "type": non_empty_str},
+    "wizard": {},
+}
+
+_Q_WORKFLOW_DESCRIPTION: WizardQuestion = {
+    "dest": "workflow_description",
+    "argparse": {"help": "Workflow description (optional)", "type": str, "default": ""},
+    "wizard": {},
+}
+
+_Q_AUTHOR_NAME: WizardQuestion = {
+    "dest": "author_name",
+    "argparse": {"help": "Author name", "type": non_empty_str},
+    "wizard": {},
+}
+
+_Q_LICENSE_TYPE: WizardQuestion = {
+    "dest": "license_type",
+    "argparse": {
+        "help": "License type",
+        "type": str,
+        "choices": ["BSD-3-Clause", "MIT", "Apache-2.0"],
+        "default": "BSD-3-Clause",
+    },
+    "wizard": {},
+}
+
+_Q_REQUIREMENTS: WizardQuestion = {
+    "dest": "requirements",
+    "questions": [
+        {
+            "dest": "name",
+            "argparse": {"help": "Package name", "type": non_empty_str},
+            "wizard": {},
+        },
+        {
+            "dest": "version",
+            "argparse": {"help": "Version spec", "type": requirement_version_type, "default": "*"},
+            "wizard": {},
+        },
+        {
+            "dest": "channel",
+            "argparse": {"help": "Channel", "choices": CHANNEL_CHOICES, "default": "conda-forge"},
+            "wizard": {},
+        },
+    ],
+}
+
+_DEFAULT_QUESTIONS: list[WizardQuestion] = [
+    _Q_WORKFLOW_ID,
+    _Q_WORKFLOW_NAME,
+    _Q_WORKFLOW_DESCRIPTION,
+    _Q_AUTHOR_NAME,
+    _Q_LICENSE_TYPE,
+    _Q_REQUIREMENTS,
+]
+
 
 class DefaultWizardProvider(AbstractWizardProvider):
     """Default wizard provider for scaffolding new workflow projects.
@@ -150,115 +217,4 @@ class DefaultWizardProvider(AbstractWizardProvider):
         Returns:
             Ordered list of ``WizardQuestion`` dicts.
         """
-        return [
-            SingleWizardQuestion(
-                {
-                    "dest": "workflow_id",
-                    "argparse": ArgDict(
-                        help="Workflow ID (valid Python identifier, ≤64 chars)",
-                        type=workflow_id_type,
-                    ),
-                    "wizard": {},
-                }
-            ),
-            SingleWizardQuestion(
-                {
-                    "dest": "workflow_name",
-                    "argparse": ArgDict(
-                        help="Workflow name (human-readable)",
-                        type=non_empty_str,
-                    ),
-                    "wizard": {},
-                }
-            ),
-            SingleWizardQuestion(
-                {
-                    "dest": "workflow_description",
-                    "argparse": ArgDict(
-                        help="Workflow description (optional)",
-                        type=str,
-                        default="",
-                    ),
-                    "wizard": {},
-                }
-            ),
-            SingleWizardQuestion(
-                {
-                    "dest": "author_name",
-                    "argparse": ArgDict(
-                        help="Author name",
-                        type=non_empty_str,
-                    ),
-                    "wizard": {},
-                }
-            ),
-            SingleWizardQuestion(
-                {
-                    "dest": "license_type",
-                    "argparse": ArgDict(
-                        help="License type",
-                        type=str,
-                        choices=["BSD-3-Clause", "MIT", "Apache-2.0"],
-                        default="BSD-3-Clause",
-                    ),
-                    "wizard": {},
-                }
-            ),
-            WizardQuestionLoop(
-                {
-                    "dest": "requirements",
-                    "questions": [
-                        SingleWizardQuestion(
-                            {
-                                "dest": "name",
-                                "argparse": ArgDict(
-                                    help="Package name",
-                                    type=non_empty_str,
-                                ),
-                                "wizard": {},
-                            }
-                        ),
-                        SingleWizardQuestion(
-                            {
-                                "dest": "version",
-                                "argparse": ArgDict(
-                                    help="Version spec",
-                                    type=requirement_version_type,
-                                    default="*",
-                                ),
-                                "wizard": {},
-                            }
-                        ),
-                        SingleWizardQuestion(
-                            {
-                                "dest": "channel",
-                                "argparse": ArgDict(
-                                    help="Channel",
-                                    choices=CHANNEL_CHOICES,
-                                    default="conda-forge",
-                                ),
-                                "wizard": {},
-                            }
-                        ),
-                    ],
-                }
-            ),
-        ]
-
-
-class ArgDict(dict[str, Any]):
-    """Convenience constructor for argparse kwargs dicts.
-
-    Accepts keyword arguments and stores them as dict entries,
-    filtering out ``None`` values for cleaner question definitions.
-
-    Examples:
-        >>> d = ArgDict(help="My help", type=str, default=None)
-        >>> "default" not in d
-        True
-        >>> d["help"]
-        'My help'
-    """
-
-    def __init__(self, **kwargs: Any) -> None:
-        super().__init__({k: v for k, v in kwargs.items() if v is not None})
+        return list(_DEFAULT_QUESTIONS)

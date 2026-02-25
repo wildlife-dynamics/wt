@@ -9,6 +9,8 @@ import pytest
 import yaml
 
 from wt_compiler.requirements import CHANNELS, _serialize_channel
+from conftest import drive_wizard
+
 from wt_compiler.wizard.abstract import AbstractWizardProvider, SingleWizardQuestion
 from wt_compiler.wizard.default import (
     CHANNEL_CHOICES,
@@ -17,23 +19,6 @@ from wt_compiler.wizard.default import (
     requirement_version_type,
     workflow_id_type,
 )
-
-
-def drive_wizard(
-    provider: AbstractWizardProvider, answers: list[str | None]
-) -> list[dict]:
-    """Drive wizard generator with a sequence of answers. Returns all yielded questions."""
-    gen = provider.input_generator()
-    questions: list[dict] = []
-    try:
-        q = next(gen)
-        questions.append(q)
-        for ans in answers:
-            q = gen.send(ans)
-            questions.append(q)
-    except StopIteration:
-        pass
-    return questions
 
 
 class TestWorkflowIdValidation:
