@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import builtins
+import copy
 import keyword
 
 from rattler import NamelessMatchSpec
@@ -217,4 +218,4 @@ class DefaultWizardProvider(AbstractWizardProvider):
         Returns:
             Ordered list of ``WizardQuestion`` dicts.
         """
-        return list(_DEFAULT_QUESTIONS)
+        return copy.deepcopy(_DEFAULT_QUESTIONS)

@@ -357,67 +357,108 @@ class TestWithCondition:
 class TestCustomTemplates:
     """Tests for MRO-based template resolution."""
 
-    def test_custom_template_overrides_default(self, tmp_path: Path) -> None:
-        """Subclass provides templates/spec.yaml.jinja2 overriding the default."""
-        # Create a temporary module with custom template
-        custom_templates = tmp_path / "custom_templates"
-        custom_templates.mkdir()
-        (custom_templates / "spec.yaml.jinja2").write_text(
+    def test_custom_template_overrides_default(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Subclass provides templates/spec.yaml.jinja2 overriding the default via MRO."""
+        import importlib
+        import sys
+
+        pkg_name = "test_override_wiz_pkg"
+        pkg_dir = tmp_path / pkg_name
+        pkg_dir.mkdir()
+        (pkg_dir / "templates").mkdir()
+        (pkg_dir / "__init__.py").write_text(
+            "from wt_compiler.wizard.default import DefaultWizardProvider\n\n"
+            "class OverrideProvider(DefaultWizardProvider):\n"
+            "    pass\n"
+        )
+        # Override spec.yaml template with a custom version
+        (pkg_dir / "templates" / "spec.yaml.jinja2").write_text(
             "# Custom spec\nid: {{ workflow_id }}\n"
         )
 
-        provider = DefaultWizardProvider()
+        monkeypatch.syspath_prepend(str(tmp_path))
+        monkeypatch.delitem(sys.modules, pkg_name, raising=False)
+
+        pkg = importlib.import_module(pkg_name)
+        OverrideProvider = pkg.OverrideProvider  # type: ignore[attr-defined]
+
+        provider = OverrideProvider()
         answers = [
             "my_workflow",
             "My Workflow",
             "desc",
             "Author",
             "MIT",
-            "",  # end requirements
+            "",  # end requirements loop
         ]
         drive_wizard(provider, answers)
 
-        # Manually test MRO override by manipulating the loader
-        import jinja2
+        out_dir = tmp_path / "out"
+        provider.dump(out_dir)
 
-        custom_loader = jinja2.FileSystemLoader(str(custom_templates))
-        default_template_dir = (
-            Path(__file__).parent.parent
-            / "src"
-            / "wt_compiler"
-            / "wizard"
-            / "templates"
-        )
-        default_loader = jinja2.FileSystemLoader(str(default_template_dir))
-        env = jinja2.Environment(
-            loader=jinja2.ChoiceLoader([custom_loader, default_loader]),
-            keep_trailing_newline=True,
-            undefined=jinja2.StrictUndefined,
-        )
-        template = env.get_template("spec.yaml.jinja2")
-        result = template.render(**provider._answers, year=2024)
-        assert result.startswith("# Custom spec")
+        # Overridden template content is used
+        spec_content = (out_dir / "spec.yaml").read_text()
+        assert spec_content.startswith("# Custom spec")
+        assert "my_workflow" in spec_content
+        # Other default files are still rendered via MRO fallback
+        assert (out_dir / "README.md").exists()
+        assert (out_dir / "LICENSE").exists()
 
-    def test_custom_template_adds_new_artifact(self, tmp_path: Path) -> None:
-        """Subclass provides templates/extra.yaml.jinja2 for a new artifact."""
-        provider = DefaultWizardProvider()
+    def test_custom_template_adds_new_artifact(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Subclass adds templates/extra.yaml.jinja2 for a new artifact in addition to defaults."""
+        import importlib
+        import sys
+
+        pkg_name = "test_extra_wiz_pkg"
+        pkg_dir = tmp_path / pkg_name
+        pkg_dir.mkdir()
+        (pkg_dir / "templates").mkdir()
+        (pkg_dir / "__init__.py").write_text(
+            "from wt_compiler.wizard.default import DefaultWizardProvider\n\n"
+            "class ExtraProvider(DefaultWizardProvider):\n"
+            "    pass\n"
+        )
+        # Add a new template not present in the defaults
+        (pkg_dir / "templates" / "extra.yaml.jinja2").write_text(
+            "# Extra artifact for {{ workflow_id }}\n"
+        )
+
+        monkeypatch.syspath_prepend(str(tmp_path))
+        monkeypatch.delitem(sys.modules, pkg_name, raising=False)
+
+        pkg = importlib.import_module(pkg_name)
+        ExtraProvider = pkg.ExtraProvider  # type: ignore[attr-defined]
+
+        provider = ExtraProvider()
         answers = [
             "my_workflow",
             "My Workflow",
             "desc",
             "Author",
             "MIT",
-            "",
+            "",  # end requirements loop
         ]
         drive_wizard(provider, answers)
-        provider.dump(tmp_path)
 
-        # Default files exist
-        assert (tmp_path / "spec.yaml").exists()
-        assert (tmp_path / "README.md").exists()
-        # 6 total files
-        files = [f.name for f in tmp_path.iterdir() if f.is_file()]
-        assert len(files) == 6
+        out_dir = tmp_path / "out"
+        provider.dump(out_dir)
+
+        # New artifact exists
+        assert (out_dir / "extra.yaml").exists()
+        extra_content = (out_dir / "extra.yaml").read_text()
+        assert "my_workflow" in extra_content
+        # Default files also exist (7 total: 6 defaults + 1 extra)
+        files = {f.name for f in out_dir.iterdir() if f.is_file()}
+        default_files = {
+            "spec.yaml", "test-cases.yaml", "README.md",
+            "LICENSE", ".gitignore", ".gitattributes",
+        }
+        assert default_files.issubset(files)
+        assert len(files) == 7
 
     def test_default_templates_inherited(self, tmp_path: Path) -> None:
         """Subclass with no custom templates inherits all defaults."""

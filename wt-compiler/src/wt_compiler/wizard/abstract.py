@@ -151,9 +151,14 @@ def _make_loop_type(
 
     def type_fn(value: str) -> dict[str, Any]:
         try:
-            d: dict[str, Any] = json.loads(value)
+            d = json.loads(value)
         except json.JSONDecodeError as e:
             raise argparse.ArgumentTypeError(f"Invalid JSON: {e}") from e
+        if not isinstance(d, dict):
+            raise argparse.ArgumentTypeError(
+                f"Expected a JSON object (got {type(d).__name__})"
+            )
+        d = cast(dict[str, Any], d)
         for _sub_q in questions:
             sq = cast(SingleWizardQuestion, _sub_q)
             dest = sq["dest"]
@@ -235,7 +240,7 @@ class AbstractWizardProvider(ABC):
         type_fn = question.get("argparse", {}).get("type", str)
         while True:
             try:
-                return type_fn(answer) if answer else answer
+                return type_fn(answer) if answer is not None else answer
             except (ValueError, argparse.ArgumentTypeError) as e:
                 answer = yield {
                     **question,
@@ -351,7 +356,10 @@ class AbstractWizardProvider(ABC):
                 continue
 
         if not loaders:
-            return
+            raise RuntimeError(
+                f"{type(self).__qualname__}.dump() found no template loaders. "
+                "Ensure the 'templates/' directory is included in the package data."
+            )
 
         env = jinja2.Environment(
             loader=jinja2.ChoiceLoader(loaders),
@@ -364,6 +372,12 @@ class AbstractWizardProvider(ABC):
         for loader in loaders:
             template_names.update(
                 name for name in loader.list_templates() if name.endswith(".jinja2")
+            )
+
+        if not template_names:
+            raise RuntimeError(
+                f"{type(self).__qualname__}.dump() found no *.jinja2 templates. "
+                "Ensure the 'templates/' directory is included in the package data."
             )
 
         # Render each template

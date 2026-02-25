@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
+
+import pytest
 
 from conftest import drive_wizard
 
-from wt_compiler.wizard.abstract import AbstractWizardProvider, SingleWizardQuestion
-from wt_compiler.wizard.default import DefaultWizardProvider
+from wt_compiler.wizard.abstract import AbstractWizardProvider, WizardQuestion
+from wt_compiler.wizard.default import DefaultWizardProvider, workflow_id_type
 
 
 class TestABCConformance:
@@ -104,3 +107,68 @@ class TestGeneratorMechanics:
         assert q2["dest"] == "workflow_id"
         assert "error" in q2["wizard"]
         assert q2["wizard"]["error"]  # non-empty error message
+
+    def test_empty_string_answer_triggers_type_validation(self) -> None:
+        """Empty string is passed to the type callable, not skipped (answer is not None)."""
+
+        class StrictProvider(AbstractWizardProvider):
+            def get_questions(self) -> list[WizardQuestion]:
+                return [
+                    {
+                        "dest": "wf_id",
+                        "argparse": {"help": "WF ID", "type": workflow_id_type},
+                        "wizard": {},
+                    }
+                ]
+
+        provider = StrictProvider()
+        gen = provider.input_generator()
+        q = next(gen)
+        assert q["dest"] == "wf_id"
+
+        # Empty string should trigger validation error (workflow_id_type rejects "")
+        q2 = gen.send("")
+        assert "error" in q2["wizard"]
+        assert q2["wizard"]["error"]  # non-empty error
+
+    def test_none_answer_bypasses_type_validation(self) -> None:
+        """None answer bypasses type callable (loop termination sentinel)."""
+
+        class NoneableProvider(AbstractWizardProvider):
+            def get_questions(self) -> list[WizardQuestion]:
+                return [
+                    {
+                        "dest": "optional_field",
+                        "argparse": {"help": "Optional", "type": str, "default": "fallback"},
+                        "wizard": {},
+                    }
+                ]
+
+        provider = NoneableProvider()
+        gen = provider.input_generator()
+        next(gen)
+        # Send None — should not call type callable, should use default
+        try:
+            gen.send(None)
+        except StopIteration:
+            pass
+        assert provider.answers["optional_field"] == "fallback"
+
+
+class TestDumpNoTemplates:
+    """Tests for dump() error behavior when no templates are available."""
+
+    def test_dump_raises_when_no_loaders(self, tmp_path: Path) -> None:
+        """dump() raises RuntimeError when no PackageLoader can be constructed from MRO."""
+        from unittest.mock import patch
+
+        import wt_compiler.wizard.abstract as abstract_mod
+
+        class NoTemplatesProvider(AbstractWizardProvider):
+            def get_questions(self) -> list[WizardQuestion]:
+                return []
+
+        provider = NoTemplatesProvider()
+        with patch.object(abstract_mod.jinja2, "PackageLoader", side_effect=ValueError):
+            with pytest.raises(RuntimeError, match="found no template loaders"):
+                provider.dump(tmp_path)

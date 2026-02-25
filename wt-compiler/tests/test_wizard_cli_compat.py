@@ -288,6 +288,14 @@ class TestStaticBatchMode:
         with pytest.raises(argparse.ArgumentTypeError, match="Invalid JSON"):
             loop_type("not json")
 
+        # JSON root is not an object (e.g., array)
+        with pytest.raises(argparse.ArgumentTypeError, match="Expected a JSON object"):
+            loop_type('[{"name": "numpy"}]')
+
+        # JSON root is a scalar
+        with pytest.raises(argparse.ArgumentTypeError, match="Expected a JSON object"):
+            loop_type('"numpy"')
+
         # Missing required field
         with pytest.raises(argparse.ArgumentTypeError, match="Missing required field"):
             loop_type('{"version": "*"}')
