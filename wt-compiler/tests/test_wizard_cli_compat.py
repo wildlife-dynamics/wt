@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 from unittest.mock import patch
 
+import pytest
+
 from conftest import drive_wizard
 
 from wt_compiler.wizard.abstract import (
@@ -202,8 +204,6 @@ class TestStaticBatchMode:
                 f"--{dest.replace('_', '-')}", **q["argparse"]
             )
 
-        import pytest
-
         with pytest.raises(SystemExit):
             parser.parse_args(["--workflow-id", "123bad"])
 
@@ -283,8 +283,6 @@ class TestStaticBatchMode:
         assert result["channel"] == "conda-forge"
 
         # Invalid JSON
-        import pytest
-
         with pytest.raises(argparse.ArgumentTypeError, match="Invalid JSON"):
             loop_type("not json")
 
