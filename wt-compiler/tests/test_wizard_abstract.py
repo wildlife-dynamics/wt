@@ -22,11 +22,8 @@ class TestABCConformance:
 
     def test_abstract_methods_enforced(self) -> None:
         """Attempting to instantiate AbstractWizardProvider directly raises TypeError."""
-        try:
-            AbstractWizardProvider()  # type: ignore[abstract]
-            assert False, "Expected TypeError"
-        except TypeError:
-            pass
+        with pytest.raises(TypeError):
+          AbstractWizardProvider
 
 
 class TestGeneratorMechanics:
