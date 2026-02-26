@@ -63,6 +63,7 @@ wt-contracts = { path = "../wt-contracts", editable = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["tests"]
 python_files = ["test_*.py"]
 addopts = "--cov=wt_compiler --cov-report=term-missing"
 asyncio_mode = "auto"
