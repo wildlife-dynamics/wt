@@ -29,3 +29,4 @@ nav:
   - Home: index.md
   - Reference:
     - Package Architecture: reference/packages.md
+    - Workflow Specification: reference/spec-yaml.md
