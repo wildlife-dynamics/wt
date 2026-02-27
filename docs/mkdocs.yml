@@ -1,0 +1,18 @@
+site_name: wt-* Workflow Framework
+docs_dir: content
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - content.code.copy
+plugins:
+  - search
+markdown_extensions:
+  - admonition
+  - pymdownx.highlight
+  - pymdownx.superfences
+nav:
+  - Home: index.md
+  - Reference:
+    - Package Architecture: reference/packages.md
