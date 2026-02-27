@@ -5,6 +5,12 @@ Workflow template engine with support for web-form configuration, parallel opera
 
 For package architecture diagrams, dependency graphs, and development guidelines, see [CLAUDE.md](CLAUDE.md).
 
+## Workmux
+
+For development, if you choose to use [`workmux`](https://workmux.raine.dev/) with the container sandbox,
+a custom `Dockerfile.sandbox` is provided here for convenience. To use it, please refer to the building
+and configuration docs here: https://workmux.raine.dev/guide/sandbox/container#custom-images. 
+
 ## Pre-commit Hooks
 
 ### Mypy
