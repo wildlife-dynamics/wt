@@ -6,4 +6,6 @@ FROM ${BASE}
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
     mv /root/.local/bin/uv /opt/uv && \
     ln -s /opt/uv /usr/local/bin/uv && \
-    UV_TOOL_BIN_DIR=/usr/local/bin UV_TOOL_DIR=/opt/uv-tools uv tool install pre-commit
+    UV_TOOL_BIN_DIR=/usr/local/bin UV_TOOL_DIR=/opt/uv-tools UV_PYTHON_INSTALL_DIR=/opt/uv-python \
+    uv tool install pre-commit && \
+    chmod -R a+rX /opt/uv-tools /opt/uv-python
