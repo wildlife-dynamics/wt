@@ -1,8 +1,10 @@
 ARG BASE=ghcr.io/raine/workmux-sandbox:claude
 FROM ${BASE}
 
-# Install uv, then move to a globally accessible path so the binary
-# is reachable when running as an arbitrary non-root UID (--user uid:gid).
+# Install uv and pre-commit, then move to globally accessible paths so the
+# binaries are reachable when running as an arbitrary non-root UID (--user uid:gid).
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
     mv /root/.local/bin/uv /opt/uv && \
-    ln -s /opt/uv /usr/local/bin/uv
+    ln -s /opt/uv /usr/local/bin/uv && \
+    uv tool install pre-commit --install-dir /opt/pre-commit && \
+    ln -s /opt/pre-commit/bin/pre-commit /usr/local/bin/pre-commit
