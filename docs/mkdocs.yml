@@ -1,11 +1,24 @@
 site_name: wt-* Workflow Framework
+repo_url: https://github.com/wildlife-dynamics/wt
+repo_name: wildlife-dynamics/wt
 docs_dir: content
 theme:
   name: material
+  palette:
+    - scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
   features:
     - navigation.tabs
     - navigation.sections
     - content.code.copy
+extra_css:
+  - stylesheets/extra.css
 plugins:
   - search
 markdown_extensions:
