@@ -1,6 +1,8 @@
 # Package Architecture
 
 The wt-* monorepo contains 9 packages: 6 core packages and 3 GCP metapackages.
+For the rationale behind these design choices, see
+[Design Decisions](../explanation/architecture.md).
 
 ## Core Packages
 

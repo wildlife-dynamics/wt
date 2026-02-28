@@ -1,9 +1,12 @@
-site_name: wt-* Workflow Framework
+site_name: Workflow Toolkit (wt)
 repo_url: https://github.com/wildlife-dynamics/wt
 repo_name: wildlife-dynamics/wt
 docs_dir: content
 theme:
   name: material
+  custom_dir: overrides
+  icon:
+    logo: octicons/book-24
   palette:
     - scheme: default
       toggle:
@@ -14,6 +17,7 @@ theme:
         icon: material/brightness-4
         name: Switch to light mode
   features:
+    - announce.dismiss
     - navigation.tabs
     - navigation.sections
     - content.code.copy
@@ -27,6 +31,42 @@ markdown_extensions:
   - pymdownx.superfences
 nav:
   - Home: index.md
+  - Tutorials:
+    - Registering Tasks: tutorials/registering-tasks.md
+    - Building Your First Workflow: tutorials/first-workflow.md
+  - How-to Guides:
+    - Compile a Workflow: how-to/compile-workflow.md
   - Reference:
-    - Package Architecture: reference/packages.md
-    - Workflow Specification: reference/spec-yaml.md
+    - "spec.yaml": reference/spec-yaml.md
+    - wt-contracts:
+      - reference/wt-contracts/index.md
+      - Registry Models: reference/wt-contracts/registry-models.md
+      - Task Models: reference/wt-contracts/task-models.md
+      - CLI Models: reference/wt-contracts/cli-models.md
+    - wt-registry:
+      - reference/wt-registry/index.md
+      - "@register Decorator": reference/wt-registry/decorator.md
+      - Registry API: reference/wt-registry/registry.md
+      - CLI Reference: reference/wt-registry/cli.md
+    - wt-task:
+      - reference/wt-task/index.md
+      - "@task Decorator": reference/wt-task/decorator.md
+      - Task Methods: reference/wt-task/methods.md
+    - wt-compiler:
+      - reference/wt-compiler/index.md
+      - DagCompiler: reference/wt-compiler/compiler.md
+      - Spec Models: reference/wt-compiler/spec.md
+      - Task Discovery: reference/wt-compiler/discovery.md
+      - Compiled Artifacts: reference/wt-compiler/artifacts.md
+    - wt-invokers:
+      - reference/wt-invokers/index.md
+      - AbstractInvoker: reference/wt-invokers/abstract.md
+      - Local Subprocess: reference/wt-invokers/local.md
+      - Cloud Batch: reference/wt-invokers/cloud-batch.md
+    - wt-runner:
+      - reference/wt-runner/index.md
+      - HTTP API: reference/wt-runner/api.md
+      - Tracing: reference/wt-runner/tracing.md
+  - Architecture:
+    - Overview: reference/packages.md
+    - Design Decisions: explanation/architecture.md
