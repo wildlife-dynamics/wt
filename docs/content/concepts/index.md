@@ -17,6 +17,12 @@ the CLI, or in the HTTP response body when triggered through the REST API.
 
 ## Registered functions — the building blocks
 
+!!! info "Learn more"
+    **Tutorial:** [Registering Tasks](../tutorials/registering-tasks.md) —
+    hands-on walkthrough of the `@register` decorator.
+    **Reference:** [wt-registry API](../reference/wt-registry/index.md) —
+    full decorator options, registry API, and CLI.
+
 Workflows are composed of **registered functions**: ordinary Python functions
 decorated with `@register`. Registration makes a function discoverable by the
 compiler without importing its code directly.
@@ -50,6 +56,11 @@ can still call it like any normal Python function.
 
 ## The DAG — how functions connect
 
+!!! info "Learn more"
+    **Reference:** [wt-task API](../reference/wt-task/index.md) —
+    the `@task` decorator and method chains (`.call()`, `.map()`, `.partial()`)
+    that wire the DAG together at runtime.
+
 Functions in a workflow form a **directed acyclic graph** (DAG). Each step can
 reference the return value of an earlier step using `${{ workflow.<id>.return }}`
 expressions. Data flows forward through the graph; cycles are not allowed.
@@ -76,6 +87,12 @@ expressions. Data flows forward through the graph; cycles are not allowed.
 ---
 
 ## The spec.yaml — expressing the DAG declaratively
+
+!!! info "Learn more"
+    **Tutorial:** [Building Your First Workflow](../tutorials/first-workflow.md) —
+    write a complete `spec.yaml` step by step.
+    **Reference:** [`spec.yaml` reference](../reference/spec-yaml.md) —
+    full syntax for `partial`, `map`, `mapvalues`, `skipif`, and task groups.
 
 The DAG is expressed in a file called **`spec.yaml`**. Its syntax borrows from
 GitHub Actions (`${{ }}` expressions) and Astronomer's DAG Factory (declarative
@@ -124,6 +141,12 @@ Key constructs:
 
 ## Compilation — from spec to executable
 
+!!! info "Learn more"
+    **How-to:** [Compile a Workflow](../how-to/compile-workflow.md) —
+    compile and run your first workflow end to end.
+    **Reference:** [wt-compiler API](../reference/wt-compiler/index.md) —
+    compiler internals, spec models, and task discovery.
+
 `wt-compiler` reads the spec and produces a **standalone Python package**:
 
 ```
@@ -161,6 +184,12 @@ wt-compiler compile --spec spec.yaml
 ---
 
 ## Execution — running the compiled workflow
+
+!!! info "Learn more"
+    **Reference:** [wt-runner API](../reference/wt-runner/index.md) —
+    FastAPI server, HTTP endpoints, and tracing.
+    **Reference:** [wt-invokers API](../reference/wt-invokers/index.md) —
+    execution backends (local subprocess, Cloud Batch).
 
 Once compiled, a workflow can run in several ways:
 

@@ -1,5 +1,9 @@
 # Workflow Toolkit (`wt`)
 
+!!! tip "New to `wt`?"
+    Start with **[Core Concepts](concepts/index.md)** for a bird's-eye view
+    of how workflows, specs, and compilation fit together.
+
 Workflow Toolkit (`wt` for short) is a modular collection of Python packages
 comprising a compiler, a task framework, and execution backends that together
 allow you to build reproducible, webform-configurable workflows with native
@@ -24,10 +28,6 @@ access to the scientific software ecosystem. Key design goals:
 - **Compile, don't interpret.** Compiled DAGs are plain Python you can read,
   diff, and version-control. No opaque runtime interpreter — what you see in
   the generated code is what runs.
-
-!!! tip "New to `wt`?"
-    Start with **[Core Concepts](concepts/index.md)** for a bird's-eye view
-    of how workflows, specs, and compilation fit together.
 
 ## Quick navigation
 
