@@ -25,6 +25,10 @@ access to the scientific software ecosystem. Key design goals:
   diff, and version-control. No opaque runtime interpreter — what you see in
   the generated code is what runs.
 
+New to `wt`? Start with the [Core Concepts](concepts/index.md) page for a
+bird's-eye view of how workflows, registered functions, specs, and compilation
+fit together.
+
 For a high-level view of how the packages fit together, see the
 [Architecture](reference/packages.md) section.
 
