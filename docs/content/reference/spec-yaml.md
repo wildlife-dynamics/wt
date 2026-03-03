@@ -46,6 +46,12 @@ workflow:
 
 Each entry describes a conda package needed at runtime.
 
+!!! note
+    `requirements` currently resolves from **conda channels only**. PyPI
+    support is on the roadmap. See
+    [Tooling & Prerequisites](../concepts/tooling.md#how-requirements-resolves-today)
+    for details on packaging options and the PyPI roadmap.
+
 ```yaml
 requirements:
   - name: python

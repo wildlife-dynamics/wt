@@ -11,6 +11,13 @@ framework.
 - Python 3.10 or later
 - [uv](https://docs.astral.sh/uv/) (recommended) or pip
 
+!!! note "Task registries must be installable packages"
+    The compiler discovers tasks by installing packages into an ephemeral
+    environment and running `wt-registry` as a subprocess. A standalone `.py`
+    module is not enough — your tasks must live in an installable package with a
+    `pyproject.toml`. See [Tooling & Prerequisites](../concepts/tooling.md) for
+    packaging guidance and the uv/pixi distinction.
+
 ## 1. Install wt-registry
 
 `wt-registry` depends on `wt-contracts` (shared Pydantic models used across all

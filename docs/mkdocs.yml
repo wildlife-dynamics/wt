@@ -31,7 +31,9 @@ markdown_extensions:
   - pymdownx.superfences
 nav:
   - Home: index.md
-  - Core Concepts: concepts/index.md
+  - Core Concepts:
+    - Overview: concepts/index.md
+    - Tooling & Prerequisites: concepts/tooling.md
   - Tutorials:
     - Registering Tasks: tutorials/registering-tasks.md
     - Building Your First Workflow: tutorials/first-workflow.md

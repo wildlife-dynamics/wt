@@ -347,6 +347,12 @@ exception surfaces the task instance ID for easier debugging.
 
 ## Next steps
 
+!!! note "Running compiled workflows requires pixi"
+    The compiled output is a [pixi](https://pixi.sh) project. Both the local
+    subprocess invoker and Cloud Batch invoker execute workflows via
+    `pixi run`. See [Tooling & Prerequisites](../concepts/tooling.md) for
+    install instructions and when to use pixi vs uv.
+
 You have built, compiled, and inspected your first workflow. From here you can:
 
 - **Run it locally** using the generated CLI or by invoking the DAG directly
