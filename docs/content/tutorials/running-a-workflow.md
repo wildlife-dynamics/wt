@@ -57,7 +57,17 @@ pixi run workflow run --config-file config.yaml
 ### Understanding the parameter structure
 
 The parameter keys correspond to **task instance IDs** from your `spec.yaml`.
-Only parameters that are *not* wired to other task outputs appear here. In our
+Only parameters that are *not* wired to other task outputs appear here.
+
+!!! tip "Web form generation"
+    The same parameter schemas that drive the CLI also power auto-generated web
+    forms via [React JSON Schema Form (RJSF)](https://rjsf-team.github.io/react-jsonschema-form/).
+    You can customize how parameters appear in the form by using
+    `typing.Annotated` with `pydantic.Field` in your registered functions — see
+    the [JSON schema generation](registering-tasks.md#7-json-schema-generation)
+    section of the registration tutorial for details.
+
+In our
 workflow:
 
 - `numbers.count` is the only user-facing parameter — it controls how many

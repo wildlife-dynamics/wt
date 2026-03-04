@@ -56,7 +56,7 @@ before the task that uses it.
 
 ### Fan-out with `map`
 
-Apply a task to each element of an iterable:
+Apply a task to each element of a sequence:
 
 ```yaml
   - id: results
@@ -69,6 +69,17 @@ Apply a task to each element of an iterable:
 
 `argnames` is the parameter name to bind each element to. `argvalues` is a
 reference to the iterable. The result is a list with one entry per input item.
+
+The upstream task that produces `argvalues` must return a `Sequence` (e.g.
+`list`, `tuple`). You will typically define a registered function that returns
+the iterable:
+
+```python
+@register()
+def fetch_items(source: str) -> list[dict]:
+    """Fetch items to process. Returns a list that map iterates over."""
+    ...
+```
 
 ### Fan-out with `mapvalues`
 
@@ -83,8 +94,18 @@ Like `map`, but operates on key-value pairs and preserves the keys:
       argvalues: ${{ workflow.grouped.return }}
 ```
 
-The input must be a dict-like structure. The result is a dict with the same
-keys, where each value is the task's return value for that key.
+The upstream task must return a `Sequence[tuple[K, V]]` — a sequence of
+two-element `(key, value)` tuples. The result is a `Sequence[tuple[K, R]]`
+with the same keys, where each value is replaced by the task's return value.
+
+You will need a registered function that produces data in this shape:
+
+```python
+@register()
+def group_by_region(data: list[dict]) -> list[tuple[str, list[dict]]]:
+    """Group records by region. Returns (key, value) pairs for mapvalues."""
+    ...
+```
 
 ### Binding static arguments with `partial`
 
@@ -104,7 +125,7 @@ You can mix literal values and `${{ }}` references in the same `partial` block.
 
 ### Conditional execution with `skipif`
 
-Skip a task based on a boolean condition function:
+Skip a task based on one or more condition functions:
 
 ```yaml
   - id: expensive_step
@@ -113,14 +134,23 @@ Skip a task based on a boolean condition function:
     partial:
       data: ${{ workflow.fetch.return }}
     skipif:
-      - id: check_skip
-        task: is_dry_run
-        partial:
-          mode: ${{ workflow.config.return }}
+      conditions:
+        - is_dry_run
+        - should_skip_model
+      unpack_depth: 1
 ```
 
-The `skipif` block contains one or more condition checks. If any returns
-`True`, the task is skipped and returns `None`.
+`skipif` has two fields:
+
+- **`conditions`** — a list of registered function names (or fully qualified
+  importable references). Each condition function receives the task's arguments
+  and returns a `bool`. If any condition returns `True`, the task is skipped
+  and returns `None`.
+- **`unpack_depth`** — controls how deeply to unpack nested list-like arguments
+  when evaluating conditions (default: `1`).
+
+The condition functions must themselves be registered tasks with a signature
+compatible with receiving the parent task's arguments.
 
 ### Task groups
 
@@ -144,11 +174,11 @@ data flow.
 
 ---
 
-## Validation tips
+## Compilation and validation
 
-- Run `wt-compiler compile --spec spec.yaml` to validate your spec. The
-  compiler checks task names, argument names, type compatibility, and
-  topological ordering.
+- Run `wt-compiler compile --spec spec.yaml` to compile your spec. Compilation
+  includes full validation — the compiler checks task names, argument names,
+  type compatibility, and topological ordering.
 - Use `wt-registry --package my_tasks --format pretty` to see available
   task names and their parameter signatures before writing the spec.
 - If two packages export a task with the same function name, use the fully

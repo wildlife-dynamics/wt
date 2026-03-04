@@ -118,4 +118,5 @@ pixi run workflow run --config-file config.yaml --otel-exporter console
 ```
 
 This prints trace spans to stdout. Use `--otel-exporter gcp` for Google Cloud
-Trace export, or `--otel-exporter disabled` to turn tracing off (the default).
+Trace export. Tracing is off by default — simply omit the `--otel-exporter`
+flag to run without tracing.

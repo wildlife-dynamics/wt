@@ -6,6 +6,14 @@ you will understand how the `@register` decorator works, what validation it
 performs, and how registered functions flow into the rest of the wt workflow
 framework.
 
+!!! info "Registered functions vs. tasks"
+    In wt, you write **registered functions** using the `@register` decorator
+    from `wt-registry`. These are plain Python functions with type annotations.
+    The compiler then wraps them as **tasks** (instances of `wt_task.SyncTask`)
+    in the generated DAG code, adding execution methods like `.call()`, `.map()`,
+    and `.partial()`. You never need to use `@task` directly — registration is
+    all that is required from function authors.
+
 ## Prerequisites
 
 - Python 3.10 or later
@@ -43,7 +51,7 @@ wt-registry --help
 You should see output describing the available flags (`--format`, `--pretty`,
 `--function`, `--package`).
 
-## 2. Create a task package
+## 2. Create a task package (a.k.a. "function registry")
 
 The compiler discovers tasks by installing packages into an ephemeral
 environment and running `wt-registry` as a subprocess. This means your tasks
@@ -182,9 +190,6 @@ def old_processor(data: list[int]) -> list[int]:
     """Legacy data processor."""
     return data
 ```
-
-Don't forget to update `src/my_tasks/__init__.py` to re-export the new
-functions if you add them.
 
 !!! note
     Registration happens at **import time** -- as soon as Python executes the

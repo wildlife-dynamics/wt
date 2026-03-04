@@ -34,17 +34,18 @@ access to the scientific software ecosystem. Key design goals:
 ## Workflow lifecycle
 
 ```
-  Register            Specify             Compile              Run
-┌───────────┐    ┌───────────────┐    ┌──────────────┐    ┌──────────────┐
-│  @register │    │  spec.yaml    │    │ wt-compiler  │    │ pixi run /   │
-│  decorator │ -> │  declares the │ -> │ generates a  │ -> │ wt-runner    │
-│  marks     │    │  DAG and its  │    │ standalone   │    │ executes the │
-│  functions │    │  data flow    │    │ Python pkg   │    │ compiled DAG │
-└───────────┘    └───────────────┘    └──────────────┘    └──────────────┘
+ Register            Specify             Compile              Run
+┌────────────┐   ┌───────────────┐   ┌──────────────┐   ┌──────────────┐
+│ @register  │   │ spec.yaml     │   │ wt-compiler  │   │ pixi run /   │
+│ decorator  │-->│ declares the  │-->│ generates a  │-->│ wt-runner    │
+│ marks      │   │ DAG and its   │   │ standalone   │   │ executes the │
+│ functions  │   │ data flow     │   │ Python pkg   │   │ compiled DAG │
+└────────────┘   └───────────────┘   └──────────────┘   └──────────────┘
 ```
 
-1. **Register** — Decorate Python functions with `@register` to make them
-   discoverable. Type annotations drive JSON schema generation for web forms.
+1. **Register** — Decorate Python functions with `@register` (from the
+   `wt-registry` package) to make them discoverable. Type annotations drive
+   JSON schema generation for web forms.
 2. **Specify** — Write a `spec.yaml` that declares which tasks to run, how data
    flows between them (`partial`, `map`, `mapvalues`), and what to skip.
 3. **Compile** — `wt-compiler` resolves dependencies, validates the spec, and
@@ -57,26 +58,15 @@ access to the scientific software ecosystem. Key design goals:
 
 ## Quick start
 
-```bash
-# 1. Install
-pip install wt-registry wt-task wt-compiler
+For a complete walkthrough, see the [tutorials](tutorials/registering-tasks.md).
+The high-level workflow is:
 
-# 2. Register a function (in your task package)
-# @register()
-# def calculate_mean(values: list[float]) -> float: ...
-
-# 3. Write a spec.yaml referencing your tasks
-
-# 4. Compile
-wt-compiler compile --spec spec.yaml
-
-# 5. Run
-cd wt-my-workflow/
-pixi install && pixi run workflow run --config-file config.yaml
-```
-
-See the [tutorials](tutorials/registering-tasks.md) for a complete
-walkthrough.
+1. **Create a task package** — an installable Python package with `wt-registry`
+   as a dependency. Decorate functions with `@register()`.
+2. **Write a `spec.yaml`** referencing your tasks and wiring data between them.
+3. **Compile** — `wt-compiler compile --spec spec.yaml` generates a standalone
+   pixi project.
+4. **Run** — `cd wt-my-workflow/ && pixi install && pixi run workflow run --config-file config.yaml`
 
 ---
 

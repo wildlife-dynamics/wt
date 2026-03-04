@@ -4,7 +4,7 @@ Key terms used throughout the wt documentation.
 
 | Term | Definition |
 |------|------------|
-| **Task** | A Python function decorated with `@task` from wt-task. Wraps a registered function with `.call()`, `.map()`, `.partial()`, and `.validate()` methods for use in a compiled DAG. |
+| **Task** | A runtime wrapper created dynamically by the compiler from a registered function. Tasks are instances of `wt_task.SyncTask` and provide `.call()`, `.map()`, `.partial()`, `.validate()`, and `.skipif()` methods used in the compiled DAG code. Developers do not create tasks directly — they register functions with `@register`, and the compiler generates the corresponding `task(...)` calls. (In the legacy API, which is no longer supported, function registry authors used `@task` directly.) |
 | **Task instance** | A specific invocation of a task within a workflow, identified by its `id` in the `spec.yaml`. The same registered function can appear as multiple task instances with different parameters. |
 | **Registered function** | A Python function decorated with `@register` from wt-registry. Registration makes the function discoverable by the compiler and generates a JSON schema from its type annotations. |
 | **Registry** | The global, in-process collection of all registered functions. Populated at import time by `@register` decorators. Accessed via `get_registry()` or the `wt-registry` CLI. |

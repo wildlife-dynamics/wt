@@ -29,7 +29,6 @@ version = "0.1.0"
 requires-python = ">=3.10"
 dependencies = [
     "wt-registry",
-    "wt-task",
 ]
 
 [tool.setuptools.packages.find]
@@ -67,28 +66,17 @@ to reference them in a `spec.yaml`.
 
 ---
 
-## Publishing to PyPI
+## Publishing to pip-compatible locations
 
-Standard Python packaging workflow:
+Task packages can be published to any pip-compatible location — PyPI, a private
+index, a GitHub repository, or a local filesystem path. However, the compiler's
+`requirements:` section currently resolves from **conda channels only**, so
+pip-based sources are not yet supported in compiled workflows.
 
-```bash
-# Build
-uv build ./my-tasks
-
-# Upload to PyPI (or a private index)
-uv publish ./my-tasks/dist/*
-```
-
-PyPI packages work for local development with `pip install` / `uv pip install`.
-However, the compiler's `requirements:` section currently resolves from
-**conda channels only**, so PyPI-only packages require an additional step to be
-usable in compiled workflows.
-
-!!! note "Roadmap — PyPI support in requirements"
-    Support for
-    [pypi-dependencies](https://pixi.sh/latest/reference/pixi_manifest/#pypi-dependencies)
-    in the `requirements:` section is planned. This will enable direct use of
-    PyPI packages without building conda packages.
+!!! note "Roadmap — pip source support in requirements"
+    Support for pip-compatible package sources (PyPI, GitHub, local paths) in the
+    `requirements:` section is forthcoming. This will enable direct use of
+    packages from these locations without building conda packages.
 
 ---
 
@@ -96,34 +84,26 @@ usable in compiled workflows.
 
 For the compiler to resolve your task package from `requirements:`, it must be
 available on a conda channel. The simplest approach for local development is a
-**file-based conda channel**.
+**local file-based conda channel** built with `pixi build`.
 
-### Using rattler-build
+### Using pixi build
+
+`pixi build` is the recommended way to build conda packages from your project:
 
 ```bash
-# Install rattler-build
-pixi global install rattler-build
-
-# Create a recipe (recipe.yaml)
-# Build the package
-rattler-build build --recipe recipe.yaml
-
-# The output goes to ./output/<platform>/
-# Point the compiler to this directory as a local channel
+# Build a conda package from your pixi project
+pixi build
 ```
 
-### Using pixi for packaging
+This produces a local conda package that the compiler can resolve. Point the
+compiler to the output directory as a local channel.
 
-If your project already uses pixi, you can build conda packages directly from
-your `pixi.toml` workspace.
+### Hosting on a remote conda channel
 
-### Hosting on a conda channel
-
-For team or CI use, publish packages to a conda channel such as
-[prefix.dev](https://prefix.dev) or a self-hosted channel. The compiler's
-allowed channels are configured in the `CHANNELS` list — see the
-[Tooling & Prerequisites](../concepts/tooling.md) page for details on
-channel restrictions.
+!!! warning "Under development"
+    Remote conda channel hosting (e.g. [prefix.dev](https://prefix.dev) or
+    self-hosted channels) is an area under active development and does not work
+    today. For now, use a local file-based channel produced by `pixi build`.
 
 ---
 
@@ -136,10 +116,14 @@ The compiler discovers tasks using this sequence:
 3. Runs `wt-registry --package <import_name>` inside that environment.
 4. Collects the JSON schema for every `@register`-decorated function.
 
-For this to work:
+To recap, the key requirements covered in this guide are:
 
 - Your package must declare `wt-registry` as a dependency (so the CLI is
   available in the environment).
 - Your tasks must be importable via the package name listed in `--package`
   (i.e. `import my_tasks` must trigger registration).
 - Every task function must have complete type annotations.
+
+For more on this discovery mechanism, see
+[Core Concepts](../concepts/index.md). For the full `spec.yaml` syntax, see
+the [`spec.yaml` reference](../reference/spec-yaml.md).
