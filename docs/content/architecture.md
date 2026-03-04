@@ -3,7 +3,7 @@
 This document explains the design decisions behind the wt-* framework's
 architecture. It is aimed at contributors and advanced users who want to
 understand *why* the system is structured the way it is, not just *what* the
-pieces do (for that, see the [Architecture Overview](../reference/packages.md)).
+pieces do (for that, see [Concepts](concepts.md)).
 
 ## Why a monorepo of separate packages?
 

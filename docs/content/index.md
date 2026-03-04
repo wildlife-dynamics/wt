@@ -1,7 +1,7 @@
 # Workflow Toolkit (`wt`)
 
 !!! tip "New to `wt`?"
-    Start with **[Core Concepts](concepts/index.md)** for a bird's-eye view
+    Start with **[Core Concepts](concepts.md)** for a bird's-eye view
     of how workflows, specs, and compilation fit together.
 
 Workflow Toolkit (`wt` for short) is a modular collection of Python packages
@@ -58,8 +58,8 @@ access to the scientific software ecosystem. Key design goals:
 
 ## Quick start
 
-For a complete walkthrough, see the [tutorials](tutorials/registering-tasks.md).
-The high-level workflow is:
+For a complete walkthrough, see [Getting Started](getting-started.md). The
+high-level workflow is:
 
 1. **Create a task package** — an installable Python package with `wt-registry`
    as a dependency. Decorate functions with `@register()`.
@@ -74,13 +74,11 @@ The high-level workflow is:
 
 | If you want to… | Go to |
 |---|---|
-| Understand the key concepts | [Core Concepts](concepts/index.md) |
-| Build a workflow from scratch | [Tutorials](tutorials/registering-tasks.md) |
-| Run a compiled workflow | [Running a Workflow](tutorials/running-a-workflow.md) |
+| Understand the key concepts | [Core Concepts](concepts.md) |
+| Build a workflow from scratch | [Getting Started](getting-started.md) |
 | Write or edit a `spec.yaml` | [`spec.yaml` reference](reference/spec-yaml.md) |
-| Compile a workflow | [Compile a Workflow](how-to/compile-workflow.md) |
-| Understand the architecture | [Design Decisions](explanation/architecture.md) |
-| Look up a package API | [Reference](reference/wt-contracts/index.md) |
+| Understand the architecture | [Design Decisions](architecture.md) |
+| Look up a package API | [Reference](reference/wt-contracts.md) |
 
 ---
 

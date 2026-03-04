@@ -18,7 +18,6 @@ theme:
         name: Switch to light mode
   features:
     - announce.dismiss
-    - navigation.tabs
     - navigation.sections
     - content.code.copy
 extra_css:
@@ -31,50 +30,14 @@ markdown_extensions:
   - pymdownx.superfences
 nav:
   - Home: index.md
-  - Core Concepts:
-    - Overview: concepts/index.md
-    - Tooling & Prerequisites: concepts/tooling.md
-  - Tutorials:
-    - Registering Tasks: tutorials/registering-tasks.md
-    - Building Your First Workflow: tutorials/first-workflow.md
-    - Running a Workflow: tutorials/running-a-workflow.md
-  - How-to Guides:
-    - Compile a Workflow: how-to/compile-workflow.md
-    - Run a Workflow Locally: how-to/run-workflow-locally.md
-    - Package Tasks for Distribution: how-to/package-tasks.md
-    - Write a spec.yaml: how-to/write-spec-yaml.md
+  - Getting Started: getting-started.md
+  - Concepts: concepts.md
   - Reference:
-    - Glossary: reference/glossary.md
-    - Package Architecture: reference/packages.md
     - "spec.yaml": reference/spec-yaml.md
-    - wt-contracts:
-      - reference/wt-contracts/index.md
-      - Registry Models: reference/wt-contracts/registry-models.md
-      - Task Models: reference/wt-contracts/task-models.md
-      - CLI Models: reference/wt-contracts/cli-models.md
-    - wt-registry:
-      - reference/wt-registry/index.md
-      - "@register Decorator": reference/wt-registry/decorator.md
-      - Registry API: reference/wt-registry/registry.md
-      - CLI Reference: reference/wt-registry/cli.md
-    - wt-task:
-      - reference/wt-task/index.md
-      - "@task Decorator": reference/wt-task/decorator.md
-      - Task Methods: reference/wt-task/methods.md
-    - wt-compiler:
-      - reference/wt-compiler/index.md
-      - DagCompiler: reference/wt-compiler/compiler.md
-      - Spec Models: reference/wt-compiler/spec.md
-      - Task Discovery: reference/wt-compiler/discovery.md
-      - Compiled Artifacts: reference/wt-compiler/artifacts.md
-    - wt-invokers:
-      - reference/wt-invokers/index.md
-      - AbstractInvoker: reference/wt-invokers/abstract.md
-      - Local Subprocess: reference/wt-invokers/local.md
-      - Cloud Batch: reference/wt-invokers/cloud-batch.md
-    - wt-runner:
-      - reference/wt-runner/index.md
-      - HTTP API: reference/wt-runner/api.md
-      - Tracing: reference/wt-runner/tracing.md
-  - Architecture:
-    - Design Decisions: explanation/architecture.md
+    - wt-contracts: reference/wt-contracts.md
+    - wt-registry: reference/wt-registry.md
+    - wt-task: reference/wt-task.md
+    - wt-compiler: reference/wt-compiler.md
+    - wt-invokers: reference/wt-invokers.md
+    - wt-runner: reference/wt-runner.md
+  - Architecture: architecture.md
