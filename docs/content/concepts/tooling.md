@@ -2,7 +2,7 @@
 
 `wt` sits at the intersection of two packaging ecosystems — **PyPI** (pip/uv)
 and **conda** (pixi/rattler). Both tools play a role; which one you reach for
-depends on what you're doing.
+depends on what stage of the development flow you are in, and your personal development preferences.
 
 ---
 
@@ -11,9 +11,11 @@ depends on what you're doing.
 [uv](https://docs.astral.sh/uv/) is a fast Python package manager and project
 tool. It's what we use to develop the `wt` framework packages themselves.
 
-For task packages that are **pure Python** (no system library dependencies), uv
-is a natural choice for local development: fast installs, editable mode, and
-standard `pyproject.toml` workflows.
+For task packages whose dependencies are all available on PyPI, uv is a natural
+choice for local development: fast installs, editable mode, and standard
+`pyproject.toml` workflows. However, if your tasks depend on packages that are
+best installed via the conda ecosystem (e.g. `geopandas`, `gdal`, `rasterio`),
+pixi is preferable for stability — even if the task code itself is pure Python.
 
 uv is sufficient for:
 
@@ -46,15 +48,19 @@ so you can use pixi for development too.
 
 ## Task package distribution
 
-Task registries must be **installable packages** — the compiler discovers them
+Task registries must be **installable packages**. The compiler discovers tasks
 by installing the packages listed in `requirements:` into an ephemeral
-environment and running `wt-registry` as a subprocess. You cannot just write a
-`.py` module and point the compiler at it; the code must be packaged.
+environment and running `wt-registry` as a subprocess. Beyond discovery, the
+compiled workflow itself is a pixi workspace that depends on these packages at
+runtime — so they must be available from a packaged source that pixi can
+install. You cannot just write a `.py` module and point the compiler at it; the
+code must be packaged.
 
 ### Packaging with uv/pip
 
 Standard `pyproject.toml`, publish to PyPI or install locally. This is the most
-expedient path for local development and pure-Python registries.
+expedient path for local development and registries whose dependencies are all
+available on PyPI.
 
 ```toml
 [build-system]
@@ -64,7 +70,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "my-tasks"
 version = "0.1.0"
-dependencies = ["wt-registry", "wt-task"]
+dependencies = ["wt-registry"]
 ```
 
 ### Packaging as conda/rattler packages
@@ -88,13 +94,23 @@ discover them.
     development, simpler packaging workflows, and a more ergonomic dev loop —
     while conda channel support remains for packages that need it.
 
+!!! warning "Restricted conda channels"
+    The compiler only supports a fixed set of conda channels. Currently the
+    allowed channels are: `conda-forge`, `microsoft`,
+    `https://repo.prefix.dev/ecoscope-workflows`,
+    `https://repo.prefix.dev/ecoscope-workflows-custom`, and local file-based
+    channels used for development builds. Specifying a channel outside this set
+    in `requirements:` will raise a validation error. See the
+    [`CHANNELS` list in `wt-compiler`](https://github.com/search?q=repo%3Awildlife-dynamics/wt+CHANNELS&type=code)
+    for the current definitions.
+
 ---
 
 ## Summary — which tool when?
 
 | You want to... | Use |
 |---|---|
-| Develop a pure-Python task package | uv or pixi |
+| Develop a task package (PyPI-only deps) | uv or pixi |
 | Develop a task package with system deps | pixi |
 | Run `wt-compiler compile` | uv or pixi |
 | Run a compiled workflow | pixi (required) |

@@ -52,6 +52,14 @@ Each entry describes a conda package needed at runtime.
     [Tooling & Prerequisites](../concepts/tooling.md#how-requirements-resolves-today)
     for details on packaging options and the PyPI roadmap.
 
+!!! warning "Restricted conda channels"
+    The compiler only supports a fixed set of conda channels (`conda-forge`,
+    `microsoft`, the `ecoscope-workflows` prefix.dev channels, and local
+    file-based development channels). Using an unsupported channel will raise a
+    validation error. See
+    [Tooling — Restricted conda channels](../concepts/tooling.md#how-requirements-resolves-today)
+    for the full list.
+
 ```yaml
 requirements:
   - name: python
