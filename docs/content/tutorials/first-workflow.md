@@ -9,6 +9,8 @@ workflow into executable artifacts with `wt-compiler`.
     [Registering Tasks](registering-tasks.md) tutorial and are comfortable with
     the `@register` decorator and how the registry works.
 
+Previous: [Registering Tasks](registering-tasks.md)
+
 ---
 
 ## What you will build
@@ -211,6 +213,19 @@ before the task that uses it.
 
 ## Step 4 -- Compile the workflow
 
+!!! warning "Requirements resolve from conda channels"
+    The `requirements:` section resolves packages from **conda channels only**.
+    This means `my-tasks` must be available as a conda package for the compiler
+    to discover it. If you are following this tutorial locally without a conda
+    channel that hosts `my-tasks`, you will need to build a local file-based
+    conda channel or use an alternative approach.
+
+    See [Package Tasks for Distribution](../how-to/package-tasks.md) for
+    instructions on building conda packages from your task code, and
+    [Tooling & Prerequisites](../concepts/tooling.md) for details on how
+    requirements resolution works. PyPI support in `requirements:` is on the
+    roadmap.
+
 Run the compiler, pointing it at your spec:
 
 ```bash
@@ -353,10 +368,13 @@ exception surfaces the task instance ID for easier debugging.
     `pixi run`. See [Tooling & Prerequisites](../concepts/tooling.md) for
     install instructions and when to use pixi vs uv.
 
-You have built, compiled, and inspected your first workflow. From here you can:
+You have built, compiled, and inspected your first workflow.
 
-- **Run it locally** using the generated CLI or by invoking the DAG directly
-  with `pixi run` inside the compiled directory.
+Next: [Running a Workflow](running-a-workflow.md) — execute the compiled
+workflow locally using the generated CLI.
+
+From here you can also:
+
 - **Add more tasks** -- try grouping related steps with
   [task groups](../reference/spec-yaml.md#task-groups) for better organization.
 - **Use `mapvalues`** to transform key-value pairs while preserving the keys
@@ -365,3 +383,5 @@ You have built, compiled, and inspected your first workflow. From here you can:
   runs.
 - **Deploy** the workflow using the generated `Dockerfile` for containerized
   execution.
+- See [Compile a Workflow](../how-to/compile-workflow.md) for advanced
+  compilation options like `--variant gcp` and `--update`.

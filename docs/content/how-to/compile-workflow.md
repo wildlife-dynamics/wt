@@ -3,6 +3,11 @@
 This guide walks you through compiling a workflow specification into
 executable artifacts using the `wt-compiler compile` command.
 
+!!! tip "New to wt?"
+    Start with the [tutorials](../tutorials/registering-tasks.md) for a
+    step-by-step introduction to registering tasks, writing specs, and
+    compiling workflows.
+
 ---
 
 ## Prerequisites

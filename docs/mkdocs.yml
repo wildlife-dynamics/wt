@@ -37,9 +37,15 @@ nav:
   - Tutorials:
     - Registering Tasks: tutorials/registering-tasks.md
     - Building Your First Workflow: tutorials/first-workflow.md
+    - Running a Workflow: tutorials/running-a-workflow.md
   - How-to Guides:
     - Compile a Workflow: how-to/compile-workflow.md
+    - Run a Workflow Locally: how-to/run-workflow-locally.md
+    - Package Tasks for Distribution: how-to/package-tasks.md
+    - Write a spec.yaml: how-to/write-spec-yaml.md
   - Reference:
+    - Glossary: reference/glossary.md
+    - Package Architecture: reference/packages.md
     - "spec.yaml": reference/spec-yaml.md
     - wt-contracts:
       - reference/wt-contracts/index.md
@@ -71,5 +77,4 @@ nav:
       - HTTP API: reference/wt-runner/api.md
       - Tracing: reference/wt-runner/tracing.md
   - Architecture:
-    - Overview: reference/packages.md
     - Design Decisions: explanation/architecture.md

@@ -11,13 +11,6 @@ framework.
 - Python 3.10 or later
 - [uv](https://docs.astral.sh/uv/) (recommended) or pip
 
-!!! note "Task registries must be installable packages"
-    The compiler discovers tasks by installing packages into an ephemeral
-    environment and running `wt-registry` as a subprocess. A standalone `.py`
-    module is not enough — your tasks must live in an installable package with a
-    `pyproject.toml`. See [Tooling & Prerequisites](../concepts/tooling.md) for
-    packaging guidance and the uv/pixi distinction.
-
 ## 1. Install wt-registry
 
 `wt-registry` depends on `wt-contracts` (shared Pydantic models used across all
@@ -50,29 +43,81 @@ wt-registry --help
 You should see output describing the available flags (`--format`, `--pretty`,
 `--function`, `--package`).
 
-## 2. Write a typed Python function
+## 2. Create a task package
 
-Create a file called `tasks.py`. Every function you register **must** have
-complete type annotations on all parameters and on the return type. wt-registry
-uses these annotations to generate a JSON schema that downstream tools
-(wt-compiler, wt-runner) rely on.
+The compiler discovers tasks by installing packages into an ephemeral
+environment and running `wt-registry` as a subprocess. This means your tasks
+must live in an **installable Python package** — a standalone `.py` file is not
+enough. Let's create one now.
 
-```python title="tasks.py"
+Set up the following directory structure:
+
+```
+my-tasks/
+├── pyproject.toml
+└── src/
+    └── my_tasks/
+        ├── __init__.py
+        └── tasks.py
+```
+
+### `pyproject.toml`
+
+```toml
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "my-tasks"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "wt-registry",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+```
+
+### `src/my_tasks/__init__.py`
+
+Re-export the task functions so the compiler can import them with a clean path:
+
+```python
+from my_tasks.tasks import calculate_mean
+```
+
+### `src/my_tasks/tasks.py`
+
+Every function you register **must** have complete type annotations on all
+parameters and on the return type. wt-registry uses these annotations to
+generate a JSON schema that downstream tools (wt-compiler, wt-runner) rely on.
+
+```python
 def calculate_mean(values: list[float]) -> float:
     """Return the arithmetic mean of a list of numbers."""
     return sum(values) / len(values)
 ```
 
-!!! warning
-    Functions that are missing type annotations will fail validation when their
-    JSON schema is generated. We will see the exact error messages later in this
-    tutorial.
+### Install the package
+
+Install your package in editable mode so the tasks are importable:
+
+```bash
+pip install -e ./my-tasks
+```
+
+This is the same workflow you will use in the
+[next tutorial](first-workflow.md) and when developing real task packages. For
+more on uv vs pixi and packaging choices, see
+[Tooling & Prerequisites](../concepts/tooling.md).
 
 ## 3. Register the function with `@register`
 
 Import the decorator and apply it to your function:
 
-```python title="tasks.py" hl_lines="1 4"
+```python title="src/my_tasks/tasks.py" hl_lines="1 4"
 from wt_registry import register
 
 
@@ -87,7 +132,7 @@ That is the minimal form -- `@register()` with no arguments. The decorator:
 1. **Auto-generates a title** from the function name by converting `snake_case`
    to Title Case. `calculate_mean` becomes *Calculate Mean*.
 2. **Stores the entry** in a global, in-process registry keyed by the fully
-   qualified name (`tasks.calculate_mean`).
+   qualified name (`my_tasks.tasks.calculate_mean`).
 3. **Returns the original function unchanged** -- you can still call
    `calculate_mean([1.0, 2.0, 3.0])` exactly as before.
 
@@ -103,9 +148,9 @@ All parameters are keyword-only and optional:
 | `deprecated` | `bool` | `False` | Mark the function as deprecated |
 | `deprecation_message` | `str \| None` | `None` | Explain what to use instead |
 
-Here is a more complete example:
+Here is a more complete example with multiple functions:
 
-```python title="tasks.py"
+```python title="src/my_tasks/tasks.py"
 from wt_registry import register
 
 
@@ -138,6 +183,9 @@ def old_processor(data: list[int]) -> list[int]:
     return data
 ```
 
+Don't forget to update `src/my_tasks/__init__.py` to re-export the new
+functions if you add them.
+
 !!! note
     Registration happens at **import time** -- as soon as Python executes the
     decorated function definition, the entry is added to the global registry.
@@ -151,7 +199,7 @@ Use `get_registry()` to retrieve an immutable view of all registered functions:
 from wt_registry import get_registry
 
 # Import tasks module to trigger registration
-import tasks  # noqa: F401
+import my_tasks  # noqa: F401
 
 registry = get_registry()
 
@@ -168,26 +216,26 @@ for fqn, entry in registry.items():
 Running this produces:
 
 ```
-tasks.calculate_mean
+my_tasks.tasks.calculate_mean
   Title:       Calculate Mean
   Description: Compute the arithmetic mean of a list of floats
   Tags:        ['statistics', 'math']
   Deprecated:  False
-  Import:      from tasks import calculate_mean
+  Import:      from my_tasks.tasks import calculate_mean
 
-tasks.fetch_events
+my_tasks.tasks.fetch_events
   Title:       Fetch Events
   Description: None
   Tags:        ['io', 'earthranger']
   Deprecated:  False
-  Import:      from tasks import fetch_events
+  Import:      from my_tasks.tasks import fetch_events
 
-tasks.old_processor
+my_tasks.tasks.old_processor
   Title:       Old Processor
   Description: None
   Tags:        []
   Deprecated:  True
-  Import:      from tasks import old_processor
+  Import:      from my_tasks.tasks import old_processor
 ```
 
 `get_registry()` returns a `MappingProxyType` -- a read-only dict. You cannot
@@ -203,40 +251,40 @@ build. It imports the modules you specify with `--package`, which triggers
 ### Pretty (human-readable) output
 
 ```bash
-wt-registry --package tasks --format pretty
+wt-registry --package my_tasks --format pretty
 ```
 
 ```
-=== tasks.calculate_mean ===
+=== my_tasks.tasks.calculate_mean ===
 Title: Calculate Mean
 Description: Compute the arithmetic mean of a list of floats
 Tags: statistics, math
 Deprecated: No
-Import: from tasks import calculate_mean
+Import: from my_tasks.tasks import calculate_mean
 
-=== tasks.fetch_events ===
+=== my_tasks.tasks.fetch_events ===
 Title: Fetch Events
 Tags: io, earthranger
 Deprecated: No
-Import: from tasks import fetch_events
+Import: from my_tasks.tasks import fetch_events
 
-=== tasks.old_processor ===
+=== my_tasks.tasks.old_processor ===
 Title: Old Processor
 Deprecated: Yes (Use new_processor instead)
-Import: from tasks import old_processor
+Import: from my_tasks.tasks import old_processor
 ```
 
 ### JSON output (default)
 
 ```bash
-wt-registry --package tasks
+wt-registry --package my_tasks
 ```
 
 This produces compact JSON conforming to the `RegistryOutput` schema from
 wt-contracts. Add `--pretty` for indented output:
 
 ```bash
-wt-registry --package tasks --pretty
+wt-registry --package my_tasks --pretty
 ```
 
 ### Filtering by function name
@@ -244,7 +292,7 @@ wt-registry --package tasks --pretty
 If you only need specific functions, use `--function`:
 
 ```bash
-wt-registry --package tasks --function calculate_mean --format pretty
+wt-registry --package my_tasks --function calculate_mean --format pretty
 ```
 
 You can repeat `--function` to select multiple functions.
@@ -271,7 +319,7 @@ Accessing the schema raises `ValidationError`:
 
 ```
 wt_registry.exceptions.ValidationError:
-  Function tasks.bad_function has untyped parameters: x.
+  Function my_tasks.tasks.bad_function has untyped parameters: x.
   All parameters must have type annotations.
 ```
 
@@ -285,7 +333,7 @@ def also_bad(x: int):  # no return type
 
 ```
 wt_registry.exceptions.ValidationError:
-  Function tasks.also_bad has no return type annotation.
+  Function my_tasks.tasks.also_bad has no return type annotation.
   Return type must be annotated.
 ```
 
@@ -299,7 +347,7 @@ async def not_allowed(x: int) -> str:
 
 ```
 wt_registry.exceptions.ValidationError:
-  Async functions are not supported: tasks.not_allowed.
+  Async functions are not supported: my_tasks.tasks.not_allowed.
   Only synchronous functions can be registered.
 ```
 
@@ -313,7 +361,7 @@ class NotAFunction:
 
 ```
 wt_registry.exceptions.ValidationError:
-  Classes are not supported: tasks.NotAFunction.
+  Classes are not supported: my_tasks.tasks.NotAFunction.
   Only functions can be registered.
 ```
 
@@ -324,7 +372,7 @@ name) raises `DuplicateRegistrationError` immediately at import time:
 
 ```
 wt_registry.exceptions.DuplicateRegistrationError:
-  Function tasks.calculate_mean is already registered
+  Function my_tasks.tasks.calculate_mean is already registered
 ```
 
 !!! tip
@@ -344,10 +392,10 @@ You can inspect a function's schema directly:
 ```python
 import json
 from wt_registry import get_registry
-import tasks  # noqa: F401
+import my_tasks  # noqa: F401
 
 registry = get_registry()
-entry = registry["tasks.calculate_mean"]
+entry = registry["my_tasks.tasks.calculate_mean"]
 print(json.dumps(entry.json_schema, indent=2))
 ```
 
@@ -396,6 +444,7 @@ The output will look something like:
 In this tutorial you learned how to:
 
 - Install `wt-registry` (which brings in `wt-contracts` automatically)
+- Create an installable task package with `pyproject.toml`
 - Write a fully typed function and register it with `@register()`
 - Provide optional metadata: title, description, tags, and deprecation info
 - Inspect the registry programmatically with `get_registry()`
@@ -403,5 +452,5 @@ In this tutorial you learned how to:
 - Understand the validation rules and how to fix common errors
 - Access the generated JSON schema for a registered function
 
-The next step in a typical workflow is to write a workflow YAML spec that
-references these registered functions, and compile it with `wt-compiler`.
+Next: [Building Your First Workflow](first-workflow.md) — wire your registered
+tasks together in a `spec.yaml` and compile them into executable artifacts.

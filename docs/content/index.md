@@ -29,13 +29,66 @@ access to the scientific software ecosystem. Key design goals:
   diff, and version-control. No opaque runtime interpreter — what you see in
   the generated code is what runs.
 
+---
+
+## Workflow lifecycle
+
+```
+  Register            Specify             Compile              Run
+┌───────────┐    ┌───────────────┐    ┌──────────────┐    ┌──────────────┐
+│  @register │    │  spec.yaml    │    │ wt-compiler  │    │ pixi run /   │
+│  decorator │ -> │  declares the │ -> │ generates a  │ -> │ wt-runner    │
+│  marks     │    │  DAG and its  │    │ standalone   │    │ executes the │
+│  functions │    │  data flow    │    │ Python pkg   │    │ compiled DAG │
+└───────────┘    └───────────────┘    └──────────────┘    └──────────────┘
+```
+
+1. **Register** — Decorate Python functions with `@register` to make them
+   discoverable. Type annotations drive JSON schema generation for web forms.
+2. **Specify** — Write a `spec.yaml` that declares which tasks to run, how data
+   flows between them (`partial`, `map`, `mapvalues`), and what to skip.
+3. **Compile** — `wt-compiler` resolves dependencies, validates the spec, and
+   generates a self-contained Python package with DAG code, parameter schemas,
+   a `pixi.toml`, and a Dockerfile.
+4. **Run** — Execute locally via the generated CLI (`pixi run`), through the
+   `wt-runner` FastAPI server, or on Google Cloud Batch.
+
+---
+
+## Quick start
+
+```bash
+# 1. Install
+pip install wt-registry wt-task wt-compiler
+
+# 2. Register a function (in your task package)
+# @register()
+# def calculate_mean(values: list[float]) -> float: ...
+
+# 3. Write a spec.yaml referencing your tasks
+
+# 4. Compile
+wt-compiler compile --spec spec.yaml
+
+# 5. Run
+cd wt-my-workflow/
+pixi install && pixi run workflow run --config-file config.yaml
+```
+
+See the [tutorials](tutorials/registering-tasks.md) for a complete
+walkthrough.
+
+---
+
 ## Quick navigation
 
 | If you want to… | Go to |
 |---|---|
+| Understand the key concepts | [Core Concepts](concepts/index.md) |
 | Build a workflow from scratch | [Tutorials](tutorials/registering-tasks.md) |
+| Run a compiled workflow | [Running a Workflow](tutorials/running-a-workflow.md) |
 | Write or edit a `spec.yaml` | [`spec.yaml` reference](reference/spec-yaml.md) |
-| Compile and run a workflow | [Compile a Workflow](how-to/compile-workflow.md) |
+| Compile a workflow | [Compile a Workflow](how-to/compile-workflow.md) |
 | Understand the architecture | [Design Decisions](explanation/architecture.md) |
 | Look up a package API | [Reference](reference/wt-contracts/index.md) |
 

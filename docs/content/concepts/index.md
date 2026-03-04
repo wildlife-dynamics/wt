@@ -24,8 +24,17 @@ the CLI, or in the HTTP response body when triggered through the REST API.
     full decorator options, registry API, and CLI.
 
 Workflows are composed of **registered functions**: ordinary Python functions
-decorated with `@register`. Registration makes a function discoverable by the
-compiler without importing its code directly.
+decorated with `@register`. Registration serves two purposes:
+
+1. **Discovery without imports.** The compiler discovers tasks by running
+   `wt-registry` as a subprocess inside an ephemeral conda environment. This
+   avoids importing task code directly, which would create dependency conflicts
+   between the compiler and the task packages.
+
+2. **Schema generation.** Type annotations on registered functions are used to
+   generate JSON schemas — these schemas power the auto-generated web forms
+   that end users fill out to configure a workflow, and they validate parameters
+   at compile time.
 
 ```python
 from wt_registry import register
@@ -33,20 +42,7 @@ from wt_registry import register
 @register(description="Generate a list of integers from 0 to count-1.")
 def generate_numbers(count: int) -> list[int]:
     return list(range(count))
-
-@register(description="Double a single integer.")
-def double_number(value: int) -> int:
-    return value * 2
-
-@register(description="Sum a list of integers.")
-def sum_numbers(values: list[int]) -> int:
-    return sum(values)
 ```
-
-Every parameter and return type **must** have a type annotation. `wt` uses
-those annotations to generate a JSON Schema for each function — and that schema
-is what powers the auto-generated web forms that end users fill out to
-configure a workflow.
 
 The `@register` decorator accepts optional metadata (`title`, `description`,
 `tags`, `deprecated`) but leaves the function itself completely unchanged — you
@@ -99,36 +95,6 @@ GitHub Actions (`${{ }}` expressions) and Astronomer's DAG Factory (declarative
 DAG definition), with additions for fan-out, argument binding, conditional
 execution, and task grouping.
 
-Here is the spec for the three-step workflow above:
-
-```yaml
-id: double_and_sum
-
-requirements:
-  - name: my-tasks
-    version: ">=0.1.0"
-
-workflow:
-  - id: numbers
-    name: "Generate Numbers"
-    task: generate_numbers
-    partial:
-      count: 5
-
-  - id: doubled
-    name: "Double Each Number"
-    task: double_number
-    map:
-      argnames: value
-      argvalues: ${{ workflow.numbers.return }}
-
-  - id: total
-    name: "Sum Results"
-    task: sum_numbers
-    partial:
-      values: ${{ workflow.doubled.return }}
-```
-
 Key constructs:
 
 - **`partial`** binds arguments to literal values or `${{ }}` references.
@@ -137,32 +103,24 @@ Key constructs:
 - **`skipif`** conditionally skips a task based on boolean condition functions.
 - **Task groups** (`type: task-group`) organize related tasks under a heading.
 
+For a complete spec example, see the
+[first-workflow tutorial](../tutorials/first-workflow.md#step-3-write-the-specyaml)
+or the [spec.yaml reference](../reference/spec-yaml.md).
+
 ---
 
 ## Compilation — from spec to executable
 
 !!! info "Learn more"
     **How-to:** [Compile a Workflow](../how-to/compile-workflow.md) —
-    compile and run your first workflow end to end.
+    compile your first workflow end to end.
     **Reference:** [wt-compiler API](../reference/wt-compiler/index.md) —
     compiler internals, spec models, and task discovery.
 
-`wt-compiler` reads the spec and produces a **standalone Python package**:
-
-```
-wt-double-and-sum/
-├── pixi.toml                       # Pinned conda environment
-├── Dockerfile
-├── graph.png                        # Visual DAG diagram
-├── wt_double_and_sum/
-│   ├── params.json                  # JSON Schema for web forms
-│   ├── rjsf.json                    # React JSON Schema Form config
-│   ├── cli.py                       # CLI entry point
-│   └── dags/
-│       └── run_sequential.py        # Generated DAG code
-└── tests/
-    └── ...
-```
+`wt-compiler` reads the spec and produces a **standalone Python package**.
+The "compile, don't interpret" design means there is no opaque runtime
+interpreter — what you see in the generated code is what executes. This makes
+compiled workflows easy to read, diff, and version-control.
 
 During compilation, the compiler:
 
@@ -174,8 +132,10 @@ During compilation, the compiler:
    method chains (`.partial()`, `.map()`, `.call()`).
 5. Pins every dependency version so the workflow is fully reproducible.
 
-The compiled output is what actually runs. There is no interpreter at runtime —
-what you see in the generated code is what executes.
+The compiled output includes DAG code, parameter schemas (JSON Schema for web
+forms), a `pixi.toml` for environment management, a Dockerfile, and tests.
+See the [first-workflow tutorial](../tutorials/first-workflow.md#step-5-explore-the-compiled-artifacts)
+for a detailed walkthrough of the output structure.
 
 ```bash
 wt-compiler compile --spec spec.yaml
@@ -186,6 +146,8 @@ wt-compiler compile --spec spec.yaml
 ## Execution — running the compiled workflow
 
 !!! info "Learn more"
+    **Tutorial:** [Running a Workflow](../tutorials/running-a-workflow.md) —
+    run a compiled workflow step by step.
     **Reference:** [wt-runner API](../reference/wt-runner/index.md) —
     FastAPI server, HTTP endpoints, and tracing.
     **Reference:** [wt-invokers API](../reference/wt-invokers/index.md) —
@@ -193,7 +155,7 @@ wt-compiler compile --spec spec.yaml
 
 Once compiled, a workflow can run in several ways:
 
-- **Locally via CLI** — run the generated `cli.py` entry point directly.
+- **Locally via CLI** — run the generated entry point with `pixi run`.
 - **Through the REST API** — `wt-runner` is a FastAPI server that accepts
   workflow parameters as JSON and returns the workflow's JSON output in the
   response body.
