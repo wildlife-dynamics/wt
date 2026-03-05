@@ -7,6 +7,10 @@ name = "wt-invokers-gcp"
 dynamic = ["version"]
 description = "Metapackage bundling wt-invokers with GCP dependencies (Cloud Batch)"
 requires-python = ">=3.10"
+license = { text = "BSD-3-Clause" }
+classifiers = [
+    "License :: OSI Approved :: BSD License",
+]
 dependencies = [
     "wt-invokers>=0.1.0,<1.0.0",
     "google-cloud-batch>=0.19.0",

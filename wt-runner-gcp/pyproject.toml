@@ -7,6 +7,10 @@ name = "wt-runner-gcp"
 dynamic = ["version"]
 description = "Metapackage bundling wt-runner with GCP dependencies (Pub/Sub, tracing, Cloud Batch)"
 requires-python = ">=3.13,<3.16"
+license = { text = "BSD-3-Clause" }
+classifiers = [
+    "License :: OSI Approved :: BSD License",
+]
 dependencies = [
     "wt-runner>=0.1.0,<1.0.0",
     "ecoscope-eda-core @ git+https://github.com/wildlife-dynamics/ecoscope-eda-core.git",

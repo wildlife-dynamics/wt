@@ -7,6 +7,10 @@ name = "wt-task-gcp"
 dynamic = ["version"]
 description = "Metapackage bundling wt-task with GCP tracing dependencies"
 requires-python = ">=3.10"
+license = { text = "BSD-3-Clause" }
+classifiers = [
+    "License :: OSI Approved :: BSD License",
+]
 dependencies = [
     "wt-task>=0.1.0,<1.0.0",
     "opentelemetry-api>=1.20.0",
