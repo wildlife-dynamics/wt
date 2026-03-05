@@ -59,6 +59,7 @@ tag_regex = "^wt-task/v(?P<version>[0-9.]+)$"
 root = ".."
 # Generate version file
 version_file = "src/wt_task/_version.py"
+git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--match", "wt-task/v*"]
 # Fallback version for development without git
 fallback_version = "0.1.0.dev0"
 
