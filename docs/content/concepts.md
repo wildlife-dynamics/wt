@@ -5,6 +5,33 @@ it's made of, and how it goes from a YAML file to running code.
 
 ---
 
+## Workflow lifecycle
+
+```
+ Register            Specify             Compile              Run
+┌────────────┐   ┌───────────────┐   ┌──────────────┐   ┌──────────────┐
+│ @register  │   │ spec.yaml     │   │ wt-compiler  │   │ pixi run /   │
+│ decorator  │-->│ declares the  │-->│ generates a  │-->│ wt-runner    │
+│ marks      │   │ DAG and its   │   │ standalone   │   │ executes the │
+│ functions  │   │ data flow     │   │ Python pkg   │   │ compiled DAG │
+└────────────┘   └───────────────┘   └──────────────┘   └──────────────┘
+```
+
+1. **Register** — Decorate Python functions with `@register` (from the
+   `wt-registry` package) to make them discoverable. Type annotations drive
+   JSON schema generation for web forms.
+2. **Specify** — Write a `spec.yaml` that declares which tasks to run, how data
+   flows between them (`partial`, `map`, `mapvalues`), and what to skip.
+3. **Compile** — `wt-compiler` resolves dependencies, validates the spec, and
+   generates a self-contained Python package with DAG code, parameter schemas,
+   a `pixi.toml`, and a Dockerfile.
+4. **Run** — Execute locally via the generated CLI (`pixi run`), through the
+   `wt-runner` FastAPI server, or on Google Cloud Batch.
+
+The rest of this page unpacks each phase.
+
+---
+
 ## Workflows
 
 A **workflow** is a pipeline of steps that produces a JSON result. Side effects

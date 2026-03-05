@@ -30,8 +30,8 @@ markdown_extensions:
   - pymdownx.superfences
 nav:
   - Home: index.md
-  - Getting Started: getting-started.md
   - Concepts: concepts.md
+  - Getting Started: getting-started.md
   - Reference:
     - "spec.yaml": reference/spec-yaml.md
     - wt-contracts: reference/wt-contracts.md
