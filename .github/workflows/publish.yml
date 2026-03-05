@@ -6,11 +6,11 @@ on:
       - "*/v*"
 
 jobs:
-  publish:
+  parse:
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: write
+    outputs:
+      package: ${{ steps.parse.outputs.package }}
+      version: ${{ steps.parse.outputs.version }}
     steps:
       - name: Parse tag
         id: parse
@@ -29,6 +29,14 @@ jobs:
             exit 1
           fi
 
+  publish:
+    needs: parse
+    runs-on: ubuntu-latest
+    environment: release-${{ needs.parse.outputs.package }}
+    permissions:
+      id-token: write
+      contents: write
+    steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -37,15 +45,15 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Build package
-        working-directory: ${{ steps.parse.outputs.package }}
+        working-directory: ${{ needs.parse.outputs.package }}
         run: uv build
 
       - name: Publish to PyPI
-        working-directory: ${{ steps.parse.outputs.package }}
+        working-directory: ${{ needs.parse.outputs.package }}
         run: uv publish
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "${{ steps.parse.outputs.package }} v${{ steps.parse.outputs.version }}"
+          name: "${{ needs.parse.outputs.package }} v${{ needs.parse.outputs.version }}"
           generate_release_notes: true
