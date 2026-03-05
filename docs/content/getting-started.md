@@ -16,24 +16,11 @@ them, and sums the results.
 
 ---
 
-## 1. Install the packages
+## 1. Create a task package
 
-You need three packages: **wt-registry** (function registration), **wt-task**
-(the runtime task decorator), and **wt-compiler** (the compiler CLI).
-
-```bash
-uv pip install wt-registry wt-task wt-compiler
-```
-
-Verify the registry CLI is available:
-
-```bash
-wt-registry --help
-```
-
----
-
-## 2. Create a task package
+!!! tip "Already have tasks?"
+    If you're composing a workflow entirely from tasks in an existing registry,
+    skip to [Step 2. Write the spec](#2-write-the-spec).
 
 The compiler discovers tasks by installing packages into an ephemeral
 environment and running `wt-registry` as a subprocess. This means your tasks
@@ -156,9 +143,7 @@ Import: from my_tasks.tasks import sum_numbers as sum_numbers
 Use `--format json` (the default) to see the machine-readable output that
 the compiler consumes, or add `--function calculate_mean` to filter by name.
 
----
-
-## 3. Validation rules
+### Validation rules
 
 wt-registry uses **lazy validation**: the `@register` decorator itself does
 not validate your function's signature. Validation happens when the JSON schema
@@ -172,9 +157,74 @@ is first accessed (typically during CLI export or compilation).
 | Classes cannot be registered | `ValidationError: Classes are not supported` |
 | Duplicate fully-qualified names | `DuplicateRegistrationError` (raised at import time) |
 
+### Packaging for distribution
+
+For the compiler to resolve your task package from `requirements:`, it must be
+available on a conda channel. The simplest approach for local development is a
+**local file-based conda channel** built with `pixi build`.
+
+#### Using pixi build
+
+```bash
+# Build a conda package from your pixi project
+pixi build
+```
+
+This produces a local conda package. Point the compiler to the output directory
+as a local channel.
+
+#### Standard pip packaging
+
+Task packages use standard `pyproject.toml` and can be published to PyPI or
+installed locally. This works for local development and registries whose
+dependencies are all on PyPI. However, the compiler's `requirements:` section
+currently resolves from **conda channels only** — see
+[Concepts — Tooling](concepts.md#tooling) for details and the PyPI roadmap.
+
+#### Key requirements for discoverability
+
+- Your package must declare `wt-registry` as a dependency (so the CLI is
+  available in the ephemeral environment).
+- Your tasks must be importable via the package name (i.e. `import my_tasks`
+  must trigger registration).
+- Every task function must have complete type annotations.
+
+### JSON schema generation
+
+Behind the scenes, wt-registry generates a JSON schema from each function's
+type annotations using Pydantic's `TypeAdapter`. You can inspect a function's
+schema directly:
+
+```python
+import json
+from wt_registry import get_registry
+import my_tasks  # noqa: F401
+
+registry = get_registry()
+entry = registry["my_tasks.tasks.generate_numbers"]
+print(json.dumps(entry.json_schema, indent=2))
+```
+
+You can use `pydantic.Field` inside `typing.Annotated` to add descriptions,
+defaults, and other metadata to individual parameters:
+
+```python
+from typing import Annotated
+from pydantic import Field
+
+@register()
+def calculate_mean(
+    values: Annotated[
+        list[float],
+        Field(description="List of numeric values to average"),
+    ],
+) -> float:
+    return sum(values) / len(values)
+```
+
 ---
 
-## 4. Write the spec.yaml
+## 2. Write the spec
 
 Create a file called `spec.yaml` next to your task package:
 
@@ -271,12 +321,12 @@ For the complete field-by-field reference, see [`spec.yaml`](reference/spec-yaml
 
 ---
 
-## 5. Compile the workflow
+## 3. Compile the workflow
 
 !!! warning "Requirements resolve from conda channels"
     The `requirements:` section resolves packages from **conda channels only**.
     `my-tasks` must be available as a conda package for the compiler to discover
-    it. See [Packaging for distribution](#8-packaging-for-distribution) below
+    it. See [Packaging for distribution](#packaging-for-distribution) above
     for instructions on building conda packages from your task code. PyPI
     support in `requirements:` is on the roadmap.
 
@@ -343,9 +393,7 @@ wt-compiler compile --spec spec.yaml --pkg-name-prefix myorg
 | `Environment creation failed during solve phase` | Check package names, version constraints, and channel reachability. |
 | `Task '<name>' not found in known tasks` | Verify the task is decorated with `@register`, the package is in `requirements`, and the name is spelled correctly. Use the fully qualified path if two packages export the same function name. |
 
----
-
-## 6. Explore the compiled artifacts
+### Compiled artifacts
 
 The compiler produces a self-contained package directory:
 
@@ -428,7 +476,7 @@ string inputs from a web form or CLI are coerced to the correct Python types.
 
 ---
 
-## 7. Run the workflow
+## 4. Run the workflow
 
 ### Install dependencies
 
@@ -513,72 +561,3 @@ curl -X POST http://localhost:8080/workflow \
 The server can dispatch to different backends (local subprocess, Cloud Batch)
 depending on configuration. See the [wt-runner](reference/wt-runner.md) and
 [wt-invokers](reference/wt-invokers.md) reference pages for details.
-
----
-
-## 8. Packaging for distribution
-
-For the compiler to resolve your task package from `requirements:`, it must be
-available on a conda channel. The simplest approach for local development is a
-**local file-based conda channel** built with `pixi build`.
-
-### Using pixi build
-
-```bash
-# Build a conda package from your pixi project
-pixi build
-```
-
-This produces a local conda package. Point the compiler to the output directory
-as a local channel.
-
-### Standard pip packaging
-
-Task packages use standard `pyproject.toml` and can be published to PyPI or
-installed locally. This works for local development and registries whose
-dependencies are all on PyPI. However, the compiler's `requirements:` section
-currently resolves from **conda channels only** — see
-[Concepts — Tooling](concepts.md#tooling) for details and the PyPI roadmap.
-
-### Key requirements for discoverability
-
-- Your package must declare `wt-registry` as a dependency (so the CLI is
-  available in the ephemeral environment).
-- Your tasks must be importable via the package name (i.e. `import my_tasks`
-  must trigger registration).
-- Every task function must have complete type annotations.
-
----
-
-## JSON schema generation
-
-Behind the scenes, wt-registry generates a JSON schema from each function's
-type annotations using Pydantic's `TypeAdapter`. You can inspect a function's
-schema directly:
-
-```python
-import json
-from wt_registry import get_registry
-import my_tasks  # noqa: F401
-
-registry = get_registry()
-entry = registry["my_tasks.tasks.generate_numbers"]
-print(json.dumps(entry.json_schema, indent=2))
-```
-
-You can use `pydantic.Field` inside `typing.Annotated` to add descriptions,
-defaults, and other metadata to individual parameters:
-
-```python
-from typing import Annotated
-from pydantic import Field
-
-@register()
-def calculate_mean(
-    values: Annotated[
-        list[float],
-        Field(description="List of numeric values to average"),
-    ],
-) -> float:
-    return sum(values) / len(values)
-```
