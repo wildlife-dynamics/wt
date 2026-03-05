@@ -56,7 +56,6 @@ root = ".."
 # Generate version file
 version_file = "src/wt_compiler/_version.py"
 git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--match", "wt-compiler/v*"]
-fallback_version = "0.1.0.dev0"
 
 [tool.uv.sources]
 # Development override - uses local editable wt-contracts

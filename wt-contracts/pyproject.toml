@@ -52,7 +52,6 @@ root = ".."
 # Generate version file
 version_file = "src/wt_contracts/_version.py"
 git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--match", "wt-contracts/v*"]
-fallback_version = "0.1.0.dev0"
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "src/wt_contracts"]
