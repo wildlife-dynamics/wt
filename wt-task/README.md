@@ -173,4 +173,4 @@ uv run pytest tests/test_decorator.py
 
 ## License
 
-Apache-2.0
+BSD-3-Clause

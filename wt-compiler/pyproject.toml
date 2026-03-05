@@ -8,9 +8,16 @@ dynamic = ["version"]
 description = "Workflow compiler for generating DAG artifacts from workflow specifications"
 requires-python = ">=3.12"
 readme = "README.md"
-license = { text = "MIT" }
+license = { text = "BSD-3-Clause" }
 authors = [
     { name = "Ecoscope Team" }
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
     "wt-contracts>=0.1.0,<1.0.0",

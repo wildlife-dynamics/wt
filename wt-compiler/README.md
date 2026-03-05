@@ -274,4 +274,4 @@ See main wt repository CONTRIBUTING.md for guidelines.
 
 ## License
 
-MIT
+BSD-3-Clause
