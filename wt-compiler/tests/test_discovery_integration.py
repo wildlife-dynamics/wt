@@ -194,10 +194,11 @@ requirements:
 workflow: []
 """)
 
-        requirements = _parse_requirements_from_yaml(spec_yaml)
+        result = _parse_requirements_from_yaml(spec_yaml)
 
-        assert len(requirements) == 1
-        assert requirements[0].name == "my-package"
+        assert len(result.conda) == 1
+        assert len(result.pypi) == 0
+        assert result.conda[0].name == "my-package"
 
     def test_parse_requirements_missing_requirements_raises(self, tmp_path):
         """Test that missing requirements section raises ValueError."""

@@ -21,11 +21,12 @@ from wt_contracts.registry import RegistryOutput
 
 from wt_compiler.exceptions import (
     EnvironmentCreationError,
+    PyPIInstallError,
     RegistryExecutionError,
     RegistryNotFoundError,
 )
 from wt_compiler.requirements import CHANNELS
-from wt_compiler.spec import KnownTask, TaskTag, known_tasks
+from wt_compiler.spec import KnownTask, PyPIRequirement, TaskTag, known_tasks
 
 # Retry configuration for handling transient ENOTEMPTY errors during parallel install
 MAX_INSTALL_RETRIES = 3
@@ -43,21 +44,24 @@ async def discover_tasks_from_requirements(
     requirements: list[MatchSpec],
     channels: list[Channel] | None = None,
     platform: Platform | None = None,
+    pypi_requirements: list[PyPIRequirement] | None = None,
     on_progress: Callable[[str], None] | None = None,
 ) -> DiscoveryResult:
     """Discover tasks by creating an ephemeral rattler environment.
 
     This async function:
     1. Creates a temporary directory
-    2. Uses py-rattler to solve and install the requirements
-    3. Calls wt-registry CLI in that environment
-    4. Parses the JSON output
-    5. Returns a dictionary of task name -> {module -> KnownTask}
+    2. Uses py-rattler to solve and install the conda requirements
+    3. Optionally installs PyPI requirements via pip into the environment
+    4. Calls wt-registry CLI in that environment
+    5. Parses the JSON output
+    6. Returns a dictionary of task name -> {module -> KnownTask}
 
     Args:
-        requirements: List of package requirements to install
+        requirements: List of conda package requirements to install
         channels: Optional list of channels (defaults to conda-forge)
         platform: Optional Platform object (defaults to current platform)
+        pypi_requirements: Optional list of PyPI requirements to pip-install
         on_progress: Optional callback invoked with a status message at each phase
 
     Returns:
@@ -68,6 +72,7 @@ async def discover_tasks_from_requirements(
     Raises:
         RegistryNotFoundError: If wt-registry is not installed in the environment
         RegistryExecutionError: If wt-registry CLI returns non-zero exit code
+        PyPIInstallError: If pip install of a PyPI requirement fails
         json.JSONDecodeError: If CLI output is not valid JSON
         ValueError: If CLI output doesn't match expected schema
 
@@ -104,6 +109,36 @@ async def discover_tasks_from_requirements(
             env_path, requirements, channels, platform, on_progress=on_progress
         )
 
+        # Install PyPI requirements into the environment via pip
+        if pypi_requirements:
+            if on_progress is not None:
+                on_progress("Installing PyPI dependencies...")
+            pip_exe = (
+                env_path / "Scripts" / "pip.exe"
+                if sys.platform == "win32"
+                else env_path / "bin" / "pip"
+            )
+            for pypi_req in pypi_requirements:
+                pip_arg = pypi_req.to_pip_install_arg()
+                # Handle editable installs which start with "-e "
+                if pip_arg.startswith("-e "):
+                    pip_args = [str(pip_exe), "install", "-e", pip_arg[3:]]
+                else:
+                    pip_args = [str(pip_exe), "install", pip_arg]
+                pip_result = subprocess.run(
+                    pip_args,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                if pip_result.returncode != 0:
+                    raise PyPIInstallError(
+                        requirement=pypi_req,
+                        returncode=pip_result.returncode,
+                        stdout=pip_result.stdout,
+                        stderr=pip_result.stderr,
+                    )
+
         # Determine the executable path based on platform
         if sys.platform == "win32":
             wt_registry_exe = env_path / "Scripts" / "wt-registry.exe"
@@ -128,6 +163,13 @@ async def discover_tasks_from_requirements(
                 # Convert package name to module path: foo-bar -> foo_bar.tasks
                 module_path = pkg_name.replace("-", "_") + ".tasks"
                 task_modules.append(module_path)
+
+        # Also derive task modules from PyPI requirements
+        if pypi_requirements:
+            for pypi_req in pypi_requirements:
+                if not pypi_req.name.startswith("wt-"):
+                    module_path = pypi_req.name.replace("-", "_") + ".tasks"
+                    task_modules.append(module_path)
 
         # Build CLI command with --package arguments
         cli_args = [str(wt_registry_exe), "--format", "json"]
@@ -305,6 +347,7 @@ async def _create_environment(
 async def populate_known_tasks(
     requirements: list[MatchSpec],
     channels: list[Channel] | None = None,
+    pypi_requirements: list[PyPIRequirement] | None = None,
     on_progress: Callable[[str], None] | None = None,
     **kwargs: Any,
 ) -> list[Any]:
@@ -318,6 +361,7 @@ async def populate_known_tasks(
         channels: Optional list of channels to search for packages.
             If not provided, defaults to conda-forge in discover_tasks_from_requirements.
             For custom package channels, this parameter must be provided.
+        pypi_requirements: Optional list of PyPI requirements to pip-install
         on_progress: Optional callback invoked with a status message at each phase
         **kwargs: Additional arguments to pass to discover_tasks_from_requirements
 
@@ -333,7 +377,11 @@ async def populate_known_tasks(
         True
     """
     result = await discover_tasks_from_requirements(
-        requirements, channels=channels, on_progress=on_progress, **kwargs
+        requirements,
+        channels=channels,
+        pypi_requirements=pypi_requirements,
+        on_progress=on_progress,
+        **kwargs,
     )
     known_tasks.clear()
     known_tasks.update(result.tasks)

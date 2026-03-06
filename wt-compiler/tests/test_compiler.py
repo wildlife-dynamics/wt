@@ -5,10 +5,19 @@ import pytest
 from wt_compiler.compiler import (
     DagCompiler,
     Fingerprint,
+    ParsedRequirements,
     _build_installed_requirements,
+    _parse_requirements_from_yaml,
     _remove_functionally_irrelevant_keys,
 )
-from wt_compiler.spec import KnownTask, Spec, SpecRequirement, TaskInstance, known_tasks
+from wt_compiler.spec import (
+    KnownTask,
+    PyPIRequirement,
+    Spec,
+    SpecRequirement,
+    TaskInstance,
+    known_tasks,
+)
 
 
 class TestRemoveFunctionallyIrrelevantKeys:
@@ -219,6 +228,49 @@ class TestDagCompiler:
         assert "test-all" in pixi_toml.feature["test"].tasks
         assert "playwright-install" in pixi_toml.feature["test"].tasks
 
+    def test_get_pixi_toml_with_pypi_deps(self):
+        """Test pixi.toml generation with mixed conda and pypi requirements."""
+        spec = Spec(
+            id="test_spec",
+            requirements=[
+                {"requirement": "python>=3.10"},
+                {"name": "foo", "git": "https://github.com/org/foo.git", "tag": "v1.0"},
+                {"name": "bar", "path": "./bar", "editable": True},
+            ],
+            workflow=[],
+        )
+        compiler = DagCompiler(
+            spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/"
+        )
+        pixi_toml = compiler.get_pixi_toml()
+
+        # Conda deps should be in dependencies
+        assert "python" in pixi_toml.dependencies
+
+        # PyPI deps should be in pypi_dependencies
+        assert "foo" in pixi_toml.pypi_dependencies
+        assert pixi_toml.pypi_dependencies["foo"]["git"] == "https://github.com/org/foo.git"
+        assert pixi_toml.pypi_dependencies["foo"]["tag"] == "v1.0"
+        assert "bar" in pixi_toml.pypi_dependencies
+        assert pixi_toml.pypi_dependencies["bar"]["path"] == "./bar"
+        assert pixi_toml.pypi_dependencies["bar"]["editable"] is True
+
+    def test_get_pixi_toml_no_pypi_deps(self):
+        """Test pixi.toml with no pypi deps doesn't include pypi-dependencies section."""
+        spec = Spec(
+            id="test_spec",
+            requirements=[{"requirement": "python>=3.10"}],
+            workflow=[],
+        )
+        compiler = DagCompiler(
+            spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/"
+        )
+        pixi_toml = compiler.get_pixi_toml()
+
+        assert pixi_toml.pypi_dependencies == {}
+        toml_str = pixi_toml.to_toml()
+        assert "pypi-dependencies" not in toml_str
+
     def test_props_and_defs_from_task_instance(self):
         """Test extracting properties and definitions from a task instance."""
         task = KnownTask(
@@ -250,6 +302,76 @@ class TestDagCompiler:
             assert "MyType" in defs
         finally:
             known_tasks.clear()
+
+
+class TestParseRequirementsFromYaml:
+    """Tests for _parse_requirements_from_yaml with mixed requirements."""
+
+    def test_conda_only(self, tmp_path):
+        """Test parsing YAML with only conda requirements."""
+        import ruamel.yaml
+
+        yaml_file = tmp_path / "spec.yaml"
+        yaml = ruamel.yaml.YAML()
+        yaml.dump(
+            {
+                "id": "test",
+                "requirements": [
+                    {"requirement": "python>=3.10"},
+                    {"requirement": "pandas>=2.0"},
+                ],
+                "workflow": [],
+            },
+            yaml_file.open("w"),
+        )
+        result = _parse_requirements_from_yaml(yaml_file)
+        assert isinstance(result, ParsedRequirements)
+        assert len(result.conda) == 2
+        assert len(result.pypi) == 0
+
+    def test_mixed_requirements(self, tmp_path):
+        """Test parsing YAML with mixed conda and pypi requirements."""
+        import ruamel.yaml
+
+        yaml_file = tmp_path / "spec.yaml"
+        yaml = ruamel.yaml.YAML()
+        yaml.dump(
+            {
+                "id": "test",
+                "requirements": [
+                    {"requirement": "python>=3.10"},
+                    {"name": "foo", "git": "https://github.com/org/foo.git"},
+                    {"name": "bar", "path": "./bar", "editable": True},
+                ],
+                "workflow": [],
+            },
+            yaml_file.open("w"),
+        )
+        result = _parse_requirements_from_yaml(yaml_file)
+        assert len(result.conda) == 1
+        assert len(result.pypi) == 2
+        assert result.pypi[0].name == "foo"
+        assert result.pypi[1].name == "bar"
+
+    def test_pypi_only(self, tmp_path):
+        """Test parsing YAML with only pypi requirements."""
+        import ruamel.yaml
+
+        yaml_file = tmp_path / "spec.yaml"
+        yaml = ruamel.yaml.YAML()
+        yaml.dump(
+            {
+                "id": "test",
+                "requirements": [
+                    {"name": "foo", "url": "https://example.com/foo.whl"},
+                ],
+                "workflow": [],
+            },
+            yaml_file.open("w"),
+        )
+        result = _parse_requirements_from_yaml(yaml_file)
+        assert len(result.conda) == 0
+        assert len(result.pypi) == 1
 
 
 class TestFingerprint:

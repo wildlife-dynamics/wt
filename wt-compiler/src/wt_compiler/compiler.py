@@ -20,7 +20,7 @@ import os
 import pathlib
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import pydot as dot
 import ruamel.yaml
@@ -55,6 +55,7 @@ from wt_compiler.requirements import (
 from wt_compiler.spec import (
     DagTypes,
     KnownTaskArgName,
+    PyPIRequirement,
     Spec,
     SpecRequirement,
     TaskInstance,
@@ -401,17 +402,19 @@ class DagCompiler(BaseModel):
         Returns:
             PixiToml model with all dependencies and configuration
         """
+        # Separate conda and pypi requirements
+        conda_reqs = self.spec.conda_requirements
+        pypi_reqs = self.spec.pypi_requirements
+
         # 1. Build channels list dynamically based on which channels are in requirements
         channels: list[str] = []
-        if any(r.channel.base_url == LOCAL_CHANNEL.base_url for r in self.spec.requirements):
+        if any(r.channel.base_url == LOCAL_CHANNEL.base_url for r in conda_reqs):
             channels.append(LOCAL_CHANNEL.base_url)
-        if any(r.channel.base_url == WT_LOCAL_CHANNEL.base_url for r in self.spec.requirements):
+        if any(r.channel.base_url == WT_LOCAL_CHANNEL.base_url for r in conda_reqs):
             channels.append(WT_LOCAL_CHANNEL.base_url)
-        if any(r.channel.base_url == CUSTOM_LOCAL_CHANNEL.base_url for r in self.spec.requirements):
+        if any(r.channel.base_url == CUSTOM_LOCAL_CHANNEL.base_url for r in conda_reqs):
             channels.append(CUSTOM_LOCAL_CHANNEL.base_url)
-        if any(
-            r.channel.base_url == CUSTOM_RELEASE_CHANNEL.base_url for r in self.spec.requirements
-        ):
+        if any(r.channel.base_url == CUSTOM_RELEASE_CHANNEL.base_url for r in conda_reqs):
             channels.append(CUSTOM_RELEASE_CHANNEL.base_url)
         if self.wt_runner_channel.startswith("file://") and self.wt_runner_channel not in channels:
             channels.append(self.wt_runner_channel)
@@ -427,7 +430,7 @@ class DagCompiler(BaseModel):
 
         # 3. Build dependencies with channel per dependency
         dependencies: dict[str, NamelessMatchSpec] = {}
-        for r in self.spec.requirements:
+        for r in conda_reqs:
             version_str = str(r.version.version) if r.version.version else "*"
             dependencies[r.name] = NamelessMatchSpec.from_match_spec(
                 MatchSpec(f"{r.channel.base_url}::{r.name} {version_str}")
@@ -558,12 +561,18 @@ class DagCompiler(BaseModel):
         # 8. Build system requirements (linux = "4.4.0" for Docker compatibility)
         system_requirements = {"linux": "4.4.0"}
 
+        # 9. Build pypi-dependencies from PyPI requirements
+        pypi_dependencies: dict[str, str | dict[str, Any]] = {}
+        for pypi_req in pypi_reqs:
+            pypi_dependencies[pypi_req.name] = pypi_req.to_pixi_dict()
+
         # Note: using field names instead of aliases; pydantic's populate_by_name allows this
         return PixiToml(  # type: ignore[call-arg]
             file_header=self.file_header,
             workspace=workspace,
             system_requirements=system_requirements,
             dependencies=dependencies,
+            pypi_dependencies=pypi_dependencies,
             feature={"runner": runner_feature, "test": test_feature},
             environments=environments,
             tasks=tasks,
@@ -927,7 +936,17 @@ def compile_workflow(
     )
 
 
-def _parse_requirements_from_yaml(yaml_path: Path) -> list[SpecRequirement]:
+class ParsedRequirements(NamedTuple):
+    """Result of parsing requirements from a spec YAML.
+
+    Separates conda (SpecRequirement) and pypi (PyPIRequirement) dependencies.
+    """
+
+    conda: list[SpecRequirement]
+    pypi: list[PyPIRequirement]
+
+
+def _parse_requirements_from_yaml(yaml_path: Path) -> ParsedRequirements:
     """Parse just the requirements from a spec YAML without full Spec validation.
 
     This enables task discovery before full Spec validation, since Spec validation
@@ -937,12 +956,14 @@ def _parse_requirements_from_yaml(yaml_path: Path) -> list[SpecRequirement]:
         yaml_path: Path to the spec.yaml file
 
     Returns:
-        List of SpecRequirement objects
+        ParsedRequirements with separate conda and pypi lists
 
     Raises:
         FileNotFoundError: If yaml_path doesn't exist
         ValueError: If requirements section is missing or invalid
     """
+    from wt_compiler.spec import _conda_or_pypi
+
     with open(yaml_path) as f:
         data = yaml.load(f)
 
@@ -953,11 +974,15 @@ def _parse_requirements_from_yaml(yaml_path: Path) -> list[SpecRequirement]:
         )
 
     # Parse only requirements - minimal validation
-    requirements = []
+    conda_requirements: list[SpecRequirement] = []
+    pypi_requirements: list[PyPIRequirement] = []
     for req_data in data["requirements"]:
-        requirements.append(SpecRequirement.model_validate(req_data))
+        if _conda_or_pypi(req_data) == "pypi":
+            pypi_requirements.append(PyPIRequirement.model_validate(req_data))
+        else:
+            conda_requirements.append(SpecRequirement.model_validate(req_data))
 
-    return requirements
+    return ParsedRequirements(conda=conda_requirements, pypi=pypi_requirements)
 
 
 async def compile_workflow_from_yaml(
@@ -1002,7 +1027,9 @@ async def compile_workflow_from_yaml(
     with spinner(progress) as sp:
         # Phase 1: Parse requirements from YAML
         sp.update("Parsing requirements...")
-        requirements = _parse_requirements_from_yaml(yaml_path)
+        parsed_reqs = _parse_requirements_from_yaml(yaml_path)
+        requirements = parsed_reqs.conda
+        pypi_requirements = parsed_reqs.pypi
 
         # Phase 2: Convert SpecRequirements to MatchSpecs and discover tasks
         # Build MatchSpec strings: "{channel}::{name} {version}"
@@ -1042,7 +1069,10 @@ async def compile_workflow_from_yaml(
 
         # Discover tasks and populate global known_tasks
         records = await populate_known_tasks(
-            match_specs, channels=unique_channels, on_progress=sp.update
+            match_specs,
+            channels=unique_channels,
+            pypi_requirements=pypi_requirements or None,
+            on_progress=sp.update,
         )
 
         # Extract wt-runner channel from the solved wt-registry record

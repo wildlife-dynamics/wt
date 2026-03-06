@@ -94,6 +94,49 @@ class TestPixiToml:
             Path(temp_path).unlink()
 
 
+    def test_pixi_toml_with_pypi_dependencies(self):
+        """Test PixiToml with pypi-dependencies."""
+        workspace = PixiWorkspace(name="test-workflow")
+        pixi_toml = PixiToml(
+            workspace=workspace,
+            dependencies={"python": ">=3.10"},
+            **{"pypi-dependencies": {
+                "foo": {"git": "https://github.com/org/foo.git", "tag": "v1.0"},
+                "bar": {"path": "./bar", "editable": True},
+            }},
+        )
+        assert "foo" in pixi_toml.pypi_dependencies
+        assert "bar" in pixi_toml.pypi_dependencies
+        toml_str = pixi_toml.to_toml()
+        assert "pypi-dependencies" in toml_str
+        assert "foo" in toml_str
+
+    def test_pixi_toml_empty_pypi_dependencies_excluded(self):
+        """Test that empty pypi-dependencies is excluded from TOML output."""
+        workspace = PixiWorkspace(name="test-workflow")
+        pixi_toml = PixiToml(
+            workspace=workspace,
+            dependencies={"python": ">=3.10"},
+        )
+        toml_str = pixi_toml.to_toml()
+        assert "pypi-dependencies" not in toml_str
+
+    def test_pixi_toml_pypi_dependencies_roundtrip(self):
+        """Test pypi-dependencies survive a serialization roundtrip."""
+        workspace = PixiWorkspace(name="test")
+        original = PixiToml(
+            workspace=workspace,
+            dependencies={"python": ">=3.10"},
+            **{"pypi-dependencies": {
+                "foo": {"git": "https://github.com/org/foo.git"},
+            }},
+        )
+        toml_str = original.to_toml()
+        loaded = PixiToml.from_text(toml_str)
+        assert "foo" in loaded.pypi_dependencies
+        assert loaded.pypi_dependencies["foo"]["git"] == "https://github.com/org/foo.git"
+
+
 class TestWorkflowArtifacts:
     """Tests for WorkflowArtifacts model."""
 

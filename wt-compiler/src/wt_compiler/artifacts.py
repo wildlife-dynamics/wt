@@ -91,6 +91,9 @@ class PixiToml(_AllowArbitraryAndValidateAssignment):
     workspace: PixiWorkspace
     system_requirements: dict[str, str] = Field(default_factory=dict, alias="system-requirements")
     dependencies: dict[str, NamelessMatchSpecType]
+    pypi_dependencies: dict[str, str | dict[str, Any]] = Field(
+        default_factory=dict, alias="pypi-dependencies"
+    )
     feature: dict[FeatureName, Feature] = Field(default_factory=dict)
     environments: dict[str, Environment] = Field(default_factory=dict)
     tasks: dict[PixiTaskName, PixiTaskCommand] = Field(default_factory=dict)
@@ -162,6 +165,13 @@ class PixiToml(_AllowArbitraryAndValidateAssignment):
         # unless we re-assign .dependencies, so do that
         self.dependencies = deps_copy
 
+    def _model_dump_for_toml(self) -> dict[str, Any]:
+        """Dump model to dict for TOML serialization, excluding empty pypi-dependencies."""
+        data = self.model_dump(by_alias=True)
+        if not data.get("pypi-dependencies"):
+            data.pop("pypi-dependencies", None)
+        return data
+
     def dump(self, dst: Path) -> None:
         """Write the PixiToml to a file.
 
@@ -179,7 +189,7 @@ class PixiToml(_AllowArbitraryAndValidateAssignment):
         with dst.open("wb") as f:
             f.write(self.file_header.encode("utf-8"))
             f.write(b"\n")
-            tomli_w.dump(self.model_dump(by_alias=True), f)
+            tomli_w.dump(self._model_dump_for_toml(), f)
 
     def to_toml(self) -> str:
         """Serialize to TOML string.
@@ -203,7 +213,10 @@ class PixiToml(_AllowArbitraryAndValidateAssignment):
             buffer.write(self.file_header.encode("utf-8"))
             buffer.write(b"\n")
         # Use mode="json" to ensure proper serialization of complex types
-        tomli_w.dump(self.model_dump(by_alias=True, mode="json"), buffer)
+        data = self.model_dump(by_alias=True, mode="json")
+        if not data.get("pypi-dependencies"):
+            data.pop("pypi-dependencies", None)
+        tomli_w.dump(data, buffer)
         return buffer.getvalue().decode("utf-8")
 
 
