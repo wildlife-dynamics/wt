@@ -84,6 +84,12 @@ def add(a: int, b: int) -> int:
 class TestEndToEndPyPIDiscovery:
     """Integration tests that create real conda envs and pip-install packages."""
 
+    @pytest.fixture(autouse=True)
+    def _pretend_scm_version(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Force setuptools-scm to produce a PEP 440 release version so pip
+        can resolve cross-package constraints from local file:// deps."""
+        monkeypatch.setenv("SETUPTOOLS_SCM_PRETEND_VERSION", "0.1.0")
+
     @pytest.mark.asyncio
     async def test_pypi_only_discovery(self, test_disco_pkg: Path) -> None:
         """Discover a task from a locally pip-installed PyPI package."""
