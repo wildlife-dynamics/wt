@@ -99,6 +99,14 @@ async def discover_tasks_from_requirements(
         else:
             platform = Platform("linux-64")  # fallback
 
+    # When PyPI requirements exist, ensure python and uv are in conda requirements
+    if pypi_requirements:
+        existing_names = {str(r.name.normalized) for r in requirements if r.name}
+        if "python" not in existing_names:
+            requirements = [MatchSpec("python"), *requirements]
+        if "uv" not in existing_names:
+            requirements = [*requirements, MatchSpec("uv")]
+
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
         env_path = Path(tmpdir) / "env"
 
@@ -109,34 +117,39 @@ async def discover_tasks_from_requirements(
             env_path, requirements, channels, platform, on_progress=on_progress
         )
 
-        # Install PyPI requirements into the environment via pip
+        # Install PyPI requirements into the environment via uv
         if pypi_requirements:
             if on_progress is not None:
                 on_progress("Installing PyPI dependencies...")
-            pip_exe = (
-                env_path / "Scripts" / "pip.exe"
+            uv_exe = (
+                env_path / "Scripts" / "uv.exe"
                 if sys.platform == "win32"
-                else env_path / "bin" / "pip"
+                else env_path / "bin" / "uv"
+            )
+            env_python = (
+                env_path / "Scripts" / "python.exe"
+                if sys.platform == "win32"
+                else env_path / "bin" / "python"
             )
             for pypi_req in pypi_requirements:
                 pip_arg = pypi_req.to_pip_install_arg()
                 # Handle editable installs which start with "-e "
                 if pip_arg.startswith("-e "):
-                    pip_args = [str(pip_exe), "install", "-e", pip_arg[3:]]
+                    uv_args = [str(uv_exe), "pip", "install", "--python", str(env_python), "-e", pip_arg[3:]]
                 else:
-                    pip_args = [str(pip_exe), "install", pip_arg]
-                pip_result = subprocess.run(
-                    pip_args,
+                    uv_args = [str(uv_exe), "pip", "install", "--python", str(env_python), pip_arg]
+                uv_result = subprocess.run(
+                    uv_args,
                     capture_output=True,
                     text=True,
                     check=False,
                 )
-                if pip_result.returncode != 0:
+                if uv_result.returncode != 0:
                     raise PyPIInstallError(
                         requirement=pypi_req,
-                        returncode=pip_result.returncode,
-                        stdout=pip_result.stdout,
-                        stderr=pip_result.stderr,
+                        returncode=uv_result.returncode,
+                        stdout=uv_result.stdout,
+                        stderr=uv_result.stderr,
                     )
 
         # Determine the executable path based on platform
@@ -152,29 +165,8 @@ async def discover_tasks_from_requirements(
                 requirements=requirements,
             )
 
-        # Derive task module paths from requirements
-        # Convention: package 'foo-bar' has tasks in 'foo_bar.tasks'
-        task_modules = []
-        for req in requirements:
-            # Extract package name from MatchSpec (convert to string)
-            pkg_name = str(req.name.normalized) if req.name else None
-            # Skip wt-registry itself and other non-task packages
-            if pkg_name and not pkg_name.startswith("wt-"):
-                # Convert package name to module path: foo-bar -> foo_bar.tasks
-                module_path = pkg_name.replace("-", "_") + ".tasks"
-                task_modules.append(module_path)
-
-        # Also derive task modules from PyPI requirements
-        if pypi_requirements:
-            for pypi_req in pypi_requirements:
-                if not pypi_req.name.startswith("wt-"):
-                    module_path = pypi_req.name.replace("-", "_") + ".tasks"
-                    task_modules.append(module_path)
-
-        # Build CLI command with --package arguments
+        # Build CLI command — wt-registry auto-discovers via entry points
         cli_args = [str(wt_registry_exe), "--format", "json"]
-        for module in task_modules:
-            cli_args.extend(["--package", module])
 
         # Call wt-registry CLI in the environment
         if on_progress is not None:

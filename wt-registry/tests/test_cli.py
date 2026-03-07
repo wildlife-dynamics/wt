@@ -10,6 +10,7 @@ import pytest
 from wt_registry import register
 from wt_registry.cli import (
     _traverse_module,
+    auto_discover,
     discover_public_paths,
     filter_by_function_names,
     main,
@@ -760,3 +761,98 @@ class TestSerializeEntriesPublicPaths:
         contract_entry = output.entries["pkg.tasks.my_func"]
         assert "as my_func" in contract_entry.import_statement
         assert contract_entry.import_statement == "from pkg.tasks import my_func as my_func"
+
+
+# --- Tests for auto_discover() entry point discovery ---
+
+
+class TestAutoDiscover:
+    """Tests for auto_discover() using importlib.metadata entry points."""
+
+    def test_auto_discover_calls_entry_points(self) -> None:
+        """auto_discover() calls importlib.metadata.entry_points(group='wt_registry')."""
+        mock_ep = MagicMock()
+        mock_ep.name = "my-pkg"
+        mock_ep.value = "my_pkg.tasks"
+
+        with patch("wt_registry.cli.importlib.metadata.entry_points", return_value=[mock_ep]) as mock_eps:
+            with patch("wt_registry.cli.importlib.import_module") as mock_import:
+                result = auto_discover()
+
+        mock_eps.assert_called_once_with(group="wt_registry")
+        mock_import.assert_called_once_with("my_pkg.tasks")
+        assert result == ["my_pkg.tasks"]
+
+    def test_auto_discover_multiple_entry_points(self) -> None:
+        """auto_discover() imports all discovered entry point modules."""
+        ep1 = MagicMock(name="pkg-a", value="pkg_a.tasks")
+        ep1.name = "pkg-a"
+        ep1.value = "pkg_a.tasks"
+        ep2 = MagicMock(name="pkg-b", value="pkg_b.core.tasks")
+        ep2.name = "pkg-b"
+        ep2.value = "pkg_b.core.tasks"
+
+        with patch("wt_registry.cli.importlib.metadata.entry_points", return_value=[ep1, ep2]):
+            with patch("wt_registry.cli.importlib.import_module") as mock_import:
+                result = auto_discover()
+
+        assert mock_import.call_count == 2
+        mock_import.assert_any_call("pkg_a.tasks")
+        mock_import.assert_any_call("pkg_b.core.tasks")
+        assert result == ["pkg_a.tasks", "pkg_b.core.tasks"]
+
+    def test_auto_discover_handles_import_error(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """auto_discover() prints warning and continues when a module fails to import."""
+        ep_good = MagicMock()
+        ep_good.name = "good-pkg"
+        ep_good.value = "good_pkg.tasks"
+        ep_bad = MagicMock()
+        ep_bad.name = "bad-pkg"
+        ep_bad.value = "bad_pkg.tasks"
+
+        def side_effect(module_path: str) -> None:
+            if module_path == "bad_pkg.tasks":
+                raise ImportError("No module named 'bad_pkg'")
+
+        with patch("wt_registry.cli.importlib.metadata.entry_points", return_value=[ep_good, ep_bad]):
+            with patch("wt_registry.cli.importlib.import_module", side_effect=side_effect):
+                result = auto_discover()
+
+        # good_pkg should succeed, bad_pkg should fail gracefully
+        assert result == ["good_pkg.tasks"]
+        captured = capsys.readouterr()
+        assert "bad_pkg.tasks" in captured.err
+        assert "Warning" in captured.err
+
+    def test_auto_discover_no_entry_points(self) -> None:
+        """auto_discover() returns empty list when no entry points are found."""
+        with patch("wt_registry.cli.importlib.metadata.entry_points", return_value=[]):
+            result = auto_discover()
+
+        assert result == []
+
+    def test_main_calls_auto_discover(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """main() calls auto_discover() before processing."""
+        with patch("wt_registry.cli.auto_discover", return_value=[]) as mock_ad:
+            with patch.object(sys, "argv", ["wt-registry"]):
+                main()
+
+        mock_ad.assert_called_once()
+
+    def test_main_combines_auto_discover_and_packages(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """main() combines auto-discovered and --package modules for public path discovery."""
+
+        def test_func(x: int) -> str:
+            return str(x)
+
+        register(title="Test", description="Test function")(test_func)
+
+        with patch("wt_registry.cli.auto_discover", return_value=["auto_pkg.tasks"]):
+            with patch.object(sys, "argv", ["wt-registry", "--package", "manual_pkg.tasks"]):
+                with patch("wt_registry.cli.importlib.import_module"):
+                    main()
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert isinstance(data, dict)
+        assert "entries" in data

@@ -167,7 +167,7 @@ class PixiToml(_AllowArbitraryAndValidateAssignment):
 
     def _model_dump_for_toml(self) -> dict[str, Any]:
         """Dump model to dict for TOML serialization, excluding empty pypi-dependencies."""
-        data = self.model_dump(by_alias=True)
+        data = self.model_dump(by_alias=True, mode="json")
         if not data.get("pypi-dependencies"):
             data.pop("pypi-dependencies", None)
         return data
@@ -212,11 +212,7 @@ class PixiToml(_AllowArbitraryAndValidateAssignment):
         if self.file_header:
             buffer.write(self.file_header.encode("utf-8"))
             buffer.write(b"\n")
-        # Use mode="json" to ensure proper serialization of complex types
-        data = self.model_dump(by_alias=True, mode="json")
-        if not data.get("pypi-dependencies"):
-            data.pop("pypi-dependencies", None)
-        tomli_w.dump(data, buffer)
+        tomli_w.dump(self._model_dump_for_toml(), buffer)
         return buffer.getvalue().decode("utf-8")
 
 

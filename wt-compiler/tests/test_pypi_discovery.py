@@ -40,7 +40,7 @@ def test_disco_pkg(tmp_path_factory: pytest.TempPathFactory) -> Path:
     wt_registry_path = MONOREPO_ROOT / "wt-registry"
     wt_contracts_path = MONOREPO_ROOT / "wt-contracts"
 
-    # pyproject.toml
+    # pyproject.toml — declares wt_registry entry point for auto-discovery
     (pkg_dir / "pyproject.toml").write_text(f"""\
 [build-system]
 requires = ["setuptools>=64"]
@@ -54,6 +54,9 @@ dependencies = [
     "wt-registry @ file://{wt_registry_path}",
     "wt-contracts @ file://{wt_contracts_path}",
 ]
+
+[project.entry-points."wt_registry"]
+test-disco-pkg = "test_disco_pkg.tasks"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -92,11 +95,12 @@ class TestEndToEndPyPIDiscovery:
 
     @pytest.mark.asyncio
     async def test_pypi_only_discovery(self, test_disco_pkg: Path) -> None:
-        """Discover a task from a locally pip-installed PyPI package."""
+        """Discover a task from a locally uv-installed PyPI package."""
         pypi_req = PyPIRequirement(name="test-disco-pkg", path=str(test_disco_pkg))
 
+        # python and uv are auto-injected when pypi_requirements is non-empty
         result = await discover_tasks_from_requirements(
-            requirements=[MatchSpec("python>=3.10"), MatchSpec("pip")],
+            requirements=[MatchSpec("python>=3.10")],
             pypi_requirements=[pypi_req],
         )
 
@@ -114,28 +118,6 @@ class TestEndToEndPyPIDiscovery:
         assert "properties" in schema
         assert "a" in schema["properties"]
         assert "b" in schema["properties"]
-
-    @pytest.mark.asyncio
-    async def test_mixed_conda_and_pypi_discovery(self, test_disco_pkg: Path) -> None:
-        """Verify conda infra reqs + PyPI task reqs don't interfere."""
-        pypi_req = PyPIRequirement(name="test-disco-pkg", path=str(test_disco_pkg))
-
-        result = await discover_tasks_from_requirements(
-            requirements=[
-                MatchSpec("python>=3.10"),
-                MatchSpec("pip"),
-                MatchSpec("setuptools"),
-            ],
-            pypi_requirements=[pypi_req],
-        )
-
-        # Task should still be discovered
-        assert "add" in result.tasks
-
-        # Conda solver records should be present (python, pip, setuptools, + deps)
-        assert len(result.records) >= 3, (
-            f"Expected at least 3 solved conda records, got {len(result.records)}"
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -157,18 +139,19 @@ class TestPyPIInstallErrorInDiscovery:
         mock_run: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """PyPIInstallError is raised when pip returns non-zero."""
+        """PyPIInstallError is raised when uv pip install returns non-zero."""
         env_path = tmp_path / "env"
         bin_path = env_path / "bin"
         bin_path.mkdir(parents=True)
-        # Create pip executable so the code finds it
-        (bin_path / "pip").touch()
+        # Create uv and python executables so the code finds them
+        (bin_path / "uv").touch()
+        (bin_path / "python").touch()
 
         mock_tmpdir.return_value.__enter__ = MagicMock(return_value=str(tmp_path))
         mock_tmpdir.return_value.__exit__ = MagicMock(return_value=False)
         mock_create_env.return_value = []
 
-        # Simulate pip failure
+        # Simulate uv pip install failure
         mock_run.return_value = MagicMock(
             returncode=1,
             stdout="Collecting bad-package\n",
@@ -207,43 +190,36 @@ class TestPyPIInstallErrorInDiscovery:
         assert "some stderr" in msg
 
 
-# ---------------------------------------------------------------------------
-# Task module derivation tests (mocked, fast)
-# ---------------------------------------------------------------------------
-
-
-class TestTaskModuleDerivation:
-    """Tests for the name.replace('-', '_') + '.tasks' convention."""
-
     @pytest.mark.asyncio
     @patch("wt_compiler.discovery.subprocess.run")
     @patch("wt_compiler.discovery._create_environment", new_callable=AsyncMock)
     @patch("wt_compiler.discovery.tempfile.TemporaryDirectory")
-    async def test_pypi_module_derivation(
+    async def test_wt_registry_called_without_package_args(
         self,
         mock_tmpdir: MagicMock,
         mock_create_env: AsyncMock,
         mock_run: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """PyPI requirement 'foo-bar' produces --package foo_bar.tasks."""
+        """wt-registry CLI is called without --package args (uses entry point auto-discovery)."""
         env_path = tmp_path / "env"
         bin_path = env_path / "bin"
         bin_path.mkdir(parents=True)
         (bin_path / "wt-registry").touch()
-        (bin_path / "pip").touch()
+        (bin_path / "uv").touch()
+        (bin_path / "python").touch()
 
         mock_tmpdir.return_value.__enter__ = MagicMock(return_value=str(tmp_path))
         mock_tmpdir.return_value.__exit__ = MagicMock(return_value=False)
         mock_create_env.return_value = []
 
-        # pip succeeds, wt-registry returns empty entries
-        pip_success = MagicMock(returncode=0, stdout="", stderr="")
+        # uv succeeds, wt-registry returns empty entries
+        uv_success = MagicMock(returncode=0, stdout="", stderr="")
         registry_success = MagicMock(
             returncode=0,
             stdout=json.dumps({"entries": {}, "version": "1.0.0"}),
         )
-        mock_run.side_effect = [pip_success, registry_success]
+        mock_run.side_effect = [uv_success, registry_success]
 
         pypi_req = PyPIRequirement(name="foo-bar", path="/some/path")
 
@@ -254,99 +230,9 @@ class TestTaskModuleDerivation:
 
         # The second subprocess.run call is the wt-registry invocation
         wt_registry_call = mock_run.call_args_list[1]
-        cli_args = wt_registry_call[0][0]  # positional arg (list)
-        # Collect all --package values
-        package_modules = [
-            cli_args[i + 1] for i, arg in enumerate(cli_args) if arg == "--package"
-        ]
-        assert "foo_bar.tasks" in package_modules
-
-    @pytest.mark.asyncio
-    @patch("wt_compiler.discovery.subprocess.run")
-    @patch("wt_compiler.discovery._create_environment", new_callable=AsyncMock)
-    @patch("wt_compiler.discovery.tempfile.TemporaryDirectory")
-    async def test_wt_prefix_skipped(
-        self,
-        mock_tmpdir: MagicMock,
-        mock_create_env: AsyncMock,
-        mock_run: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        """PyPI requirements starting with 'wt-' are not added to task modules."""
-        env_path = tmp_path / "env"
-        bin_path = env_path / "bin"
-        bin_path.mkdir(parents=True)
-        (bin_path / "wt-registry").touch()
-        (bin_path / "pip").touch()
-
-        mock_tmpdir.return_value.__enter__ = MagicMock(return_value=str(tmp_path))
-        mock_tmpdir.return_value.__exit__ = MagicMock(return_value=False)
-        mock_create_env.return_value = []
-
-        pip_success = MagicMock(returncode=0, stdout="", stderr="")
-        registry_success = MagicMock(
-            returncode=0,
-            stdout=json.dumps({"entries": {}, "version": "1.0.0"}),
-        )
-        mock_run.side_effect = [pip_success, registry_success]
-
-        pypi_req = PyPIRequirement(name="wt-registry", path="/some/path")
-
-        await discover_tasks_from_requirements(
-            requirements=[MatchSpec("python>=3.10")],
-            pypi_requirements=[pypi_req],
-        )
-
-        # wt-registry CLI call args should NOT contain wt_registry.tasks
-        wt_registry_call = mock_run.call_args_list[1]
         cli_args = wt_registry_call[0][0]
-        # Collect all --package values
-        package_modules = [
-            cli_args[i + 1] for i, arg in enumerate(cli_args) if arg == "--package"
-        ]
-        assert "wt_registry.tasks" not in package_modules
-
-    @pytest.mark.asyncio
-    @patch("wt_compiler.discovery.subprocess.run")
-    @patch("wt_compiler.discovery._create_environment", new_callable=AsyncMock)
-    @patch("wt_compiler.discovery.tempfile.TemporaryDirectory")
-    async def test_conda_and_pypi_modules_combined(
-        self,
-        mock_tmpdir: MagicMock,
-        mock_create_env: AsyncMock,
-        mock_run: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        """Both conda MatchSpec and PyPI requirement modules appear in --package args."""
-        env_path = tmp_path / "env"
-        bin_path = env_path / "bin"
-        bin_path.mkdir(parents=True)
-        (bin_path / "wt-registry").touch()
-        (bin_path / "pip").touch()
-
-        mock_tmpdir.return_value.__enter__ = MagicMock(return_value=str(tmp_path))
-        mock_tmpdir.return_value.__exit__ = MagicMock(return_value=False)
-        mock_create_env.return_value = []
-
-        pip_success = MagicMock(returncode=0, stdout="", stderr="")
-        registry_success = MagicMock(
-            returncode=0,
-            stdout=json.dumps({"entries": {}, "version": "1.0.0"}),
-        )
-        mock_run.side_effect = [pip_success, registry_success]
-
-        pypi_req = PyPIRequirement(name="my-pypi-pkg", path="/some/path")
-
-        await discover_tasks_from_requirements(
-            requirements=[MatchSpec("my-conda-pkg>=1.0.0"), MatchSpec("python>=3.10")],
-            pypi_requirements=[pypi_req],
-        )
-
-        # wt-registry CLI call
-        wt_registry_call = mock_run.call_args_list[1]
-        cli_args = wt_registry_call[0][0]
-        package_modules = [
-            cli_args[i + 1] for i, arg in enumerate(cli_args) if arg == "--package"
-        ]
-        assert "my_conda_pkg.tasks" in package_modules
-        assert "my_pypi_pkg.tasks" in package_modules
+        # Should NOT contain any --package args
+        assert "--package" not in cli_args
+        # Should contain --format json
+        assert "--format" in cli_args
+        assert "json" in cli_args
