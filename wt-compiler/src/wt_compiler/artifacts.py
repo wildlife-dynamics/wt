@@ -473,7 +473,7 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
             update: Whether to carry over the lockfile from the clobbered directory
 
         Raises:
-            ValueError: If README.md or graph.png are not set
+            ValueError: If README.md is not set
             FileExistsError: If the release directory exists and clobber is False
             FileNotFoundError: If update is True but required files are missing
 
@@ -481,8 +481,8 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
             >>> # artifacts = WorkflowArtifacts(...)  # doctest: +SKIP
             >>> # artifacts.dump(clobber=True)  # doctest: +SKIP
         """
-        if not self.readme_md or not self.pydot_graph:
-            raise ValueError("README.md and graph.png must be set before dumping artifacts.")
+        if not self.readme_md:
+            raise ValueError("README.md must be set before dumping artifacts.")
 
         if self.release_dir.exists() and not clobber:
             raise FileExistsError(
@@ -514,7 +514,17 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
 
         # root artifacts
         self.pixi_toml.dump(self.release_dir.joinpath("pixi.toml"))
-        self.pydot_graph.write_png(path=self.release_dir.joinpath("graph.png"))  # type: ignore[attr-defined]
+        if self.pydot_graph is not None:
+            try:
+                self.pydot_graph.write_png(path=self.release_dir.joinpath("graph.png"))  # type: ignore[attr-defined]
+            except FileNotFoundError:
+                import warnings
+
+                warnings.warn(
+                    "Graphviz 'dot' binary not found; skipping graph.png generation. "
+                    "Install Graphviz to enable workflow visualization.",
+                    stacklevel=2,
+                )
         if update:
             self.release_dir.joinpath("pixi.lock").write_text(prior_lockfile)
             new_version.dump(self.release_dir.joinpath("VERSION.yaml"))
