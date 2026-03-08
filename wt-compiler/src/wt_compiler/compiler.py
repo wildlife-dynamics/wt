@@ -558,6 +558,30 @@ class DagCompiler(BaseModel):
             ),
         }
 
+        # 6b. Inject python conda dep for environments with only PyPI dependencies
+        # When an environment has pypi deps but zero conda deps, pixi needs a
+        # conda `python` package to provide the interpreter for resolution.
+        python_dep = NamelessMatchSpec.from_match_spec(
+            MatchSpec("conda-forge::python >=3.10,<4.0")
+        )
+        feature_map = {"runner": runner_feature, "test": test_feature}
+
+        for env_name, env in environments.items():
+            if env.no_default_feature:
+                env_conda: dict[str, NamelessMatchSpec] = {}
+                env_pypi: dict[str, str | dict[str, Any]] = {}
+                for feat_name in env.features:
+                    if feat_name in feature_map:
+                        env_conda.update(feature_map[feat_name].dependencies)
+                        env_pypi.update(feature_map[feat_name].pypi_dependencies)
+                if env_pypi and not env_conda:
+                    # Inject into first feature's conda dependencies
+                    feature_map[env.features[0]].dependencies["python"] = python_dep
+            else:
+                # Default environment uses top-level deps
+                if pypi_dependencies and not dependencies:
+                    dependencies["python"] = python_dep
+
         # 7. Build tasks
         tasks: dict[str, str | dict[str, Any]] = {}
 

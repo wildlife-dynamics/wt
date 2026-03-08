@@ -300,6 +300,10 @@ class TestDagCompiler:
         assert runner_feature.pypi_dependencies["wt-runner"]["path"] == "/home/user/wt/wt-runner"
         assert "wt-runner" not in runner_feature.dependencies
 
+        # python should be injected into runner feature's conda deps
+        # because the runner env has pypi deps but no conda deps
+        assert "python" in runner_feature.dependencies
+
     def test_get_pixi_toml_with_wt_pypi_deps_wildcard(self):
         """Test pixi.toml generation when wt-runner/wt-task come from PyPI registry."""
         spec = Spec(
@@ -323,6 +327,32 @@ class TestDagCompiler:
 
         # wt-runner should be in runner feature's pypi_dependencies
         assert pixi_toml.feature["runner"].pypi_dependencies["wt-runner"] == "*"
+
+        # python should be injected into runner feature's conda deps
+        assert "python" in pixi_toml.feature["runner"].dependencies
+
+    def test_get_pixi_toml_pypi_mode_runner_has_python_dep(self):
+        """Test that python conda dep is injected when runner env has only PyPI deps."""
+        spec = Spec(
+            id="test_spec",
+            requirements=[
+                {"name": "foo", "git": "https://github.com/org/foo.git", "tag": "v1.0"},
+            ],
+            workflow=[],
+        )
+        wt_pypi_deps = {"wt-runner": "*", "wt-task": "*"}
+        compiler = DagCompiler(spec=spec, wt_pypi_deps=wt_pypi_deps)
+        pixi_toml = compiler.get_pixi_toml()
+
+        runner_feature = pixi_toml.feature["runner"]
+        # python should be injected because runner env has pypi deps but no conda deps
+        assert "python" in runner_feature.dependencies
+        python_spec = str(runner_feature.dependencies["python"])
+        assert ">=3.10" in python_spec
+        assert "<4.0" in python_spec
+
+        # Default env should NOT get python injected (it has conda deps from cli_runtime_deps)
+        assert "python" not in pixi_toml.dependencies
 
     def test_get_pixi_toml_pypi_mode_no_runner_channel_in_channels(self):
         """Test that PyPI mode doesn't add wt_runner_channel to channels list."""
