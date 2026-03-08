@@ -1028,7 +1028,7 @@ async def compile_workflow_from_yaml(
         # Phase 1: Parse requirements from YAML
         sp.update("Parsing requirements...")
         parsed_reqs = _parse_requirements_from_yaml(yaml_path)
-        requirements = parsed_reqs.conda
+        conda_requirements = parsed_reqs.conda
         pypi_requirements = parsed_reqs.pypi
 
         # Phase 2: Convert SpecRequirements to MatchSpecs and discover tasks
@@ -1037,7 +1037,7 @@ async def compile_workflow_from_yaml(
         # Also collect channels to pass to the discovery function
         match_specs = []
         channels = []
-        for req in requirements:
+        for req in conda_requirements:
             # Use base_url for the matchspec to correctly identify custom channels
             # (using just the name would default to conda.anaconda.org)
             channel_str = req.channel.base_url
@@ -1049,23 +1049,27 @@ async def compile_workflow_from_yaml(
         # Deduplicate channels while preserving order, keyed by base_url
         unique_channels = list({c.base_url: c for c in channels}.values())
 
-        # Add all known channels for transitive dependency resolution
-        # This uses CHANNELS from requirements.py as the single source of truth
-        from wt_compiler.requirements import CHANNELS
+        if conda_requirements:
+            # Add all known channels for transitive dependency resolution
+            # (only needed when there are conda requirements from custom channels)
+            from wt_compiler.requirements import CHANNELS
 
-        for known_channel in CHANNELS:
-            if not any(c.base_url == known_channel.base_url for c in unique_channels):
-                unique_channels.append(known_channel)
+            for known_channel in CHANNELS:
+                if not any(c.base_url == known_channel.base_url for c in unique_channels):
+                    unique_channels.append(known_channel)
 
-        # Filter out file:// channels that don't exist on the local filesystem
-        def _local_channel_exists(channel: "Channel") -> bool:
-            base_url = channel.base_url
-            if base_url.startswith("file://"):
-                local_path = Path(base_url.replace("file://", ""))
-                return local_path.exists()
-            return True  # Non-local channels are always "valid"
+            # Filter out file:// channels that don't exist on the local filesystem
+            def _local_channel_exists(channel: "Channel") -> bool:
+                base_url = channel.base_url
+                if base_url.startswith("file://"):
+                    local_path = Path(base_url.replace("file://", ""))
+                    return local_path.exists()
+                return True  # Non-local channels are always "valid"
 
-        unique_channels = [c for c in unique_channels if _local_channel_exists(c)]
+            unique_channels = [c for c in unique_channels if _local_channel_exists(c)]
+        else:
+            # PyPI-only: just need conda-forge for python + uv
+            unique_channels = [CONDA_FORGE_CHANNEL]
 
         # Discover tasks and populate global known_tasks
         records = await populate_known_tasks(
@@ -1087,7 +1091,7 @@ async def compile_workflow_from_yaml(
         wt_runner_channel = str(wt_registry_record.channel)
 
         # Build installed requirements from solved records
-        installed_requirements = _build_installed_requirements(requirements, records)
+        installed_requirements = _build_installed_requirements(conda_requirements, records)
 
         # Phase 3: Now we can safely validate the full Spec
         sp.update("Validating spec...")

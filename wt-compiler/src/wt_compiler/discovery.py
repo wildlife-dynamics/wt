@@ -418,11 +418,12 @@ async def discover_tasks_from_spec_requirements(
     unique_channels = list({c.name or c.base_url: c for c in channels}.values())
 
     # Add all known channels for transitive dependency resolution
-    # This uses CHANNELS from requirements.py as the single source of truth
-    for known_channel in CHANNELS:
-        key = known_channel.name or known_channel.base_url
-        if key not in {c.name or c.base_url for c in unique_channels}:
-            unique_channels.append(known_channel)
+    # (only needed when there are actual conda requirements from custom channels)
+    if spec_requirements:
+        for known_channel in CHANNELS:
+            key = known_channel.name or known_channel.base_url
+            if key not in {c.name or c.base_url for c in unique_channels}:
+                unique_channels.append(known_channel)
 
     return await discover_tasks_from_requirements(
         match_specs,

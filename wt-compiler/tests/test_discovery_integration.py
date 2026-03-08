@@ -312,6 +312,48 @@ workflow: []
             "conda-forge" in str(ch) for ch in channel_identifiers
         ), f"conda-forge not found in {channel_identifiers}"
 
+    @pytest.mark.asyncio
+    @patch("wt_compiler.compiler.populate_known_tasks", new_callable=AsyncMock)
+    async def test_pypi_only_spec_uses_only_conda_forge_channel(
+        self, mock_populate, tmp_path
+    ):
+        """Test that a PyPI-only spec only uses conda-forge, not all known channels.
+
+        When a spec has no conda requirements (only PyPI deps), the compiler should
+        not inject all known channels (including local file:// channels) into the
+        rattler solve. Only conda-forge is needed for the base python + uv packages.
+        """
+        spec_yaml = tmp_path / "spec.yaml"
+        spec_yaml.write_text(
+            """
+id: test-workflow
+requirements:
+  - name: some-pypi-package
+    git: https://github.com/org/some-pypi-package.git
+    tag: v1.0
+workflow: []
+"""
+        )
+
+        try:
+            await compile_workflow_from_yaml(spec_yaml)
+        except Exception:
+            pass  # Expected to fail since we mocked populate_known_tasks
+
+        mock_populate.assert_called_once()
+
+        call_args = mock_populate.call_args
+        channels = call_args.kwargs.get("channels", [])
+
+        # Should only have conda-forge, not all known channels
+        assert len(channels) == 1, (
+            f"Expected exactly 1 channel (conda-forge) for PyPI-only spec, "
+            f"got {len(channels)}: {[c.name or c.base_url for c in channels]}"
+        )
+        assert "conda-forge" in (channels[0].name or channels[0].base_url), (
+            f"Expected conda-forge channel, got {channels[0].name or channels[0].base_url}"
+        )
+
 
 class TestDiscoveryErrors:
     """Tests for discovery error handling."""
