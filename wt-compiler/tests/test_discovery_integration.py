@@ -142,6 +142,12 @@ class TestDiscoverTasksMocked:
         mock_tmpdir.return_value.__enter__ = MagicMock(return_value=str(tmp_path))
         mock_tmpdir.return_value.__exit__ = MagicMock(return_value=False)
 
+        # Mock _create_environment to return a list with a wt-registry record
+        wt_reg_record = MagicMock()
+        wt_reg_record.name.normalized = "wt-registry"
+        wt_reg_record.channel = "https://conda.anaconda.org/conda-forge/"
+        mock_install.return_value = [wt_reg_record]
+
         # Mock the CLI output
         registry_json = {
             "entries": {
@@ -165,8 +171,6 @@ class TestDiscoverTasksMocked:
             stdout=json.dumps(registry_json),
             returncode=0,
         )
-
-        # Skip actual installation (async mock returns None by default)
 
         # Call discover_tasks_from_requirements with mocked subprocess
         result = await discover_tasks_from_requirements([MatchSpec("mypackage>=1.0.0")])
@@ -267,6 +271,8 @@ class TestCompileWorkflowFromYaml:
         channels (like https://repo.prefix.dev/ecoscope-workflows/) to fail
         with "No candidates found" errors.
         """
+        from wt_compiler.discovery import DiscoveryResult
+
         spec_yaml = tmp_path / "spec.yaml"
         # Use valid channels from the channel whitelist: ecoscope-workflows and conda-forge
         spec_yaml.write_text(
@@ -282,6 +288,9 @@ requirements:
 workflow: []
 """
         )
+
+        # Mock populate_known_tasks to return a DiscoveryResult
+        mock_populate.return_value = DiscoveryResult(tasks={}, records=[])
 
         # Attempt compilation - will fail later in the flow but we just want to
         # verify populate_known_tasks was called with the right channels
@@ -323,6 +332,8 @@ workflow: []
         not inject all known channels (including local file:// channels) into the
         rattler solve. Only conda-forge is needed for the base python + uv packages.
         """
+        from wt_compiler.discovery import DiscoveryResult
+
         spec_yaml = tmp_path / "spec.yaml"
         spec_yaml.write_text(
             """
@@ -335,10 +346,15 @@ workflow: []
 """
         )
 
+        # Mock populate_known_tasks to return a DiscoveryResult
+        mock_populate.return_value = DiscoveryResult(
+            tasks={}, records=[], wt_pypi_deps={"wt-runner": "*", "wt-task": "*"}
+        )
+
         try:
             await compile_workflow_from_yaml(spec_yaml)
         except Exception:
-            pass  # Expected to fail since we mocked populate_known_tasks
+            pass  # Expected to fail during spec validation
 
         mock_populate.assert_called_once()
 
@@ -353,6 +369,47 @@ workflow: []
         assert "conda-forge" in (channels[0].name or channels[0].base_url), (
             f"Expected conda-forge channel, got {channels[0].name or channels[0].base_url}"
         )
+
+    @pytest.mark.asyncio
+    @patch("wt_compiler.compiler.populate_known_tasks", new_callable=AsyncMock)
+    async def test_pypi_only_spec_populates_wt_pypi_deps(
+        self, mock_populate, tmp_path
+    ):
+        """Test that wt_pypi_deps is used when wt-registry is not in conda records.
+
+        When wt-registry comes from PyPI (not in conda records), the compiler
+        should use wt_pypi_deps from the DiscoveryResult instead of raising.
+        """
+        from wt_compiler.discovery import DiscoveryResult
+
+        spec_yaml = tmp_path / "spec.yaml"
+        spec_yaml.write_text(
+            """
+id: test-workflow
+requirements:
+  - name: some-pypi-package
+    git: https://github.com/org/some-pypi-package.git
+    tag: v1.0
+workflow: []
+"""
+        )
+
+        wt_pypi_deps = {
+            "wt-runner": {"path": "/home/user/wt/wt-runner", "editable": True},
+            "wt-task": {"path": "/home/user/wt/wt-task", "editable": True},
+        }
+        mock_populate.return_value = DiscoveryResult(
+            tasks={}, records=[], wt_pypi_deps=wt_pypi_deps
+        )
+
+        try:
+            await compile_workflow_from_yaml(spec_yaml)
+        except Exception:
+            pass  # Expected to fail during spec validation
+
+        # The important thing is that it did NOT raise:
+        # "wt-registry was not found in the solved environment"
+        mock_populate.assert_called_once()
 
 
 class TestDiscoveryErrors:
@@ -375,6 +432,7 @@ class TestDiscoveryErrors:
 
         # _create_environment succeeds but doesn't install wt-registry
         # The executable path won't exist since it's a fake directory
+        mock_install.return_value = []
 
         with pytest.raises(RegistryNotFoundError) as exc_info:
             await discover_tasks_from_requirements([MatchSpec("some-package>=1.0.0")])
@@ -405,6 +463,8 @@ class TestDiscoveryErrors:
         # Mock TemporaryDirectory to use our tmp_path
         mock_tmpdir.return_value.__enter__ = MagicMock(return_value=str(tmp_path))
         mock_tmpdir.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_install.return_value = []
 
         # wt-registry exists but fails
         mock_run.return_value = MagicMock(
@@ -444,6 +504,11 @@ class TestDisambiguationLogic:
 
         mock_tmpdir.return_value.__enter__ = MagicMock(return_value=str(tmp_path))
         mock_tmpdir.return_value.__exit__ = MagicMock(return_value=False)
+
+        # Mock _create_environment to return records with wt-registry
+        wt_reg_record = MagicMock()
+        wt_reg_record.name.normalized = "wt-registry"
+        mock_install.return_value = [wt_reg_record]
 
         # Single function
         registry_json = {
@@ -491,6 +556,11 @@ class TestDisambiguationLogic:
 
         mock_tmpdir.return_value.__enter__ = MagicMock(return_value=str(tmp_path))
         mock_tmpdir.return_value.__exit__ = MagicMock(return_value=False)
+
+        # Mock _create_environment to return records with wt-registry
+        wt_reg_record = MagicMock()
+        wt_reg_record.name.normalized = "wt-registry"
+        mock_install.return_value = [wt_reg_record]
 
         # Two functions with same name from different modules
         registry_json = {

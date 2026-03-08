@@ -38,6 +38,7 @@ class DiscoveryResult(NamedTuple):
 
     tasks: dict[str, dict[str, KnownTask]]
     records: list[Any]  # list[RepoDataRecord] from rattler solve()
+    wt_pypi_deps: dict[str, str | dict[str, Any]] | None = None
 
 
 async def discover_tasks_from_requirements(
@@ -225,7 +226,31 @@ async def discover_tasks_from_requirements(
                 known_task.registry_ref = len(discovered_tasks[function_name])
                 discovered_tasks[function_name][public_module_path] = known_task
 
-        return DiscoveryResult(tasks=discovered_tasks, records=records)
+        # Detect if wt-registry came from PyPI (not in conda records)
+        wt_pypi_deps: dict[str, str | dict[str, Any]] | None = None
+        wt_registry_in_conda = any(
+            str(r.name.normalized) == "wt-registry" for r in records
+        )
+        if not wt_registry_in_conda:
+            from wt_compiler.pypi_source import (
+                derive_sibling_pypi_requirement,
+                detect_pypi_source,
+            )
+
+            direct_url, version = detect_pypi_source("wt-registry", env_path)
+            wt_pypi_deps = {}
+            for sibling in ("wt-runner", "wt-task"):
+                req = derive_sibling_pypi_requirement(
+                    "wt-registry", sibling, direct_url, version
+                )
+                if isinstance(req, str):
+                    wt_pypi_deps[sibling] = req
+                else:
+                    wt_pypi_deps[sibling] = req.to_pixi_dict()
+
+        return DiscoveryResult(
+            tasks=discovered_tasks, records=records, wt_pypi_deps=wt_pypi_deps
+        )
 
 
 async def _create_environment(
@@ -342,7 +367,7 @@ async def populate_known_tasks(
     pypi_requirements: list[PyPIRequirement] | None = None,
     on_progress: Callable[[str], None] | None = None,
     **kwargs: Any,
-) -> list[Any]:
+) -> DiscoveryResult:
     """Discover tasks and populate the global known_tasks dictionary.
 
     This async convenience function calls discover_tasks_from_requirements
@@ -358,7 +383,7 @@ async def populate_known_tasks(
         **kwargs: Additional arguments to pass to discover_tasks_from_requirements
 
     Returns:
-        List of RepoDataRecord objects from the solved environment
+        DiscoveryResult containing tasks, records, and optional wt_pypi_deps
 
     Examples:
         >>> from rattler import MatchSpec
@@ -377,7 +402,7 @@ async def populate_known_tasks(
     )
     known_tasks.clear()
     known_tasks.update(result.tasks)
-    return result.records
+    return result
 
 
 async def discover_tasks_from_spec_requirements(

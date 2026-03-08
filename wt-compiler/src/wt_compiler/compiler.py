@@ -214,7 +214,8 @@ class DagCompiler(BaseModel):
     """
 
     spec: Spec
-    wt_runner_channel: str
+    wt_runner_channel: str | None = None
+    wt_pypi_deps: dict[str, str | dict[str, Any]] | None = None
     variant: str | None = None
     jinja_templates_dir: pathlib.Path = TEMPLATES
     pkg_name_prefix: str = "wt"
@@ -406,6 +407,11 @@ class DagCompiler(BaseModel):
         conda_reqs = self.spec.conda_requirements
         pypi_reqs = self.spec.pypi_requirements
 
+        # Initialize pypi-dependencies from spec's PyPI requirements
+        pypi_dependencies: dict[str, str | dict[str, Any]] = {}
+        for pypi_req in pypi_reqs:
+            pypi_dependencies[pypi_req.name] = pypi_req.to_pixi_dict()
+
         # 1. Build channels list dynamically based on which channels are in requirements
         channels: list[str] = []
         if any(r.channel.base_url == LOCAL_CHANNEL.base_url for r in conda_reqs):
@@ -416,7 +422,7 @@ class DagCompiler(BaseModel):
             channels.append(CUSTOM_LOCAL_CHANNEL.base_url)
         if any(r.channel.base_url == CUSTOM_RELEASE_CHANNEL.base_url for r in conda_reqs):
             channels.append(CUSTOM_RELEASE_CHANNEL.base_url)
-        if self.wt_runner_channel.startswith("file://") and self.wt_runner_channel not in channels:
+        if self.wt_runner_channel and self.wt_runner_channel.startswith("file://") and self.wt_runner_channel not in channels:
             channels.append(self.wt_runner_channel)
         # Always add standard channels at the end
         # Note: name can be None for custom channels but not for these standard channels
@@ -439,6 +445,8 @@ class DagCompiler(BaseModel):
         # 3b. Add cli.py runtime dependencies (used by generated cli.py)
         runner_channel = self.wt_runner_channel
         task_pkg = f"wt-task-{self.variant}" if self.variant else "wt-task"
+        runner_pkg = f"wt-runner-{self.variant}" if self.variant else "wt-runner"
+
         cli_runtime_deps: dict[str, NamelessMatchSpec] = {
             "click": NamelessMatchSpec.from_match_spec(
                 MatchSpec("conda-forge::click >=8.0.0,<9.0.0")
@@ -455,27 +463,39 @@ class DagCompiler(BaseModel):
             "opentelemetry-api": NamelessMatchSpec.from_match_spec(
                 MatchSpec("conda-forge::opentelemetry-api >=1.20.0,<2.0.0")
             ),
-            task_pkg: NamelessMatchSpec.from_match_spec(
-                MatchSpec(f"{runner_channel}::{task_pkg} *")
-            ),
         }
+        # Only add wt-task to conda deps when not using PyPI mode
+        if self.wt_pypi_deps is None:
+            cli_runtime_deps[task_pkg] = NamelessMatchSpec.from_match_spec(
+                MatchSpec(f"{runner_channel}::{task_pkg} *")
+            )
         dependencies.update(cli_runtime_deps)
 
         # 4. Build feature.runner.dependencies
-        runner_pkg = f"wt-runner-{self.variant}" if self.variant else "wt-runner"
+        runner_conda_deps: dict[str, NamelessMatchSpec] = {}
+        runner_pypi_deps: dict[str, str | dict[str, Any]] = {}
 
-        runner_deps: dict[str, NamelessMatchSpec] = {
-            runner_pkg: NamelessMatchSpec.from_match_spec(
+        if self.wt_pypi_deps is None:
+            # Conda mode: wt-runner/wt-task come from conda channel
+            runner_conda_deps[runner_pkg] = NamelessMatchSpec.from_match_spec(
                 MatchSpec(f"{runner_channel}::{runner_pkg} *")
             )
-        }
-        if self.variant:
-            task_pkg = f"wt-task-{self.variant}"
-            runner_deps[task_pkg] = NamelessMatchSpec.from_match_spec(
-                MatchSpec(f"{runner_channel}::{task_pkg} *")
-            )
+            if self.variant:
+                task_pkg = f"wt-task-{self.variant}"
+                runner_conda_deps[task_pkg] = NamelessMatchSpec.from_match_spec(
+                    MatchSpec(f"{runner_channel}::{task_pkg} *")
+                )
+        else:
+            # PyPI mode: wt-runner goes in runner feature pypi-deps,
+            # wt-task goes in top-level pypi-deps
+            if runner_pkg in self.wt_pypi_deps:
+                runner_pypi_deps[runner_pkg] = self.wt_pypi_deps[runner_pkg]
+            if task_pkg in self.wt_pypi_deps:
+                pypi_dependencies[task_pkg] = self.wt_pypi_deps[task_pkg]
 
-        runner_feature = Feature(dependencies=runner_deps)
+        runner_feature = Feature(
+            dependencies=runner_conda_deps, pypi_dependencies=runner_pypi_deps
+        )
 
         # 5. Build feature.test (dependencies + tasks)
         test_dependencies: dict[str, NamelessMatchSpec] = {
@@ -560,11 +580,6 @@ class DagCompiler(BaseModel):
 
         # 8. Build system requirements (linux = "4.4.0" for Docker compatibility)
         system_requirements = {"linux": "4.4.0"}
-
-        # 9. Build pypi-dependencies from PyPI requirements
-        pypi_dependencies: dict[str, str | dict[str, Any]] = {}
-        for pypi_req in pypi_reqs:
-            pypi_dependencies[pypi_req.name] = pypi_req.to_pixi_dict()
 
         # Note: using field names instead of aliases; pydantic's populate_by_name allows this
         return PixiToml(  # type: ignore[call-arg]
@@ -897,7 +912,8 @@ class DagCompiler(BaseModel):
 def compile_workflow(
     spec: Spec,
     spec_relpath: str,
-    wt_runner_channel: str,
+    wt_runner_channel: str | None = None,
+    wt_pypi_deps: dict[str, str | dict[str, Any]] | None = None,
     installed_requirements: list[SpecRequirement] | None = None,
     on_progress: Callable[[str], None] | None = None,
     **compiler_kwargs: Any,
@@ -911,7 +927,11 @@ def compile_workflow(
     Args:
         spec: Workflow specification (must have known_tasks already populated)
         spec_relpath: Relative path to spec file
-        wt_runner_channel: Channel URL where wt-runner package is available
+        wt_runner_channel: Channel URL where wt-runner package is available.
+            Can be None when wt_pypi_deps is set (PyPI mode).
+        wt_pypi_deps: Optional dict mapping sibling package names to pixi
+            pypi-dependency values. When set, wt-runner/wt-task are installed
+            from PyPI instead of conda.
         installed_requirements: Optional list of solved/pinned requirements
         on_progress: Optional callback invoked with a status message at each sub-step
         **compiler_kwargs: Additional arguments for DagCompiler
@@ -930,7 +950,12 @@ def compile_workflow(
         >>> # Prefer using compile_workflow_from_yaml() for automatic discovery:
         >>> # artifacts = compile_workflow_from_yaml("spec.yaml")  # doctest: +SKIP
     """
-    compiler = DagCompiler(spec=spec, wt_runner_channel=wt_runner_channel, **compiler_kwargs)
+    compiler = DagCompiler(
+        spec=spec,
+        wt_runner_channel=wt_runner_channel,
+        wt_pypi_deps=wt_pypi_deps,
+        **compiler_kwargs,
+    )
     return compiler.compile(
         spec_relpath, installed_requirements=installed_requirements, on_progress=on_progress
     )
@@ -1072,23 +1097,24 @@ async def compile_workflow_from_yaml(
             unique_channels = [CONDA_FORGE_CHANNEL]
 
         # Discover tasks and populate global known_tasks
-        records = await populate_known_tasks(
+        discovery_result = await populate_known_tasks(
             match_specs,
             channels=unique_channels,
             pypi_requirements=pypi_requirements or None,
             on_progress=sp.update,
         )
+        records = discovery_result.records
 
         # Extract wt-runner channel from the solved wt-registry record
         wt_registry_record = next(
             (r for r in records if str(r.name.normalized) == "wt-registry"), None
         )
-        if wt_registry_record is None:
-            raise ValueError(
-                "wt-registry was not found in the solved environment. "
-                "It is required to determine the channel for wt-runner."
-            )
-        wt_runner_channel = str(wt_registry_record.channel)
+        if wt_registry_record is not None:
+            wt_runner_channel: str | None = str(wt_registry_record.channel)
+            wt_pypi_deps = None
+        else:
+            wt_runner_channel = None
+            wt_pypi_deps = discovery_result.wt_pypi_deps
 
         # Build installed requirements from solved records
         installed_requirements = _build_installed_requirements(conda_requirements, records)
@@ -1106,6 +1132,7 @@ async def compile_workflow_from_yaml(
             spec,
             spec_relpath,
             wt_runner_channel=wt_runner_channel,
+            wt_pypi_deps=wt_pypi_deps,
             installed_requirements=installed_requirements,
             on_progress=sp.update,
             **compiler_kwargs,

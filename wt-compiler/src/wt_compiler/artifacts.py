@@ -61,7 +61,15 @@ PixiTaskCommand = str | dict[str, Any]
 class Feature(_AllowArbitraryTypes):
     """A `pixi.toml` feature definition."""
 
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        populate_by_name=True,
+    )
+
     dependencies: dict[str, NamelessMatchSpecType]
+    pypi_dependencies: dict[str, str | dict[str, Any]] = Field(
+        default_factory=dict, alias="pypi-dependencies"
+    )
     tasks: dict[PixiTaskName, PixiTaskCommand] = Field(default_factory=dict)
 
 
@@ -170,6 +178,10 @@ class PixiToml(_AllowArbitraryAndValidateAssignment):
         data = self.model_dump(by_alias=True, mode="json")
         if not data.get("pypi-dependencies"):
             data.pop("pypi-dependencies", None)
+        # Also strip empty pypi-dependencies from feature dicts
+        for feature_data in data.get("feature", {}).values():
+            if not feature_data.get("pypi-dependencies"):
+                feature_data.pop("pypi-dependencies", None)
         return data
 
     def dump(self, dst: Path) -> None:

@@ -271,6 +271,78 @@ class TestDagCompiler:
         toml_str = pixi_toml.to_toml()
         assert "pypi-dependencies" not in toml_str
 
+    def test_get_pixi_toml_with_wt_pypi_deps_path(self):
+        """Test pixi.toml generation when wt-runner/wt-task come from PyPI (path mode)."""
+        spec = Spec(
+            id="test_spec",
+            requirements=[
+                {"name": "foo", "git": "https://github.com/org/foo.git", "tag": "v1.0"},
+            ],
+            workflow=[],
+        )
+        wt_pypi_deps = {
+            "wt-runner": {"path": "/home/user/wt/wt-runner", "editable": True},
+            "wt-task": {"path": "/home/user/wt/wt-task", "editable": True},
+        }
+        compiler = DagCompiler(
+            spec=spec, wt_pypi_deps=wt_pypi_deps
+        )
+        pixi_toml = compiler.get_pixi_toml()
+
+        # wt-task should be in top-level pypi_dependencies, NOT conda dependencies
+        assert "wt-task" in pixi_toml.pypi_dependencies
+        assert pixi_toml.pypi_dependencies["wt-task"]["path"] == "/home/user/wt/wt-task"
+        assert "wt-task" not in pixi_toml.dependencies
+
+        # wt-runner should be in runner feature's pypi_dependencies
+        runner_feature = pixi_toml.feature["runner"]
+        assert "wt-runner" in runner_feature.pypi_dependencies
+        assert runner_feature.pypi_dependencies["wt-runner"]["path"] == "/home/user/wt/wt-runner"
+        assert "wt-runner" not in runner_feature.dependencies
+
+    def test_get_pixi_toml_with_wt_pypi_deps_wildcard(self):
+        """Test pixi.toml generation when wt-runner/wt-task come from PyPI registry."""
+        spec = Spec(
+            id="test_spec",
+            requirements=[
+                {"name": "foo", "git": "https://github.com/org/foo.git", "tag": "v1.0"},
+            ],
+            workflow=[],
+        )
+        wt_pypi_deps = {
+            "wt-runner": "*",
+            "wt-task": "*",
+        }
+        compiler = DagCompiler(
+            spec=spec, wt_pypi_deps=wt_pypi_deps
+        )
+        pixi_toml = compiler.get_pixi_toml()
+
+        # wt-task should be in top-level pypi_dependencies with wildcard
+        assert pixi_toml.pypi_dependencies["wt-task"] == "*"
+
+        # wt-runner should be in runner feature's pypi_dependencies
+        assert pixi_toml.feature["runner"].pypi_dependencies["wt-runner"] == "*"
+
+    def test_get_pixi_toml_pypi_mode_no_runner_channel_in_channels(self):
+        """Test that PyPI mode doesn't add wt_runner_channel to channels list."""
+        spec = Spec(
+            id="test_spec",
+            requirements=[
+                {"name": "foo", "git": "https://github.com/org/foo.git", "tag": "v1.0"},
+            ],
+            workflow=[],
+        )
+        wt_pypi_deps = {"wt-runner": "*", "wt-task": "*"}
+        compiler = DagCompiler(
+            spec=spec, wt_pypi_deps=wt_pypi_deps
+        )
+        pixi_toml = compiler.get_pixi_toml()
+        toml_str = pixi_toml.to_toml()
+
+        # Should still have conda-forge and other standard channels
+        assert "conda-forge" in toml_str
+
     def test_props_and_defs_from_task_instance(self):
         """Test extracting properties and definitions from a task instance."""
         task = KnownTask(
