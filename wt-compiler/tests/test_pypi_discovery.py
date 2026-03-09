@@ -191,6 +191,7 @@ class TestPyPIInstallErrorInDiscovery:
 
 
     @pytest.mark.asyncio
+    @patch("wt_compiler.pypi_source.detect_pypi_source", return_value=(None, "0.1.0"))
     @patch("wt_compiler.discovery.subprocess.run")
     @patch("wt_compiler.discovery._create_environment", new_callable=AsyncMock)
     @patch("wt_compiler.discovery.tempfile.TemporaryDirectory")
@@ -199,6 +200,7 @@ class TestPyPIInstallErrorInDiscovery:
         mock_tmpdir: MagicMock,
         mock_create_env: AsyncMock,
         mock_run: MagicMock,
+        mock_detect_pypi: MagicMock,
         tmp_path: Path,
     ) -> None:
         """wt-registry CLI is called without --package args (uses entry point auto-discovery)."""
