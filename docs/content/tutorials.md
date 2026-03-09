@@ -6,10 +6,98 @@ package from that guide.
 
 ---
 
-## Map fan-out
+## Partial arguments
 
 **Prerequisite:** Complete [Getting Started](getting-started.md) through
-Step 5.
+Step 4.
+
+Use `partial` to bind one or more parameters at compile time so they are no
+longer user-configurable. In the spec below, `b` is fixed to `5` — only `a`
+remains as a runtime parameter:
+
+```yaml
+--8<-- "examples/getting-started/partial/spec.yaml"
+```
+
+### Compile and run
+
+```bash
+wt-compiler compile --spec spec.yaml --clobber
+cd wt-add-with-partial-workflow
+pixi run wt-add-with-partial-workflow run --config-json '{"total": {"a": 1}}'
+```
+
+!!! tip "`--clobber`"
+    Overwrites the output directory if it already exists. Without it, the
+    compiler refuses to overwrite a previous compilation.
+
+### Expected result
+
+```json
+{"result": 6, "error": null, "trace": null}
+```
+
+### How it works
+
+- `partial` fixes `b` to `5`. Only `a` remains as a user parameter.
+- The result is `1 + 5 = 6`.
+- Partial arguments can be literal values (integers, strings, lists) or
+  `${{ }}` references to other task outputs.
+
+---
+
+## Chaining task outputs
+
+**Prerequisite:** Complete [Getting Started](getting-started.md) through
+Step 4.
+
+Chain two tasks together so the output of one feeds into the next using
+`${{ workflow.<id>.return }}` references:
+
+```yaml
+--8<-- "examples/getting-started/chaining-tasks/spec.yaml"
+```
+
+### Compile and run
+
+```bash
+wt-compiler compile --spec spec.yaml --clobber
+cd wt-add-then-double-workflow
+pixi run wt-add-then-double-workflow run --config-json '{"total": {"a": 3, "b": 3}}'
+```
+
+### Expected result
+
+```json
+{"result": 12, "error": null, "trace": null}
+```
+
+### How it works
+
+- `${{ workflow.total.return }}` references the return value of the `total`
+  task instance.
+- Tasks must appear in **topological order** — every dependency before its
+  dependent.
+- The terminal task's return value becomes `result.json`'s `result` field.
+- The result is `(3 + 3) × 2 = 12`.
+
+### Auto-generated form
+
+Because `doubled`'s only parameter (`n`) is bound via `${{ }}`, it has no
+user-facing configuration. The generated web form only shows fields for
+`total`:
+
+<div class="rjsf-form" data-schema-url="../examples/getting-started/chaining-tasks/rjsf.json"></div>
+
+For more on how the compiler generates form schemas, see
+[Concepts — Auto-generated web forms](concepts.md#auto-generated-web-forms).
+
+---
+
+## Map fan-out
+
+**Prerequisite:** Complete [Chaining task outputs](#chaining-task-outputs)
+above.
 
 A task can return any JSON-serializable type, including lists. When a task
 returns a list, `map` lets you apply another task to every element — one

@@ -5,7 +5,9 @@ it's made of, and how it goes from a YAML file to running code.
 
 ---
 
-## Workflow lifecycle
+## Workflows
+
+### Lifecycle
 
 ```
  Register            Specify             Compile              Run
@@ -28,11 +30,7 @@ it's made of, and how it goes from a YAML file to running code.
 4. **Run** — Execute locally via the generated CLI (`pixi run`), through the
    `wt-runner` FastAPI server, or on Google Cloud Batch.
 
-The rest of this page unpacks each phase.
-
----
-
-## Workflows
+### Results
 
 A **workflow** is a DAG of tasks that produces a JSON result. Side effects
 (writing files, calling APIs, updating databases) can happen along the way, but
@@ -96,7 +94,9 @@ is required from function authors.
 
 ---
 
-## The DAG
+## The DAG and spec.yaml
+
+### Data flow
 
 Functions in a workflow form a **directed acyclic graph** (DAG). In practical
 terms: tasks are nodes, data flows forward along edges, and circular
@@ -104,7 +104,7 @@ dependencies are impossible — the compiler rejects them. If task B uses the
 output of task A, then A must run before B.
 
 Here is the add→double chain from
-[Getting Started — Step 5](getting-started.md#step-5-piping-task-outputs),
+[How-To Guides — Chaining task outputs](tutorials.md#chaining-task-outputs),
 expressed as a spec:
 
 ```yaml
@@ -152,12 +152,7 @@ Key rules:
 - The terminal (last) task's return value becomes the `result` field in
   `result.json`.
 
-For the complete spec syntax, see the
-[`spec.yaml` reference](reference/spec-yaml.md).
-
----
-
-## The spec.yaml
+### spec.yaml
 
 The DAG is expressed in a file called **`spec.yaml`**. Its syntax borrows from
 GitHub Actions (`${{ }}` expressions) and Astronomer's DAG Factory (declarative
@@ -203,22 +198,70 @@ a spec with `id: add_then_double` and the default `wt` prefix produces
 
 ---
 
-## Execution
+## Configuration and execution
 
-Once compiled, a workflow can run in several ways:
+Once compiled, a workflow needs **configuration** (parameter values) and an
+**execution backend**. The compiler generates schemas that ensure configuration
+is consistent across all interfaces.
 
-- **Locally via CLI** — run the generated entry point with `pixi run`.
-- **Through the REST API** — `wt-runner` is a FastAPI server that accepts
-  workflow parameters as JSON. Like all execution paths, the canonical output
-  is the `result.json` file written to the configured results path.
-- **On Cloud Batch** — for heavy workloads, the runner can dispatch to Google
-  Cloud Batch.
+### Auto-generated web forms
 
-All execution paths produce the same JSON output; only the transport differs.
+The compiler generates [RJSF](https://rjsf-team.github.io/react-jsonschema-form/)-compatible
+JSON schemas from your type annotations. These schemas power auto-generated web
+forms that let non-developers configure workflows without writing code or JSON.
 
-An **invoker** is an execution backend that runs a compiled workflow.
-Implementations include `LocalSubprocessInvoker` (runs via `pixi run` locally)
-and `CloudBatchInvoker` (dispatches to Google Cloud Batch).
+Here is a live form generated from the add-then-double workflow:
+
+<div class="rjsf-form" data-schema-url="../examples/getting-started/chaining-tasks/rjsf.json"></div>
+
+**The pipeline:** Type annotations → JSON Schema → RJSF web form.
+
+The compiler produces two schema files:
+
+- **`rjsf.json`** — hierarchical schema with `uiSchema` for form layout. RJSF-compatible.
+- **`params.json`** — flat schema for CLI usage (`--config-json` / `--config-file`).
+
+Both describe the same parameters; the compiler guarantees that form submissions
+from a rendered `rjsf.json` are compatible with the CLI's `--config-json` and
+`--config-file` parameter schemas.
+
+!!! note "Forms and execution"
+    `wt-compiler` generates the form schemas but does **not** provide a built-in
+    web UI or wire forms into workflow execution. Connecting rendered forms to an
+    execution backend is the responsibility of the platform integrator — for
+    example, [Ecoscope Platform](https://github.com/wildlife-dynamics/ecoscope-platform)
+    (link TBD). The compiler's guarantee is schema compatibility: what the form
+    produces is what the CLI accepts.
+
+### CLI
+
+Run the generated entry point with `pixi run`:
+
+```bash
+pixi run wt-add-then-double-workflow run --config-json '{"total": {"a": 3, "b": 3}}'
+```
+
+Parameters can also be loaded from a file:
+
+```bash
+pixi run wt-add-then-double-workflow run --config-file params.json
+```
+
+The `--config-json` keys correspond to task instance `id` values in the spec.
+Only unbound parameters (those not fixed via `partial` or `${{ }}` references)
+appear in the configuration.
+
+### REST API and Cloud Batch
+
+For production deployments, `wt-runner` is a FastAPI server that accepts
+workflow parameters as JSON and dispatches execution to an **invoker**:
+
+- **`LocalSubprocessInvoker`** — runs via `pixi run` locally.
+- **`CloudBatchInvoker`** — dispatches to Google Cloud Batch for heavy
+  workloads.
+
+All execution paths produce the same `result.json` output; only the transport
+differs.
 
 ---
 

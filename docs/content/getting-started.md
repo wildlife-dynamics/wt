@@ -1,7 +1,8 @@
 # Getting Started
 
-Build a workflow from scratch in seven steps. Each step adds one concept and
-produces a runnable workflow you can compile and test.
+Build a workflow from scratch in five steps. By the end you will have
+registered a task, written a spec, compiled a workflow, and run it — both from
+the CLI and via an auto-generated web form.
 
 ---
 
@@ -116,34 +117,14 @@ the [wt-registry reference](reference/wt-registry.md).
 
 ---
 
-## Step 2 — Set up results
+## Step 2 — Your first spec.yaml
 
-Compiled workflows write their output to a **results directory**. The location
-is controlled by an environment variable (default: `WT_RESULTS`).
-
-```bash
-mkdir results
-export WT_RESULTS=file://$(pwd)/results
-```
-
-Each workflow run writes a `result.json` file with three fields:
-
-- **`result`** — the return value of the terminal task (any JSON-serializable type)
-- **`error`** — error details if the workflow failed, otherwise `null`
-- **`trace`** — the Python traceback string if the workflow errored, otherwise `null`
-
-Cloud storage (`gs://`, `s3://`) is also supported via
-[obstore](https://developmentseed.org/obstore/).
-
----
-
-## Step 3 — Single task
-
-The simplest workflow: one task, all parameters provided by the user at
+A **spec** declares which tasks to run and how data flows between them. Here is
+the simplest possible workflow: one task, all parameters provided by the user at
 runtime.
 
 ```yaml
---8<-- "examples/getting-started/example-1/spec.yaml"
+--8<-- "examples/getting-started/single-task/spec.yaml"
 ```
 
 !!! note "Replace the path"
@@ -156,12 +137,78 @@ runtime.
     For distributable workflows, use `git:` or conda channel requirements
     instead — see [Distributing workflows](tutorials.md#coming-soon).
 
-**Compile and run:**
+Let's walk through the spec field by field:
+
+- **`id`** — a unique identifier for the workflow. The compiler uses this to
+  name the output directory (`wt-<id>-workflow`).
+- **`requirements`** — the packages the compiler must install to discover tasks.
+  Each entry has a `name` and a source (`path:`, `git:`, or a conda channel).
+- **`workflow`** — an ordered list of task instances. Each entry has:
+    - **`id`** — identifies this task instance within the workflow. Used in
+      `${{ }}` references and as the key in `--config-json`.
+    - **`name`** — a human-readable label (used in web forms and logs).
+    - **`task`** — the fully-qualified import path of the registered function.
+
+For the full spec syntax, see the [`spec.yaml` reference](reference/spec-yaml.md).
+
+---
+
+## Step 3 — Compiling
+
+Run the compiler to turn your spec into an executable workflow:
 
 ```bash
 wt-compiler compile --spec spec.yaml
+```
+
+The compiler:
+
+1. Resolves `requirements` into a temporary environment.
+2. Discovers registered functions by running `wt-registry` as a subprocess.
+3. Validates the spec against the discovered function schemas.
+4. Generates a self-contained **pixi workspace** with DAG code, parameter
+   schemas, a `pixi.toml`, and a Dockerfile.
+
+The output directory is named `wt-add-two-numbers-workflow`. Take a look inside:
+
+```
+wt-add-two-numbers-workflow/
+├── pixi.toml
+├── Dockerfile
+├── wt_add_two_numbers_workflow/
+│   ├── dag.py            # Generated DAG code
+│   ├── params.json       # Flat parameter schema (CLI)
+│   └── rjsf.json         # Hierarchical schema (web forms)
+└── tests/
+```
+
+Two schema files are generated from your type annotations:
+
+- **`rjsf.json`** — hierarchical schema with `uiSchema` for form layout.
+  [RJSF](https://rjsf-team.github.io/react-jsonschema-form/)-compatible.
+- **`params.json`** — flat schema for CLI usage (`--config-json` / `--config-file`).
+
+Both describe the same parameters; only the structure differs. For full detail
+on compiled artifacts, see the
+[wt-compiler reference](reference/wt-compiler.md).
+
+---
+
+## Step 4 — Configuration and running
+
+Compiled workflows write their output to a **results directory** controlled by
+an environment variable:
+
+```bash
+mkdir results
+export WT_RESULTS=file://$(pwd)/results
+```
+
+### CLI
+
+```bash
 cd wt-add-two-numbers-workflow
-pixi run wt-add-two-numbers-workflow run --config-json '{"sum": {"a": 1, "b": 2}}'
+pixi run wt-add-two-numbers-workflow run --config-json '{"total": {"a": 1, "b": 2}}'
 ```
 
 !!! info "Two `run` commands?"
@@ -169,162 +216,42 @@ pixi run wt-add-two-numbers-workflow run --config-json '{"sum": {"a": 1, "b": 2}
     is the workflow CLI's own `run` subcommand. Together:
     `pixi run <entrypoint> run --config-json ...`.
 
-The compiler generates a directory named `wt-add-two-numbers-workflow`
-containing a **[pixi workspace](https://pixi.sh/latest/tutorials/first_workspace/)** with a pixi task (entrypoint) of the same name.
-For full detail on compiled artifacts, see the
-[wt-compiler reference](reference/wt-compiler.md).
-
 **Expected result** (contents of `result.json` in your results directory):
 
 ```json
 {"result": 3, "error": null, "trace": null}
 ```
 
-**Key points:**
-
 - Both parameters (`a` and `b`) are unbound, so they become user-facing
   configuration.
-- The `--config-json` key `"sum"` matches the task instance `id` in the spec.
+- The `--config-json` key `"total"` matches the task instance `id` in the spec.
+
+### Web form
+
+The compiler also generated an `rjsf.json` schema from your type annotations.
+Here is what the auto-generated form looks like — try entering values for `a`
+and `b` and watch the `formData` update live:
+
+<div class="rjsf-form" data-schema-url="../examples/getting-started/single-task/rjsf.json"></div>
+
+**The pipeline:** Type annotations → JSON Schema → RJSF web form.
+
+The form is generated entirely from the type annotations on your `add`
+function. For the full story on how the compiler produces form schemas and how
+they relate to the CLI, see
+[Concepts — Configuration and execution](concepts.md#configuration-and-execution).
 
 ---
 
-## Step 4 — Partial arguments
+## Step 5 — What's next
 
-Bind one parameter at compile time so only the other is user-configurable.
-
-```yaml
---8<-- "examples/getting-started/example-2/spec.yaml"
-```
-
-```bash
-wt-compiler compile --spec spec.yaml --clobber
-cd wt-add-with-partial-workflow
-pixi run wt-add-with-partial-workflow run --config-json '{"sum": {"a": 1}}'
-```
-
-!!! tip "`--clobber`"
-    Overwrites the output directory if it already exists. Without it, the
-    compiler refuses to overwrite a previous compilation.
-
-**Expected result** (contents of `result.json` in your results directory):
-
-```json
-{"result": 6, "error": null, "trace": null}
-```
-
-**Key points:**
-
-- `partial` fixes `b` to `5`. Only `a` remains as a user parameter.
-- The result is `1 + 5 = 6`.
-
----
-
-## Step 5 — Piping task outputs
-
-Chain two tasks together so the output of one feeds into the next.
-
-```yaml
---8<-- "examples/getting-started/example-3/spec.yaml"
-```
-
-```bash
-wt-compiler compile --spec spec.yaml --clobber
-cd wt-add-then-double-workflow
-pixi run wt-add-then-double-workflow run --config-json '{"sum": {"a": 3, "b": 3}}'
-```
-
-**Expected result** (contents of `result.json` in your results directory):
-
-```json
-{"result": 12, "error": null, "trace": null}
-```
-
-**Key points:**
-
-- `${{ workflow.total.return }}` references the return value of the `total` task.
-- Tasks must appear in **topological order** — every dependency before its
-  dependent.
-- The terminal task's return value becomes `result.json`'s `result` field.
-
----
-
-## Step 6 — Web-form configuration
-
-The compiler doesn't just produce executable code — it also generates **JSON
-schemas** that power auto-generated web forms. This is how non-developers
-configure and launch workflows without touching code.
-
-Look inside the compiled `wt-add-then-double-workflow` from Step 5. The
-`rjsf.json` file contains a
-[React JSON Schema Form](https://rjsf-team.github.io/react-jsonschema-form/)
-configuration:
-
-```bash
-cat wt-add-then-double-workflow/wt_add_then_double_workflow/rjsf.json
-```
-
-??? example "Example `rjsf.json`"
-
-    ```json
-    {
-      "properties": {
-        "total": {
-          "type": "object",
-          "title": "Add Two Numbers",
-          "properties": {
-            "a": { "type": "integer", "title": "A" },
-            "b": { "type": "integer", "title": "B" }
-          },
-          "required": ["a", "b"],
-          "additionalProperties": false
-        }
-      },
-      "uiSchema": {
-        "total": {
-          "ui:order": ["a", "b"]
-        },
-        "ui:order": ["total"]
-      },
-      "additionalProperties": false
-    }
-    ```
-
-The interactive form below is rendered directly from this schema — try
-entering values for `a` and `b` and watch the `formData` update live:
-
-<div class="rjsf-form" data-schema-url="../schemas/add-then-double-rjsf.json"></div>
-
-This form is generated entirely from the type annotations on your `add`
-function. You can also paste the schema into the
-[RJSF Playground](https://rjsf-team.github.io/react-jsonschema-form/) to
-experiment further.
-
-**The pipeline:** Type annotations → JSON Schema → web forms.
-
-!!! info "`rjsf.json` vs `params.json`"
-    The compiler generates two schema files:
-
-    - **`rjsf.json`** — hierarchical schema that preserves task groups and
-      includes `uiSchema`. Used by web UIs to render forms.
-    - **`params.json`** / `--config-json` — flat schema with all task instances
-      at the top level. Used by the CLI.
-
-    Both describe the same parameters; only the structure differs.
-
-For controlling form layout via `rjsf_overrides` in `spec.yaml`, see
-[Coming soon](tutorials.md#coming-soon).
-
----
-
-## Step 7 — What's next
-
-You now know how to register tasks, write specs with `partial` and `${{ }}`
-references, compile workflows, run them, and preview auto-generated web forms.
+You now know how to register tasks, write a spec, compile a workflow, run it
+from the CLI, and preview auto-generated web forms.
 
 **Continue learning:**
 
-- [**How-To Guides**](tutorials.md) — `map` fan-out, list return types, and
-  more
+- [**How-To Guides**](tutorials.md) — partial arguments, chaining task outputs,
+  `map` fan-out, and more
 - [**spec.yaml reference**](reference/spec-yaml.md) — complete field-by-field
   documentation including `map`, `mapvalues`, `skipif`, and task groups
 - [**Concepts**](concepts.md) — the full mental model behind the framework
