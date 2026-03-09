@@ -1,0 +1,21 @@
+{
+  "properties": {
+    "total": {
+      "type": "object",
+      "title": "Add Two Numbers",
+      "properties": {
+        "a": { "type": "integer", "title": "A" },
+        "b": { "type": "integer", "title": "B" }
+      },
+      "required": ["a", "b"],
+      "additionalProperties": false
+    }
+  },
+  "uiSchema": {
+    "total": {
+      "ui:order": ["a", "b"]
+    },
+    "ui:order": ["total"]
+  },
+  "additionalProperties": false
+}

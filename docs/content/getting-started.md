@@ -263,31 +263,41 @@ configuration:
 cat wt-add-then-double-workflow/wt_add_then_double_workflow/rjsf.json
 ```
 
-??? example "Example `rjsf.json` (abbreviated)"
+??? example "Example `rjsf.json`"
 
     ```json
     {
-      "schema": {
-        "type": "object",
-        "properties": {
-          "Add Two Numbers": {
-            "type": "object",
-            "properties": {
-              "a": {"type": "integer", "title": "A"},
-              "b": {"type": "integer", "title": "B"}
-            },
-            "required": ["a", "b"]
-          }
+      "properties": {
+        "total": {
+          "type": "object",
+          "title": "Add Two Numbers",
+          "properties": {
+            "a": { "type": "integer", "title": "A" },
+            "b": { "type": "integer", "title": "B" }
+          },
+          "required": ["a", "b"],
+          "additionalProperties": false
         }
       },
-      "uiSchema": { ... }
+      "uiSchema": {
+        "total": {
+          "ui:order": ["a", "b"]
+        },
+        "ui:order": ["total"]
+      },
+      "additionalProperties": false
     }
     ```
 
-To see the rendered form, paste the `schema` value into the
-[RJSF Playground](https://rjsf-team.github.io/react-jsonschema-form/). You'll
-get an interactive form with labeled integer fields for `a` and `b` — generated
-entirely from the type annotations on your `add` function.
+The interactive form below is rendered directly from this schema — try
+entering values for `a` and `b` and watch the `formData` update live:
+
+<div class="rjsf-form" data-schema-url="schemas/add-then-double-rjsf.json"></div>
+
+This form is generated entirely from the type annotations on your `add`
+function. You can also paste the schema into the
+[RJSF Playground](https://rjsf-team.github.io/react-jsonschema-form/) to
+experiment further.
 
 **The pipeline:** Type annotations → JSON Schema → web forms.
 

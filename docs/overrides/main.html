@@ -1,5 +1,26 @@
 {% extends "base.html" %}
 
+{% block extrahead %}
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1",
+    "react/": "https://esm.sh/react@18.3.1/",
+    "react-dom": "https://esm.sh/react-dom@18.3.1",
+    "react-dom/": "https://esm.sh/react-dom@18.3.1/",
+    "@rjsf/core": "https://esm.sh/@rjsf/core@5.24.7?external=react,react-dom",
+    "@rjsf/utils": "https://esm.sh/@rjsf/utils@5.24.7?external=react,react-dom",
+    "@rjsf/validator-ajv8": "https://esm.sh/@rjsf/validator-ajv8@5.24.7?external=react,react-dom"
+  }
+}
+</script>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script type="module" src="{{ 'javascripts/rjsf-widget.js' | url }}"></script>
+{% endblock %}
+
 {% block announce %}
   <img src="{{ 'assets/ecoscope-favicon.ico' | url }}" alt="Ecoscope" style="height: 1.2em; vertical-align: middle; margin-right: 0.3em;">
   <b>Building for Ecoscope?</b> See the
