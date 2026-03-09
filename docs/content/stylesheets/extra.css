@@ -4,10 +4,15 @@
   --md-primary-fg-color--light: #2a6b6b;
   --md-primary-fg-color--dark: #0e2a2c;
   --md-accent-fg-color: #4ecb8d;
+  --md-typeset-a-color: #4ecb8d;
   --md-default-fg-color: #163a3c;
   --md-default-fg-color--light: #2a6b6b;
   --md-default-bg-color: #f5ece0;
   --md-default-bg-color--light: #faf6f0;
+}
+
+[data-md-color-scheme="default"] .md-banner a {
+  color: #4ecb8d;
 }
 
 /* Dark mode — Dark Teal + Off White/Green */
