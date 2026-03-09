@@ -136,7 +136,15 @@ async def discover_tasks_from_requirements(
                 pip_arg = pypi_req.to_pip_install_arg()
                 # Handle editable installs which start with "-e "
                 if pip_arg.startswith("-e "):
-                    uv_args = [str(uv_exe), "pip", "install", "--python", str(env_python), "-e", pip_arg[3:]]
+                    uv_args = [
+                        str(uv_exe),
+                        "pip",
+                        "install",
+                        "--python",
+                        str(env_python),
+                        "-e",
+                        pip_arg[3:],
+                    ]
                 else:
                     uv_args = [str(uv_exe), "pip", "install", "--python", str(env_python), pip_arg]
                 uv_result = subprocess.run(
@@ -228,9 +236,7 @@ async def discover_tasks_from_requirements(
 
         # Detect if wt-registry came from PyPI (not in conda records)
         wt_pypi_deps: dict[str, str | dict[str, Any]] | None = None
-        wt_registry_in_conda = any(
-            str(r.name.normalized) == "wt-registry" for r in records
-        )
+        wt_registry_in_conda = any(str(r.name.normalized) == "wt-registry" for r in records)
         if not wt_registry_in_conda:
             from wt_compiler.pypi_source import (
                 derive_sibling_pypi_requirement,
@@ -240,17 +246,13 @@ async def discover_tasks_from_requirements(
             direct_url, version = detect_pypi_source("wt-registry", env_path)
             wt_pypi_deps = {}
             for sibling in ("wt-runner", "wt-task"):
-                req = derive_sibling_pypi_requirement(
-                    "wt-registry", sibling, direct_url, version
-                )
+                req = derive_sibling_pypi_requirement("wt-registry", sibling, direct_url, version)
                 if isinstance(req, str):
                     wt_pypi_deps[sibling] = req
                 else:
                     wt_pypi_deps[sibling] = req.to_pixi_dict()
 
-        return DiscoveryResult(
-            tasks=discovered_tasks, records=records, wt_pypi_deps=wt_pypi_deps
-        )
+        return DiscoveryResult(tasks=discovered_tasks, records=records, wt_pypi_deps=wt_pypi_deps)
 
 
 async def _create_environment(

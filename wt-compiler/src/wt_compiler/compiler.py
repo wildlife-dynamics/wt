@@ -422,7 +422,11 @@ class DagCompiler(BaseModel):
             channels.append(CUSTOM_LOCAL_CHANNEL.base_url)
         if any(r.channel.base_url == CUSTOM_RELEASE_CHANNEL.base_url for r in conda_reqs):
             channels.append(CUSTOM_RELEASE_CHANNEL.base_url)
-        if self.wt_runner_channel and self.wt_runner_channel.startswith("file://") and self.wt_runner_channel not in channels:
+        if (
+            self.wt_runner_channel
+            and self.wt_runner_channel.startswith("file://")
+            and self.wt_runner_channel not in channels
+        ):
             channels.append(self.wt_runner_channel)
         # Always add standard channels at the end
         # Note: name can be None for custom channels but not for these standard channels
@@ -493,9 +497,7 @@ class DagCompiler(BaseModel):
             if task_pkg in self.wt_pypi_deps:
                 pypi_dependencies[task_pkg] = self.wt_pypi_deps[task_pkg]
 
-        runner_feature = Feature(
-            dependencies=runner_conda_deps, pypi_dependencies=runner_pypi_deps
-        )
+        runner_feature = Feature(dependencies=runner_conda_deps, pypi_dependencies=runner_pypi_deps)
 
         # 5. Build feature.test (dependencies + tasks)
         test_dependencies: dict[str, NamelessMatchSpec] = {
@@ -561,12 +563,10 @@ class DagCompiler(BaseModel):
         # 6b. Inject python conda dep for environments with only PyPI dependencies
         # When an environment has pypi deps but zero conda deps, pixi needs a
         # conda `python` package to provide the interpreter for resolution.
-        python_dep = NamelessMatchSpec.from_match_spec(
-            MatchSpec("conda-forge::python >=3.10,<4.0")
-        )
+        python_dep = NamelessMatchSpec.from_match_spec(MatchSpec("conda-forge::python >=3.10,<4.0"))
         feature_map = {"runner": runner_feature, "test": test_feature}
 
-        for env_name, env in environments.items():
+        for _, env in environments.items():
             if env.no_default_feature:
                 env_conda: dict[str, NamelessMatchSpec] = {}
                 env_pypi: dict[str, str | dict[str, Any]] = {}
