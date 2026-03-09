@@ -292,7 +292,7 @@ cat wt-add-then-double-workflow/wt_add_then_double_workflow/rjsf.json
 The interactive form below is rendered directly from this schema — try
 entering values for `a` and `b` and watch the `formData` update live:
 
-<div class="rjsf-form" data-schema-url="schemas/add-then-double-rjsf.json"></div>
+<div class="rjsf-form" data-schema-url="../schemas/add-then-double-rjsf.json"></div>
 
 This form is generated entirely from the type annotations on your `add`
 function. You can also paste the schema into the
