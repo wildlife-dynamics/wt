@@ -64,17 +64,13 @@ requirements:
   - name: ecoscope-workflows-core
     version: ">=1.0"
     channel: "https://repo.prefix.dev/ecoscope-workflows"
-  - requirement: "pandas>=2.0.0"      # shorthand
 ```
 
 | Field | Type | Required | Default | Description |
 |-------|------|:--------:|---------|-------------|
-| `name` | string | yes* | — | Package name. |
-| `version` | string | yes* | — | Version constraint (e.g. `">=3.10"`, `"==1.2.3"`, `"*"`). |
+| `name` | string | yes | — | Package name. |
+| `version` | string | yes | — | Version constraint (e.g. `">=3.10"`, `"==1.2.3"`, `"*"`). |
 | `channel` | string | no | `"conda-forge"` | Conda channel. |
-| `requirement` | string | yes* | — | Shorthand that combines name and version (e.g. `"pandas>=2.0.0"`). |
-
-\* Provide either `name`/`version` or `requirement`, not both.
 
 ### PyPI requirements
 

@@ -148,6 +148,12 @@ runtime.
     Change `/absolute/path/to/custom-tasks` to the actual absolute path to
     your `custom-tasks/` directory.
 
+!!! warning "Local paths are for development only"
+    The `path:` requirement installs a package from your local filesystem.
+    Compiled workflows that use `path:` will not work on other machines.
+    For distributable workflows, use `git:` or conda channel requirements
+    instead — see [Distributing workflows](tutorials.md#coming-soon).
+
 **Compile and run:**
 
 ```bash
@@ -260,7 +266,7 @@ pixi run wt-add-then-split-workflow run
   no user-facing parameters.
 - `split_digits(12)` returns `["1", "2"]` — a list of strings.
 - This output is a natural input for `map`, which we cover in
-  [Tutorials](tutorials.md#map-fan-out).
+  [How-To Guides](tutorials.md#map-fan-out).
 
 ---
 
@@ -271,7 +277,7 @@ references, compile workflows, and run them.
 
 **Continue learning:**
 
-- [**Tutorials**](tutorials.md) — `map` fan-out picks up right where
+- [**How-To Guides**](tutorials.md) — `map` fan-out picks up right where
   Example 4 left off
 - [**spec.yaml reference**](reference/spec-yaml.md) — complete field-by-field
   documentation including `map`, `mapvalues`, `skipif`, and task groups

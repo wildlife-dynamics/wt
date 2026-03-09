@@ -1,6 +1,6 @@
-# Tutorials
+# How-To Guides
 
-These tutorials build on the [Getting Started](getting-started.md) guide.
+These guides build on the [Getting Started](getting-started.md) guide.
 Each one introduces a single spec.yaml feature using the same `custom-tasks`
 package from that guide.
 
@@ -39,7 +39,7 @@ pixi run workflow run
 
 ### How it works
 
-- `add` returns `2` (both arguments are bound via `partial`).
+- `add` returns `12` (both arguments are bound via `partial`).
 - `split_digits` returns `["1", "2"]`.
 - `parse_int` is **mapped** over `["1", "2"]` — one invocation per element.
   `argnames: s` binds each element to the `s` parameter of `parse_int`.
@@ -55,10 +55,10 @@ For the complete `map` and `mapvalues` reference, see
 
 ## Coming soon
 
-The following tutorials are planned:
+The following guides are planned:
 
 - **`mapvalues`** — fan-out over key-value pairs, preserving keys
 - **`skipif`** — conditional execution based on boolean functions
-- **Task groups** — organizing related tasks under headings
+- **Customizing JSON schema** — controlling configuration form fields with type annotations and Pydantic models
 - **Environment variables** — using `${{ env.VAR }}` in specs
-- **Git-based requirements** — referencing task packages from Git repos
+- **Distributing workflows** — using Git and conda channel requirements for portable, shareable workflows

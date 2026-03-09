@@ -37,7 +37,7 @@ nav:
   - Home: index.md
   - Concepts: concepts.md
   - Getting Started: getting-started.md
-  - Tutorials: tutorials.md
+  - How-To Guides: tutorials.md
   - Reference:
     - "spec.yaml": reference/spec-yaml.md
     - wt-contracts: reference/wt-contracts.md
