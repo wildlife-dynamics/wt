@@ -9,7 +9,7 @@ workflow:
     name: "Add Two Numbers"
     task: add
 
-  - id: result
+  - id: doubled
     name: "Double the Sum"
     task: double
     partial:

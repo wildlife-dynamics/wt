@@ -8,8 +8,10 @@ version = "0.1.0"
 requires-python = ">=3.10"
 dependencies = [
     "wt-registry",
-    "wt-task",
 ]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[project.entry-points."wt_registry"]
+custom-tasks = "custom_tasks.tasks"

@@ -36,8 +36,22 @@ The rest of this page unpacks each phase.
 
 A **workflow** is a pipeline of steps that produces a JSON result. Side effects
 (writing files, calling APIs, updating databases) can happen along the way, but
-the final output is always a JSON object — returned on stdout when running from
-the CLI, or in the HTTP response body when triggered through the REST API.
+the final output is always a `result.json` file written to the results
+directory configured by the `WT_RESULTS` environment variable. The file
+contains three fields:
+
+```json
+{"result": <return value>, "error": <error string or null>, "trace": <traceback string or null>}
+```
+
+- **`result`** — the return value of the terminal task (any JSON-serializable
+  type).
+- **`error`** — error details if the workflow failed, otherwise `null`.
+- **`trace`** — the Python traceback string if the workflow errored, otherwise
+  `null`.
+
+The output format is identical regardless of how the workflow is executed —
+CLI, REST API, or Cloud Batch.
 
 ---
 

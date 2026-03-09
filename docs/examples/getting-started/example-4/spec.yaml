@@ -12,7 +12,7 @@ workflow:
       a: 1
       b: 1
 
-  - id: result
+  - id: digits
     name: "Split Into Digits"
     task: split_digits
     partial:
