@@ -5,6 +5,6 @@ requirements:
     path: /absolute/path/to/custom-tasks
 
 workflow:
-  - id: sum
+  - id: total
     name: "Add Two Numbers"
-    task: add
+    task: custom_tasks.tasks.add

@@ -241,7 +241,7 @@ pixi run wt-add-then-double-workflow run --config-json '{"sum": {"a": 3, "b": 3}
 
 **Key points:**
 
-- `${{ workflow.sum.return }}` references the return value of the `sum` task.
+- `${{ workflow.total.return }}` references the return value of the `total` task.
 - Tasks must appear in **topological order** — every dependency before its
   dependent.
 - The terminal task's return value becomes `result.json`'s `result` field.

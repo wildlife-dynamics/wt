@@ -109,15 +109,15 @@ expressed as a spec:
 
 ```yaml
 workflow:
-  - id: sum
+  - id: total
     name: "Add Two Numbers"
-    task: add
+    task: custom_tasks.tasks.add
 
   - id: doubled
     name: "Double the Sum"
-    task: double
+    task: custom_tasks.tasks.double
     partial:
-      n: ${{ workflow.sum.return }}
+      n: ${{ workflow.total.return }}
 ```
 
 That spec produces the following DAG:
@@ -128,10 +128,10 @@ That spec produces the following DAG:
          │
          ▼
   ┌─────────────┐
-  │     sum     │  add(a: int, b: int) -> int
+  │    total    │  add(a: int, b: int) -> int
   └──────┬──────┘
          │
-         │  int  ─── ${{ workflow.sum.return }}
+         │  int  ─── ${{ workflow.total.return }}
          │
          ▼
   ┌─────────────┐

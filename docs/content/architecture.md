@@ -320,8 +320,11 @@ signatures, so argument binding is explicit by name rather than positional.
 The `map` operator draws from both PySpark (`RDD.map()`) and Airflow
 (`task.map()`). PySpark maps a single-argument lambda over a dataset; wt (like
 Airflow) maps over a task's **parameters**. The `argnames` field exists because
-wt tasks have multi-parameter signatures — it specifies which parameter receives
-each element of the iterable. `mapvalues` similarly parallels
+wt tasks have multi-parameter signatures — with a single argname, each element
+of the iterable is passed directly to that parameter; with multiple argnames,
+each element of the iterable is itself an iterable (e.g. a tuple) whose
+sub-elements are unpacked across the named parameters. `mapvalues` similarly
+parallels
 `RDD.mapValues()`, preserving dictionary keys while mapping over values.
 
 ### YAML compilation (GitHub Actions + DAG Factory)

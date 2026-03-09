@@ -5,8 +5,8 @@ requirements:
     path: /absolute/path/to/custom-tasks
 
 workflow:
-  - id: sum
+  - id: total
     name: "Add With Default"
-    task: add
+    task: custom_tasks.tasks.add
     partial:
       b: 5

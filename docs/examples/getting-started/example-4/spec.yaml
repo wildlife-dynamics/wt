@@ -5,15 +5,15 @@ requirements:
     path: /absolute/path/to/custom-tasks
 
 workflow:
-  - id: sum
+  - id: total
     name: "Add Two Numbers"
-    task: add
+    task: custom_tasks.tasks.add
     partial:
       a: 4
       b: 8
 
   - id: digits
     name: "Split Into Digits"
-    task: split_digits
+    task: custom_tasks.tasks.split_digits
     partial:
-      n: ${{ workflow.sum.return }}
+      n: ${{ workflow.total.return }}
