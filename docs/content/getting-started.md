@@ -69,64 +69,44 @@ path.
 ??? example "Expected `--format pretty` output"
 
     ```
-    ╭─────────────────────────────────────────────────────────────────────────────╮
-    │                                 Add                                        │
-    ├──────────────┬──────────────────────────────────────────────────────────────┤
-    │ Key          │ custom_tasks.tasks.add                                      │
-    │ Description  │ Add two integers.                                           │
-    │ Module       │ custom_tasks.tasks                                          │
-    │ Tags         │                                                             │
-    ├──────────────┼──────────────────────────────────────────────────────────────┤
-    │ Parameters   │                                                             │
-    │   a          │ int                                                         │
-    │   b          │ int                                                         │
-    │ Return       │ int                                                         │
-    ╰──────────────┴──────────────────────────────────────────────────────────────╯
-    ╭─────────────────────────────────────────────────────────────────────────────╮
-    │                                Double                                      │
-    ├──────────────┬──────────────────────────────────────────────────────────────┤
-    │ Key          │ custom_tasks.tasks.double                                   │
-    │ Description  │ Multiply an integer by 2.                                   │
-    │ Module       │ custom_tasks.tasks                                          │
-    │ Tags         │                                                             │
-    ├──────────────┼──────────────────────────────────────────────────────────────┤
-    │ Parameters   │                                                             │
-    │   n          │ int                                                         │
-    │ Return       │ int                                                         │
-    ╰──────────────┴──────────────────────────────────────────────────────────────╯
-    ╭─────────────────────────────────────────────────────────────────────────────╮
-    │                              Parse Int                                     │
-    ├──────────────┬──────────────────────────────────────────────────────────────┤
-    │ Key          │ custom_tasks.tasks.parse_int                                │
-    │ Description  │ Parse a string to an integer.                               │
-    │ Module       │ custom_tasks.tasks                                          │
-    │ Tags         │                                                             │
-    ├──────────────┼──────────────────────────────────────────────────────────────┤
-    │ Parameters   │                                                             │
-    │   s          │ str                                                         │
-    │ Return       │ int                                                         │
-    ╰──────────────┴──────────────────────────────────────────────────────────────╯
-    ╭─────────────────────────────────────────────────────────────────────────────╮
-    │                            Split Digits                                    │
-    ├──────────────┬──────────────────────────────────────────────────────────────┤
-    │ Key          │ custom_tasks.tasks.split_digits                             │
-    │ Description  │ Split an integer into a list of digit strings.              │
-    │ Module       │ custom_tasks.tasks                                          │
-    │ Tags         │                                                             │
-    ├──────────────┼──────────────────────────────────────────────────────────────┤
-    │ Parameters   │                                                             │
-    │   n          │ int                                                         │
-    │ Return       │ list[str]                                                   │
-    ╰──────────────┴──────────────────────────────────────────────────────────────╯
+    === custom_tasks.tasks.add ===
+    Title: Add
+    Description: Add two integers.
+    Deprecated: No
+    Import: from custom_tasks.tasks import add
+
+    === custom_tasks.tasks.double ===
+    Title: Double
+    Description: Double a number.
+    Deprecated: No
+    Import: from custom_tasks.tasks import double
+
+    === custom_tasks.tasks.split_digits ===
+    Title: Split Digits
+    Description: Split an integer into its individual digits as strings.
+    Deprecated: No
+    Import: from custom_tasks.tasks import split_digits
+
+    === custom_tasks.tasks.parse_int ===
+    Title: Parse Int
+    Description: Parse a string as an integer.
+    Deprecated: No
+    Import: from custom_tasks.tasks import parse_int
     ```
 
 ??? example "Expected `--format json` output (what the compiler consumes)"
 
-    Use `--format json` (the default) to see the machine-readable output
-    the compiler consumes for webform generation and input validation.
+    Use `--format json` (the default) to see the machine-readable output.
+    The compiler consumes this JSON to generate web forms and perform
+    input validation — each entry's `json_schema` defines the parameter
+    types and constraints that drive the auto-generated UI.
 
     ```bash
     uv run wt-registry --package custom_tasks --format json
+    ```
+
+    ```json
+    {"entries":{"custom_tasks.tasks.add":{"metadata":{"title":"Add","description":"Add two integers.","tags":[],"deprecated":false,"deprecation_message":null},"module_path":"custom_tasks.tasks","public_module_path":"custom_tasks.tasks","function_name":"add","import_statement":"from custom_tasks.tasks import add as add","json_schema":{"additionalProperties":false,"properties":{"a":{"title":"A","type":"integer"},"b":{"title":"B","type":"integer"}},"required":["a","b"],"type":"object"}},"custom_tasks.tasks.double":{"metadata":{"title":"Double","description":"Double a number.","tags":[],"deprecated":false,"deprecation_message":null},"module_path":"custom_tasks.tasks","public_module_path":"custom_tasks.tasks","function_name":"double","import_statement":"from custom_tasks.tasks import double as double","json_schema":{"additionalProperties":false,"properties":{"n":{"anyOf":[{"type":"integer"},{"type":"number"}],"title":"N"}},"required":["n"],"type":"object"}},"custom_tasks.tasks.split_digits":{"metadata":{"title":"Split Digits","description":"Split an integer into its individual digits as strings.","tags":[],"deprecated":false,"deprecation_message":null},"module_path":"custom_tasks.tasks","public_module_path":"custom_tasks.tasks","function_name":"split_digits","import_statement":"from custom_tasks.tasks import split_digits as split_digits","json_schema":{"additionalProperties":false,"properties":{"n":{"title":"N","type":"integer"}},"required":["n"],"type":"object"}},"custom_tasks.tasks.parse_int":{"metadata":{"title":"Parse Int","description":"Parse a string as an integer.","tags":[],"deprecated":false,"deprecation_message":null},"module_path":"custom_tasks.tasks","public_module_path":"custom_tasks.tasks","function_name":"parse_int","import_statement":"from custom_tasks.tasks import parse_int as parse_int","json_schema":{"additionalProperties":false,"properties":{"s":{"title":"S","type":"string"}},"required":["s"],"type":"object"}}},"version":"1.0.0"}
     ```
 
 For more on the decorator, validation rules, and JSON schema generation, see
