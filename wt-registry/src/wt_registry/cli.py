@@ -1,6 +1,7 @@
 """Command-line interface for wt-registry."""
 
 import argparse
+import importlib.metadata
 import sys
 import types
 from inspect import getmembers, ismodule
@@ -305,11 +306,9 @@ def auto_discover() -> list[str]:
         List of module path strings that were imported.
 
     Examples:
-        >>> # auto_discover()  # doctest: +SKIP
+        >>> # auto_discover()
         ['my_package.tasks', 'other_package.tasks']
     """
-    import importlib
-
     eps = importlib.metadata.entry_points(group="wt_registry")
     imported_modules: list[str] = []
     for ep in eps:

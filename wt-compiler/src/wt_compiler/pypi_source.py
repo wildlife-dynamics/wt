@@ -67,8 +67,7 @@ def detect_pypi_source(
 
     if result.returncode != 0:
         raise RuntimeError(
-            f"Failed to detect source for {package_name} in {env_path}: "
-            f"{result.stderr.strip()}"
+            f"Failed to detect source for {package_name} in {env_path}: {result.stderr.strip()}"
         )
 
     data = json.loads(result.stdout.strip())
@@ -124,9 +123,7 @@ def derive_sibling_pypi_requirement(
     # Path-based install (editable or not)
     if "dir_info" in direct_url:
         if not url.startswith("file://"):
-            raise ValueError(
-                f"Unexpected dir_info URL scheme for {source_pkg}: {url}"
-            )
+            raise ValueError(f"Unexpected dir_info URL scheme for {source_pkg}: {url}")
         source_path = Path(url.removeprefix("file://"))
         # Replace last path component: wt-registry → wt-runner
         target_path = source_path.parent / target_pkg
@@ -166,6 +163,4 @@ def derive_sibling_pypi_requirement(
             f"to sibling packages. Use git or path-based installs instead."
         )
 
-    raise ValueError(
-        f"Unrecognized direct_url.json format for {source_pkg}: {direct_url}"
-    )
+    raise ValueError(f"Unrecognized direct_url.json format for {source_pkg}: {direct_url}")
