@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "Task decorator and execution features for wt ecosystem"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Apache-2.0" }
+license = { text = "BSD-3-Clause" }
 authors = [
     { name = "Ecoscope Workflows Team" }
 ]
@@ -16,7 +16,7 @@ keywords = ["workflow", "task", "execution", "decorator"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache Software License",
+    "License :: OSI Approved :: BSD License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -54,13 +54,12 @@ where = ["src"]
 
 [tool.setuptools_scm]
 # Version comes from git tags matching this pattern
-tag_regex = "^wt-task/v(?P<version>[0.9.]+)$"
+tag_regex = "^wt-task/v(?P<version>[0-9.]+)$"
 # Root is the git repository root (parent of wt/)
 root = ".."
 # Generate version file
 version_file = "src/wt_task/_version.py"
-# Fallback version for development without git
-fallback_version = "0.1.0.dev0"
+git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--match", "wt-task/v*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

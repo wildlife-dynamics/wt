@@ -7,12 +7,15 @@ import pytest
 from wt_compiler.spec import (
     InlineValue,
     KnownTask,
+    PyPIRequirement,
     SkipIf,
+    Spec,
     SpecRequirement,
     TaskIdVariable,
     TaskInstance,
     TaskTag,
     VariableValuesList,
+    _conda_or_pypi,
     _find_task_id_vars,
 )
 
@@ -267,6 +270,207 @@ class TestSpecRequirement:
         req = SpecRequirement(requirement="mypackage")
         assert req.name == "mypackage"
         # Version should be "*" for unspecified version
+
+
+class TestPyPIRequirement:
+    """Tests for PyPIRequirement model."""
+
+    def test_git_basic(self):
+        """Test basic git requirement."""
+        req = PyPIRequirement(name="foo", git="https://github.com/org/foo.git")
+        assert req.to_pixi_dict() == {"git": "https://github.com/org/foo.git"}
+
+    def test_git_with_rev(self):
+        """Test git requirement with rev."""
+        req = PyPIRequirement(name="foo", git="https://github.com/org/foo.git", rev="abc123")
+        assert req.to_pixi_dict() == {"git": "https://github.com/org/foo.git", "rev": "abc123"}
+
+    def test_git_with_branch(self):
+        """Test git requirement with branch."""
+        req = PyPIRequirement(name="foo", git="https://github.com/org/foo.git", branch="main")
+        assert req.to_pixi_dict() == {"git": "https://github.com/org/foo.git", "branch": "main"}
+
+    def test_git_with_tag(self):
+        """Test git requirement with tag."""
+        req = PyPIRequirement(name="foo", git="https://github.com/org/foo.git", tag="v1.0")
+        assert req.to_pixi_dict() == {"git": "https://github.com/org/foo.git", "tag": "v1.0"}
+
+    def test_path_basic(self):
+        """Test basic path requirement."""
+        req = PyPIRequirement(name="foo", path="/opt/foo")
+        assert req.to_pixi_dict() == {"path": "/opt/foo"}
+
+    def test_path_editable(self):
+        """Test editable path requirement."""
+        req = PyPIRequirement(name="foo", path="/opt/foo", editable=True)
+        assert req.to_pixi_dict() == {"path": "/opt/foo", "editable": True}
+
+    def test_url(self):
+        """Test URL requirement."""
+        req = PyPIRequirement(name="foo", url="https://example.com/foo-1.0.whl")
+        assert req.to_pixi_dict() == {"url": "https://example.com/foo-1.0.whl"}
+
+    def test_extras(self):
+        """Test requirement with extras."""
+        req = PyPIRequirement(
+            name="foo", git="https://github.com/org/foo.git", extras=["dev", "test"]
+        )
+        d = req.to_pixi_dict()
+        assert d["extras"] == ["dev", "test"]
+        assert d["git"] == "https://github.com/org/foo.git"
+
+    def test_subdirectory(self):
+        """Test requirement with subdirectory."""
+        req = PyPIRequirement(
+            name="foo", git="https://github.com/org/monorepo.git", subdirectory="packages/foo"
+        )
+        d = req.to_pixi_dict()
+        assert d["subdirectory"] == "packages/foo"
+
+    def test_validate_no_source(self):
+        """Test that no source raises error."""
+        with pytest.raises(ValueError, match="Exactly one"):
+            PyPIRequirement(name="foo")
+
+    def test_validate_multiple_sources(self):
+        """Test that multiple sources raises error."""
+        with pytest.raises(ValueError, match="Exactly one"):
+            PyPIRequirement(name="foo", git="https://github.com/org/foo.git", path="/opt/foo")
+
+    def test_validate_rev_without_git(self):
+        """Test that rev without git raises error."""
+        with pytest.raises(ValueError, match="only valid with 'git'"):
+            PyPIRequirement(name="foo", path="/opt/foo", rev="abc123")
+
+    def test_validate_editable_without_path(self):
+        """Test that editable without path raises error."""
+        with pytest.raises(ValueError, match="only valid with 'path'"):
+            PyPIRequirement(name="foo", git="https://github.com/org/foo.git", editable=True)
+
+    def test_validate_multiple_git_refs(self):
+        """Test that multiple git refs raises error."""
+        with pytest.raises(ValueError, match="At most one"):
+            PyPIRequirement(
+                name="foo", git="https://github.com/org/foo.git", rev="abc", branch="main"
+            )
+
+    def test_validate_path_file_url_rejected(self):
+        """Test that file:// URL in path raises error."""
+        with pytest.raises(ValueError, match="not a file:// URL"):
+            PyPIRequirement(name="foo", path="file:///home/user/foo")
+
+    def test_validate_path_relative_rejected(self):
+        """Test that relative path raises error."""
+        with pytest.raises(ValueError, match="must be an absolute filesystem path"):
+            PyPIRequirement(name="foo", path="./foo")
+
+    def test_to_pip_install_arg_git(self):
+        """Test pip install arg for git requirement."""
+        req = PyPIRequirement(name="foo", git="https://github.com/org/foo.git", tag="v1.0")
+        assert req.to_pip_install_arg() == "foo @ git+https://github.com/org/foo.git@v1.0"
+
+    def test_to_pip_install_arg_git_with_extras(self):
+        """Test pip install arg for git requirement with extras."""
+        req = PyPIRequirement(
+            name="foo", git="https://github.com/org/foo.git", extras=["dev"]
+        )
+        assert req.to_pip_install_arg() == "foo[dev] @ git+https://github.com/org/foo.git"
+
+    def test_to_pip_install_arg_path(self):
+        """Test pip install arg for path requirement."""
+        req = PyPIRequirement(name="foo", path="/opt/foo")
+        assert req.to_pip_install_arg() == "/opt/foo"
+
+    def test_to_pip_install_arg_path_editable(self):
+        """Test pip install arg for editable path requirement."""
+        req = PyPIRequirement(name="foo", path="/opt/foo", editable=True)
+        assert req.to_pip_install_arg() == "-e /opt/foo"
+
+    def test_to_pip_install_arg_url(self):
+        """Test pip install arg for URL requirement."""
+        req = PyPIRequirement(name="foo", url="https://example.com/foo-1.0.whl")
+        assert req.to_pip_install_arg() == "foo @ https://example.com/foo-1.0.whl"
+
+
+class TestCondaOrPypiDiscriminator:
+    """Tests for the _conda_or_pypi discriminator function."""
+
+    def test_string_is_conda(self):
+        """Test that a string value routes to conda."""
+        assert _conda_or_pypi("package>=1.0") == "conda"
+
+    def test_dict_with_git_is_pypi(self):
+        """Test that dict with git key routes to pypi."""
+        assert _conda_or_pypi({"name": "foo", "git": "https://..."}) == "pypi"
+
+    def test_dict_with_path_is_pypi(self):
+        """Test that dict with path key routes to pypi."""
+        assert _conda_or_pypi({"name": "foo", "path": "./foo"}) == "pypi"
+
+    def test_dict_with_url_is_pypi(self):
+        """Test that dict with url key routes to pypi."""
+        assert _conda_or_pypi({"name": "foo", "url": "https://..."}) == "pypi"
+
+    def test_dict_without_pypi_keys_is_conda(self):
+        """Test that dict without pypi keys routes to conda."""
+        assert _conda_or_pypi({"requirement": "package>=1.0"}) == "conda"
+        assert _conda_or_pypi({"name": "package", "version": ">=1.0"}) == "conda"
+
+    def test_validated_models(self):
+        """Test that already-validated models route correctly."""
+        conda_req = SpecRequirement(requirement="package>=1.0")
+        pypi_req = PyPIRequirement(name="foo", git="https://github.com/org/foo.git")
+        assert _conda_or_pypi(conda_req) == "conda"
+        assert _conda_or_pypi(pypi_req) == "pypi"
+
+
+class TestSpecRequirementsUnion:
+    """Tests for Spec.requirements with mixed conda and pypi deps."""
+
+    def test_spec_with_only_conda_requirements(self):
+        """Test backwards compatibility: spec with only conda requirements."""
+        spec = Spec(
+            id="my_workflow",
+            requirements=[
+                {"requirement": "python>=3.10"},
+                {"requirement": "pandas>=2.0"},
+            ],
+            workflow=[],
+        )
+        assert len(spec.requirements) == 2
+        assert all(isinstance(r, SpecRequirement) for r in spec.requirements)
+        assert len(spec.conda_requirements) == 2
+        assert len(spec.pypi_requirements) == 0
+
+    def test_spec_with_mixed_requirements(self):
+        """Test spec with both conda and pypi requirements."""
+        spec = Spec(
+            id="my_workflow",
+            requirements=[
+                {"requirement": "python>=3.10"},
+                {"name": "foo", "git": "https://github.com/org/foo.git"},
+                {"requirement": "pandas>=2.0"},
+                {"name": "bar", "path": "/opt/bar", "editable": True},
+            ],
+            workflow=[],
+        )
+        assert len(spec.requirements) == 4
+        assert len(spec.conda_requirements) == 2
+        assert len(spec.pypi_requirements) == 2
+        assert spec.pypi_requirements[0].name == "foo"
+        assert spec.pypi_requirements[1].name == "bar"
+
+    def test_spec_with_only_pypi_requirements(self):
+        """Test spec with only pypi requirements."""
+        spec = Spec(
+            id="my_workflow",
+            requirements=[
+                {"name": "foo", "git": "https://github.com/org/foo.git"},
+            ],
+            workflow=[],
+        )
+        assert len(spec.conda_requirements) == 0
+        assert len(spec.pypi_requirements) == 1
 
 
 class TestTaskInstance:

@@ -26,11 +26,13 @@ from wt_compiler.discovery import (
 from wt_compiler.exceptions import (
     DiscoveryError,
     EnvironmentCreationError,
+    PyPIInstallError,
     RegistryExecutionError,
     RegistryNotFoundError,
 )
 from wt_compiler.spec import (
     KnownTask,
+    PyPIRequirement,
     Spec,
     SpecRequirement,
     TaskGroup,
@@ -51,11 +53,13 @@ __all__ = [
     # Exceptions
     "DiscoveryError",
     "EnvironmentCreationError",
+    "PyPIInstallError",
     "RegistryNotFoundError",
     "RegistryExecutionError",
     # Spec models
     "Spec",
     "SpecRequirement",
+    "PyPIRequirement",
     "TaskInstance",
     "TaskGroup",
     "KnownTask",

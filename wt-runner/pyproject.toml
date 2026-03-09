@@ -7,6 +7,14 @@ name = "wt-runner"
 dynamic = ["version"]
 description = "FastAPI application for workflow execution using wt-invokers"
 requires-python = ">=3.13,<3.16"
+license = { text = "BSD-3-Clause" }
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+]
 dependencies = [
     "wt-contracts>=0.1.0,<1.0.0",
     "wt-invokers>=0.1.0,<1.0.0",
@@ -55,6 +63,7 @@ tag_regex = "^wt-runner/v(?P<version>[0-9.]+)$"
 root = ".."
 # Generate version file
 version_file = "src/wt_runner/_version.py"
+git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--match", "wt-runner/v*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

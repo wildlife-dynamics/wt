@@ -96,4 +96,4 @@ uv run ruff check .
 
 ## License
 
-MIT
+BSD-3-Clause

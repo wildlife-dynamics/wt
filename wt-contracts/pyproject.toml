@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "Shared interface contracts for wt workflow packages"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = { text = "BSD-3-Clause" }
 authors = [
     { name = "wt Contributors" }
 ]
@@ -16,7 +16,7 @@ keywords = ["workflow", "contracts", "interfaces", "types"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: BSD License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -51,6 +51,7 @@ tag_regex = "^wt-contracts/v(?P<version>[0-9.]+)$"
 root = ".."
 # Generate version file
 version_file = "src/wt_contracts/_version.py"
+git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--match", "wt-contracts/v*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "src/wt_contracts"]

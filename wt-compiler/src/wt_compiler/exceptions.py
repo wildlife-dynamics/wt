@@ -15,9 +15,15 @@ Examples:
     True
 """
 
+from __future__ import annotations
+
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from rattler import MatchSpec
+
+if TYPE_CHECKING:
+    from wt_compiler.spec import PyPIRequirement
 
 
 class DiscoveryError(Exception):
@@ -145,6 +151,57 @@ This may indicate:
   - An incompatible version of wt-registry
   - Missing dependencies in the environment
   - A bug in wt-registry or registered task functions"""
+
+
+class PyPIInstallError(DiscoveryError):
+    """Raised when pip install of a PyPI requirement fails.
+
+    This error occurs after the conda environment is created but a PyPI
+    dependency fails to install via pip.
+
+    Attributes:
+        requirement: The PyPIRequirement that failed to install
+        returncode: Exit code from the pip install command
+        stdout: Standard output from pip
+        stderr: Standard error from pip
+
+    Examples:
+        >>> from wt_compiler.spec import PyPIRequirement
+        >>> req = PyPIRequirement(name="foo", git="https://github.com/org/foo.git")
+        >>> error = PyPIInstallError(
+        ...     requirement=req,
+        ...     returncode=1,
+        ...     stdout="",
+        ...     stderr="ERROR: Could not find a version that satisfies the requirement",
+        ... )
+        >>> "foo" in str(error)
+        True
+    """
+
+    def __init__(
+        self,
+        requirement: PyPIRequirement,
+        returncode: int,
+        stdout: str,
+        stderr: str,
+    ) -> None:
+        self.requirement = requirement
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+        super().__init__(str(self))
+
+    def __str__(self) -> str:
+        name = self.requirement.name
+        return f"""pip install failed for PyPI requirement '{name}' (exit code {self.returncode})
+
+Install argument: {self.requirement.to_pip_install_arg()}
+
+stdout:
+{self.stdout or "(empty)"}
+
+stderr:
+{self.stderr or "(empty)"}"""
 
 
 class EnvironmentCreationError(DiscoveryError):

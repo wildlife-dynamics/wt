@@ -7,9 +7,10 @@ the workflow specification (spec.yaml) input format.
 import builtins
 import hashlib
 import keyword
+import os
 from collections.abc import Generator
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Any, Literal, TypedDict, cast
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Self, TypedDict, cast
 
 from pydantic import (
     BaseModel,
@@ -851,6 +852,161 @@ class SpecRequirement(_AllowArbitraryAndForbidExtra):
         return values
 
 
+class PyPIRequirement(_ForbidExtra):
+    """A PyPI dependency for the workflow (git, path, or url).
+
+    These requirements are installed via pip/uv into the conda environment
+    and appear in the pixi.toml ``[pypi-dependencies]`` table.
+
+    Exactly one of ``git``, ``path``, or ``url`` must be set.
+    ``rev``/``branch``/``tag`` are only valid with ``git``.
+    ``editable`` is only valid with ``path``.
+
+    Args:
+        name: Package name
+        git: Git repository URL
+        rev: Git revision (commit hash)
+        branch: Git branch name
+        tag: Git tag name
+        path: Absolute local filesystem path (not a file:// URL, not relative)
+        editable: Whether to install in editable mode (path only)
+        url: Direct URL to a wheel or sdist
+        subdirectory: Subdirectory within the source to install from
+        extras: List of extras to install
+
+    Examples:
+        Git dependency:
+
+        >>> req = PyPIRequirement(name="foo", git="https://github.com/org/foo.git")
+        >>> req.to_pixi_dict()
+        {'git': 'https://github.com/org/foo.git'}
+
+        Editable path dependency:
+
+        >>> req = PyPIRequirement(name="bar", path="/home/user/bar", editable=True)
+        >>> req.to_pixi_dict()
+        {'path': '/home/user/bar', 'editable': True}
+    """
+
+    name: str
+    git: str | None = None
+    rev: str | None = None
+    branch: str | None = None
+    tag: str | None = None
+    path: str | None = None
+    editable: bool | None = None
+    url: str | None = None
+    subdirectory: str | None = None
+    extras: list[str] | None = None
+
+    @model_validator(mode="after")
+    def validate_source(self) -> Self:
+        """Validate that exactly one source is set and options are compatible."""
+        sources = [s for s in (self.git, self.path, self.url) if s is not None]
+        if len(sources) != 1:
+            raise ValueError(
+                f"Exactly one of 'git', 'path', or 'url' must be set for PyPI requirement "
+                f"'{self.name}', got {len(sources)}."
+            )
+        if any(v is not None for v in (self.rev, self.branch, self.tag)) and self.git is None:
+            raise ValueError(
+                f"'rev', 'branch', and 'tag' are only valid with 'git' for PyPI requirement "
+                f"'{self.name}'."
+            )
+        git_ref_count = sum(1 for v in (self.rev, self.branch, self.tag) if v is not None)
+        if git_ref_count > 1:
+            raise ValueError(
+                f"At most one of 'rev', 'branch', or 'tag' may be set for PyPI requirement "
+                f"'{self.name}'."
+            )
+        if self.editable is not None and self.path is None:
+            raise ValueError(
+                f"'editable' is only valid with 'path' for PyPI requirement '{self.name}'."
+            )
+        if self.path is not None:
+            if self.path.startswith("file://"):
+                raise ValueError(
+                    f"'path' for PyPI requirement '{self.name}' must be a bare filesystem path, "
+                    f"not a file:// URL. Got: '{self.path}'. "
+                    f"Use an absolute path like '/home/user/my-package' instead."
+                )
+            if not os.path.isabs(self.path):
+                raise ValueError(
+                    f"'path' for PyPI requirement '{self.name}' must be an absolute filesystem "
+                    f"path. Got: '{self.path}'. Relative paths are not supported."
+                )
+        return self
+
+    def to_pixi_dict(self) -> dict[str, Any]:
+        """Convert to the dict format expected by pixi.toml ``[pypi-dependencies]``.
+
+        Returns:
+            Dictionary suitable for TOML serialization under ``[pypi-dependencies]``.
+
+        Examples:
+            >>> req = PyPIRequirement(
+            ...     name="foo", git="https://github.com/org/foo.git",
+            ...     tag="v1.0", extras=["dev"],
+            ... )
+            >>> req.to_pixi_dict()
+            {'git': 'https://github.com/org/foo.git', 'tag': 'v1.0', 'extras': ['dev']}
+        """
+        d: dict[str, Any] = {}
+        if self.git is not None:
+            d["git"] = self.git
+        if self.rev is not None:
+            d["rev"] = self.rev
+        if self.branch is not None:
+            d["branch"] = self.branch
+        if self.tag is not None:
+            d["tag"] = self.tag
+        if self.path is not None:
+            d["path"] = self.path
+        if self.editable is not None:
+            d["editable"] = self.editable
+        if self.url is not None:
+            d["url"] = self.url
+        if self.subdirectory is not None:
+            d["subdirectory"] = self.subdirectory
+        if self.extras is not None:
+            d["extras"] = self.extras
+        return d
+
+    def to_pip_install_arg(self) -> str:
+        """Convert to a pip install argument string.
+
+        Returns:
+            String suitable for passing to ``pip install``.
+
+        Examples:
+            >>> req = PyPIRequirement(
+            ...     name="foo", git="https://github.com/org/foo.git", tag="v1.0",
+            ... )
+            >>> req.to_pip_install_arg()
+            'foo @ git+https://github.com/org/foo.git@v1.0'
+        """
+        if self.git is not None:
+            arg = f"git+{self.git}"
+            if self.rev:
+                arg += f"@{self.rev}"
+            elif self.branch:
+                arg += f"@{self.branch}"
+            elif self.tag:
+                arg += f"@{self.tag}"
+            if self.subdirectory:
+                arg += f"#subdirectory={self.subdirectory}"
+            extras = f"[{','.join(self.extras)}]" if self.extras else ""
+            return f"{self.name}{extras} @ {arg}"
+        elif self.path is not None:
+            if self.editable:
+                return f"-e {self.path}"
+            return self.path
+        elif self.url is not None:
+            extras = f"[{','.join(self.extras)}]" if self.extras else ""
+            return f"{self.name}{extras} @ {self.url}"
+        raise ValueError(f"No source set for PyPI requirement '{self.name}'.")
+
+
 class TaskInstanceDefaults(_ForbidExtra):
     """Defaults for task instances in the workflow.
 
@@ -859,6 +1015,39 @@ class TaskInstanceDefaults(_ForbidExtra):
     """
 
     skipif: SkipIf | None = Field(default=None)
+
+
+def _conda_or_pypi(v: Any) -> str:
+    """Discriminator function to determine if a requirement is conda or pypi.
+
+    Args:
+        v: Raw requirement value from YAML
+
+    Returns:
+        "conda" or "pypi" tag string
+    """
+    # Already-validated model instances
+    if isinstance(v, SpecRequirement):
+        return "conda"
+    if isinstance(v, PyPIRequirement):
+        return "pypi"
+    # String shorthand → conda
+    if isinstance(v, str):
+        return "conda"
+    # Dict: check for pypi-specific keys
+    if isinstance(v, dict):
+        if any(k in v for k in ("git", "path", "url")):
+            return "pypi"
+        return "conda"
+    raise ValueError(f"Cannot determine requirement type from {v!r}")
+
+
+# Type alias for the discriminated union of requirement types
+Requirement = Annotated[
+    Annotated[SpecRequirement, PydanticTag("conda")]
+    | Annotated[PyPIRequirement, PydanticTag("pypi")],
+    Discriminator(_conda_or_pypi),
+]
 
 
 class Spec(_ForbidExtra):
@@ -875,7 +1064,7 @@ class Spec(_ForbidExtra):
         Python keywords, or Python builtins. The maximum length is 64 chars.
         """
     )
-    requirements: list[SpecRequirement]
+    requirements: list[Requirement]
     rjsf_overrides: ReactJSONSchemaFormOverrides = Field(
         alias="rjsf-overrides",
         default_factory=ReactJSONSchemaFormOverrides,
@@ -900,9 +1089,23 @@ class Spec(_ForbidExtra):
         return hashlib.sha256(self.model_dump_json(exclude={"requirements"}).encode()).hexdigest()
 
     @property
+    def conda_requirements(self) -> list[SpecRequirement]:
+        """Get only conda (SpecRequirement) requirements."""
+        return [r for r in self.requirements if isinstance(r, SpecRequirement)]
+
+    @property
+    def pypi_requirements(self) -> list[PyPIRequirement]:
+        """Get only PyPI requirements."""
+        return [r for r in self.requirements if isinstance(r, PyPIRequirement)]
+
+    @property
     def requires_local_release_artifacts(self) -> bool:
         """Check if any requirements use local file:// channels."""
-        return any(r.channel.base_url.startswith("file://") for r in self.requirements)
+        return any(
+            r.channel.base_url.startswith("file://")
+            for r in self.requirements
+            if isinstance(r, SpecRequirement)
+        )
 
     @property
     def _flat_task_instances_with_defaults(self) -> list[TaskInstance]:
