@@ -38,8 +38,10 @@ custom-tasks/
 ```
 
 The `[project.entry-points."wt_registry"]` section tells `wt-registry` which
-module to import when discovering tasks. Without this entrypoint, the compiler
-will not find your functions.
+module to import when discovering tasks. By convention, use your package name as
+the entry-point key (`custom-tasks`). The value (`custom_tasks.tasks`) is the
+Python module containing your `@register`-decorated functions. Without this
+entry point, the compiler will not find your functions.
 
 ### `src/custom_tasks/tasks.py`
 
@@ -162,9 +164,13 @@ cd wt-add-two-numbers-workflow
 pixi run wt-add-two-numbers-workflow run --config-json '{"sum": {"a": 1, "b": 2}}'
 ```
 
+!!! info "Two `run` commands?"
+    `pixi run` launches a command inside the pixi environment. The second `run`
+    is the workflow CLI's own `run` subcommand. Together:
+    `pixi run <entrypoint> run --config-json ...`.
+
 The compiler generates a directory named `wt-add-two-numbers-workflow`
-containing a **pixi project** with a pixi task (entrypoint) of the same name.
-The `--config-json` keys correspond to the **task instance IDs** from the spec.
+containing a **[pixi workspace](https://pixi.sh/latest/tutorials/first_workspace/)** with a pixi task (entrypoint) of the same name.
 For full detail on compiled artifacts, see the
 [wt-compiler reference](reference/wt-compiler.md).
 
@@ -176,8 +182,6 @@ For full detail on compiled artifacts, see the
 
 **Key points:**
 
-- The `requirements` section uses a `path:` source to reference your local task
-  package — no conda channel needed.
 - Both parameters (`a` and `b`) are unbound, so they become user-facing
   configuration.
 - The `--config-json` key `"sum"` matches the task instance `id` in the spec.
@@ -197,6 +201,10 @@ wt-compiler compile --spec spec.yaml --clobber
 cd wt-add-with-partial-workflow
 pixi run wt-add-with-partial-workflow run --config-json '{"sum": {"a": 1}}'
 ```
+
+!!! tip "`--clobber`"
+    Overwrites the output directory if it already exists. Without it, the
+    compiler refuses to overwrite a previous compilation.
 
 **Expected result** (contents of `result.json` in your results directory):
 
@@ -240,58 +248,75 @@ pixi run wt-add-then-double-workflow run --config-json '{"sum": {"a": 3, "b": 3}
 
 ---
 
-## Step 6 — List return types
+## Step 6 — Web-form configuration
 
-A task can return any JSON-serializable type, including lists.
+The compiler doesn't just produce executable code — it also generates **JSON
+schemas** that power auto-generated web forms. This is how non-developers
+configure and launch workflows without touching code.
 
-```yaml
---8<-- "examples/getting-started/example-4/spec.yaml"
-```
+Look inside the compiled `wt-add-then-double-workflow` from Step 5. The
+`rjsf.json` file contains a
+[React JSON Schema Form](https://rjsf-team.github.io/react-jsonschema-form/)
+configuration:
 
 ```bash
-wt-compiler compile --spec spec.yaml --clobber
-cd wt-add-then-split-workflow
-pixi run wt-add-then-split-workflow run
+cat wt-add-then-double-workflow/wt_add_then_double_workflow/rjsf.json
 ```
 
-**Expected result** (contents of `result.json` in your results directory):
+??? example "Example `rjsf.json` (abbreviated)"
 
-```json
-{"result": ["1", "2"], "error": null, "trace": null}
-```
+    ```json
+    {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "Add Two Numbers": {
+            "type": "object",
+            "properties": {
+              "a": {"type": "integer", "title": "A"},
+              "b": {"type": "integer", "title": "B"}
+            },
+            "required": ["a", "b"]
+          }
+        }
+      },
+      "uiSchema": { ... }
+    }
+    ```
 
-**Key points:**
+To see the rendered form, paste the `schema` value into the
+[RJSF Playground](https://rjsf-team.github.io/react-jsonschema-form/). You'll
+get an interactive form with labeled integer fields for `a` and `b` — generated
+entirely from the type annotations on your `add` function.
 
-- Both parameters of `add` are bound via `partial` (`4 + 8 = 12`), so there are
-  no user-facing parameters.
-- `split_digits(12)` returns `["1", "2"]` — a list of strings.
-- This output is a natural input for `map`, which we cover in
-  [How-To Guides](tutorials.md#map-fan-out).
+**The pipeline:** Type annotations → JSON Schema → web forms.
+
+!!! info "`rjsf.json` vs `params.json`"
+    The compiler generates two schema files:
+
+    - **`rjsf.json`** — hierarchical schema that preserves task groups and
+      includes `uiSchema`. Used by web UIs to render forms.
+    - **`params.json`** / `--config-json` — flat schema with all task instances
+      at the top level. Used by the CLI.
+
+    Both describe the same parameters; only the structure differs.
+
+For controlling form layout via `rjsf_overrides` in `spec.yaml`, see
+[Coming soon](tutorials.md#coming-soon).
 
 ---
 
 ## Step 7 — What's next
 
 You now know how to register tasks, write specs with `partial` and `${{ }}`
-references, compile workflows, and run them.
+references, compile workflows, run them, and preview auto-generated web forms.
 
 **Continue learning:**
 
-- [**How-To Guides**](tutorials.md) — `map` fan-out picks up right where
-  Example 4 left off
+- [**How-To Guides**](tutorials.md) — `map` fan-out, list return types, and
+  more
 - [**spec.yaml reference**](reference/spec-yaml.md) — complete field-by-field
   documentation including `map`, `mapvalues`, `skipif`, and task groups
 - [**Concepts**](concepts.md) — the full mental model behind the framework
 - [**wt-compiler reference**](reference/wt-compiler.md) — CLI options,
   compiled artifacts, and troubleshooting
-
-### Quick reference: compiler CLI
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--spec FILE` | *(required)* | Path to the workflow `spec.yaml` |
-| `--clobber` | off | Overwrite the output directory if it exists |
-| `--update` | off | Carry over the lockfile and bump version (requires `--clobber`) |
-| `--pkg-name-prefix PREFIX` | `wt` | Prefix for generated package/directory names |
-| `--variant VARIANT` | *none* | Platform variant suffix (e.g. `gcp`) |
-| `--no-progress` | off | Disable progress spinner (useful in CI) |

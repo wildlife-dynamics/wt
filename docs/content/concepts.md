@@ -23,7 +23,7 @@ it's made of, and how it goes from a YAML file to running code.
 2. **Specify** — Write a `spec.yaml` that declares which tasks to run, how data
    flows between them (`partial`, `map`, `mapvalues`), and what to skip.
 3. **Compile** — `wt-compiler` resolves dependencies, validates the spec, and
-   generates a self-contained Python package with DAG code, parameter schemas,
+   generates a self-contained pixi workspace with DAG code, parameter schemas,
    a `pixi.toml`, and a Dockerfile.
 4. **Run** — Execute locally via the generated CLI (`pixi run`), through the
    `wt-runner` FastAPI server, or on Google Cloud Batch.
@@ -62,9 +62,12 @@ decorated with `@register` from `wt-registry`. Registration serves two
 purposes:
 
 1. **Discovery without imports.** The compiler discovers tasks by running
-   `wt-registry` as a subprocess inside an ephemeral environment. This avoids
-   importing task code directly, which would create dependency conflicts
-   between the compiler and the task packages.
+   `wt-registry` as a subprocess in an ephemeral environment.
+
+    !!! info "Why subprocess discovery?"
+        Importing task code directly would force the compiler to install every
+        task library's dependencies (GDAL, PyTorch, etc.). The subprocess
+        approach keeps the compiler lightweight and avoids dependency conflicts.
 
 2. **Schema generation.** Type annotations on registered functions are used to
    generate JSON schemas — these schemas power auto-generated web forms and
@@ -82,7 +85,9 @@ This is the same `add` function used throughout
 [Getting Started](getting-started.md).
 
 The `@register` decorator accepts optional metadata (`title`, `description`,
-`tags`, `deprecated`) but leaves the function itself completely unchanged.
+`tags`, `deprecated`) but leaves the function itself completely unchanged. If
+`title` is omitted, it is auto-generated from the function name (e.g. `add`
+becomes *Add*).
 
 At runtime, the compiler wraps registered functions as **tasks** — instances of
 `wt_task.SyncTask` with execution methods like `.call()`, `.map()`, and
@@ -143,7 +148,7 @@ Key rules:
 
 - Tasks are listed in **topological order** — every dependency before its
   dependent.
-- `${{ workflow.<id>.return }}` passes one task's output as another's input.
+- `${{ workflow.<id>.return }}` references one task's output as another's input.
 - The terminal (last) task's return value becomes the `result` field in
   `result.json`.
 
@@ -174,7 +179,7 @@ For the complete field-by-field reference, see the
 
 ## Compilation
 
-`wt-compiler` reads the spec and produces a **standalone Python package**. The
+`wt-compiler` reads the spec and produces a **standalone pixi workspace**. The
 "compile, don't interpret" design means there is no opaque runtime interpreter
 — what you see in the generated code is what executes. This makes compiled
 workflows easy to read, diff, and version-control.
@@ -235,8 +240,7 @@ and `CloudBatchInvoker` (dispatches to Google Cloud Batch).
 ## Tooling
 
 `wt` sits at the intersection of two packaging ecosystems — **PyPI** (pip/uv)
-and **conda** (pixi/rattler). Which one you reach for depends on what you are
-doing.
+and **conda** (pixi/rattler).
 
 ### uv — Python package development
 
@@ -248,14 +252,13 @@ via conda (e.g. `geopandas`, `gdal`, `rasterio`), pixi is preferable.
 ### pixi — workflow execution and the conda ecosystem
 
 [pixi](https://pixi.sh) is a cross-platform package manager built on the conda
-ecosystem. Compiled workflows are **pixi projects** — the compiler outputs a
+ecosystem. Compiled workflows are **pixi workspaces** — the compiler outputs a
 `pixi.toml`, and both execution backends invoke workflows via `pixi run`.
 
 **pixi is required to run any compiled workflow end-to-end.**
 
-If you want a single-tool experience, pixi can handle everything uv does (it
-supports
-[pypi-dependencies](https://pixi.sh/latest/reference/pixi_manifest/#pypi-dependencies)).
+If you want a single-tool experience, pixi can handle everything uv does,
+including [PyPI packages](https://pixi.sh/latest/reference/pixi_manifest/#pypi-dependencies).
 
 ### How `requirements:` resolves
 

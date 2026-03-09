@@ -47,3 +47,5 @@ nav:
     - wt-invokers: reference/wt-invokers.md
     - wt-runner: reference/wt-runner.md
   - Architecture: architecture.md
+  - Contributing: contributing.md
+  - Changelog: changelog.md

@@ -9,7 +9,8 @@ the registry as JSON.
 **Public API:**
 
 ```python
-from wt_registry import register, get_registry, clear_registry
+from wt_registry import register, get_registry
+from wt_registry.registry import clear_registry, to_json
 ```
 
 ---

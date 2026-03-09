@@ -9,15 +9,15 @@ package from that guide.
 ## Map fan-out
 
 **Prerequisite:** Complete [Getting Started](getting-started.md) through
-Step 6 (Example 4).
+Step 5.
 
-In Example 4, `split_digits` returned `["1", "2"]` — a list of strings. What
-if you want to convert each string back to an integer? That is what `map` does:
-it applies a task to every element of a list.
+A task can return any JSON-serializable type, including lists. When a task
+returns a list, `map` lets you apply another task to every element — one
+task instance per item.
 
-The `custom-tasks` package includes a `parse_int` task that converts a string
-to an integer. Here is a spec that splits a number into digits and then maps
-`parse_int` over each one:
+The spec below chains three tasks: `add` produces a number, `split_digits`
+breaks it into a list of digit strings, and `parse_int` is **mapped** over that
+list to convert each string back to an integer:
 
 ```yaml
 --8<-- "examples/tutorials/map/spec.yaml"
@@ -41,9 +41,16 @@ pixi run workflow run
 
 - `add` returns `12` (both arguments are bound via `partial`).
 - `split_digits` returns `["1", "2"]`.
-- `parse_int` is **mapped** over `["1", "2"]` — one invocation per element.
-  `argnames: s` binds each element to the `s` parameter of `parse_int`.
+- `parse_int` is **mapped** over `["1", "2"]` — one task instance per element.
+  `argnames: s` specifies which parameter of `parse_int` receives each element.
 - The mapped result is `[1, 2]`.
+
+??? info "Familiar with PySpark?"
+    `map` is analogous to `RDD.map()` — it applies a function to each element
+    of a sequence. The difference: PySpark maps over datasets with
+    single-argument lambdas, while wt maps over a task's parameter. `argnames`
+    specifies *which* parameter receives each element, since wt tasks can have
+    multiple parameters.
 
 `map` always produces a **list** whose length matches the input iterable.
 Partial arguments (if any) are applied to every invocation.
@@ -55,10 +62,5 @@ For the complete `map` and `mapvalues` reference, see
 
 ## Coming soon
 
-The following guides are planned:
-
-- **`mapvalues`** — fan-out over key-value pairs, preserving keys
-- **`skipif`** — conditional execution based on boolean functions
-- **Customizing JSON schema** — controlling configuration form fields with type annotations and Pydantic models
-- **Environment variables** — using `${{ env.VAR }}` in specs
-- **Distributing workflows** — using Git and conda channel requirements for portable, shareable workflows
+Additional guides (`mapvalues`, `skipif`, JSON schema customization,
+environment variables, distributing workflows) are in progress.

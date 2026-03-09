@@ -35,14 +35,31 @@ Health check. Returns `200 OK`.
 
 Run a workflow with configuration and parameters.
 
-**Request body:**
+**Query parameters:**
 
-```json
-{
-  "params": {"step_id": {"param": "value"}},
-  "config": {}
-}
-```
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `workflow_run_id` | `str` | `""` | Unique identifier for this run |
+| `timeout` | `float \| None` | `None` | Maximum execution time in seconds |
+| `docker_image_uri` | `str \| None` | `None` | Container image URI (Cloud Batch only) |
+
+**Headers:**
+
+| Header | Type | Default | Description |
+|--------|------|---------|-------------|
+| `traceparent` | `str \| None` | `None` | W3C trace context parent |
+| `tracestate` | `str \| None` | `None` | W3C trace context state |
+
+**JSON body:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `params` | `dict[str, Any]` | yes | Task parameters keyed by task instance ID |
+| `execution_mode` | `"async" \| "sequential"` | yes | Execution mode |
+| `mock_io` | `bool` | yes | Use mock I/O for testing |
+| `results_url` | `str` | yes | URL for results output (resolved via dependency) |
+| `data_connections_env_vars` | `dict[str, SecretStr] \| None` | no | Environment variables for data connections |
+| `lithops_config` | `LithopsConfig \| None` | no | Lithops configuration for serverless execution |
 
 **Response:**
 

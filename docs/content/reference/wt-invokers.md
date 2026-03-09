@@ -19,8 +19,8 @@ from wt_invokers import (
 )
 ```
 
-| Invoker | Environment | Waitable |
-|---------|-------------|----------|
+| Invoker | Execution Target | Supports Waiting |
+|---------|-----------------|-----------------|
 | `LocalSubprocessInvoker` | Local machine via pixi | Yes |
 | `CloudBatchInvoker` | Google Cloud Batch containers | No |
 
@@ -39,12 +39,33 @@ Abstract base class that all workflow invokers must implement.
 
 ### Abstract Methods
 
+!!! note "Async API"
+    All abstract methods are `async`. Callers must `await` them.
+
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `is_installed()` | `-> bool` | Check whether the workflow is installed |
-| `install()` | `-> None` | Install the workflow |
-| `run()` | `(**kwargs)` | Launch the workflow with configuration |
-| `wait()` | `-> int` | Wait for completion and return exit code |
+| `is_installed()` | `async -> bool` | Check whether the workflow is installed |
+| `install()` | `async -> None` | Install the workflow |
+| `run()` | see below | Launch the workflow with configuration |
+| `wait()` | `async -> int` | Wait for completion and return exit code |
+
+**`run()` signature:**
+
+```python
+async def run(
+    self,
+    workflow_run_id: str,
+    config_text: str,
+    results_url: str,
+    execution_mode: str,
+    mock_io: bool,
+    otel_exporter: str | None = None,
+    otel_console_exporter_dst: str | None = None,
+    extra_env: dict[str, str] | None = None,
+    lithops_config_text: str | None = None,
+    **kwargs: Any,
+) -> None
+```
 
 ### Properties
 

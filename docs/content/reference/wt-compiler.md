@@ -5,9 +5,8 @@ produces a self-contained workflow package containing executable Python DAG
 code, JSON parameter schemas, CLI entry point, pixi configuration, Dockerfile,
 tests, and a dependency graph visualization.
 
-The compiler operates without importing any task code directly — it creates an
-ephemeral conda environment using py-rattler, then runs `wt-registry` as a
-subprocess to discover tasks and their JSON schemas.
+The compiler operates without importing task code — see
+[Task Discovery](#task-discovery) below.
 
 **Modules:** `compiler` · `spec` · `discovery` · `artifacts` · `cli` ·
 `exceptions` · `jsonschema` · `requirements` · `formatting`
@@ -23,9 +22,10 @@ The core engine that transforms a validated `Spec` into workflow artifacts.
 ```python
 DagCompiler(
     spec: Spec,
-    wt_runner_channel: str = ...,
+    wt_runner_channel: str | None = None,
+    wt_pypi_deps: dict[str, str | dict[str, Any]] | None = None,
     variant: str | None = None,
-    jinja_templates_dir: Path = ...,
+    jinja_templates_dir: Path = TEMPLATES,
     pkg_name_prefix: str = "wt",
     results_env_var: str = "WT_RESULTS",
 )
@@ -34,9 +34,10 @@ DagCompiler(
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `spec` | `Spec` | *(required)* | Validated workflow specification |
-| `wt_runner_channel` | `str` | built-in | Channel URL for `wt-runner` package |
+| `wt_runner_channel` | `str \| None` | `None` | Channel URL for `wt-runner` package |
+| `wt_pypi_deps` | `dict[str, str \| dict[str, Any]] \| None` | `None` | Additional PyPI dependencies for the compiled workflow |
 | `variant` | `str \| None` | `None` | Platform variant suffix (e.g. `"gcp"`) |
-| `jinja_templates_dir` | `Path` | built-in | Path to Jinja2 templates |
+| `jinja_templates_dir` | `Path` | `TEMPLATES` | Path to Jinja2 templates (built-in default) |
 | `pkg_name_prefix` | `str` | `"wt"` | Prefix for generated package names |
 | `results_env_var` | `str` | `"WT_RESULTS"` | Environment variable name |
 

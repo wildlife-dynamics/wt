@@ -176,7 +176,7 @@ runtime errors.
 
 ### CLI boundary (wt-invokers to generated workflows)
 
-Generated workflows are standalone Python packages with a CLI entry point.
+Generated workflows are standalone pixi workspaces with a CLI entry point.
 Invokers execute these workflows by constructing command-line arguments and
 environment variables defined by `WorkflowCLIArgs` and `WorkflowCLIEnv` from
 wt-contracts. This means invokers never import workflow code -- they
@@ -201,7 +201,7 @@ which are defined in wt-contracts.
 
 Workflows in the wt framework are **compiled** rather than interpreted. The
 compiler reads a declarative YAML specification and produces a complete,
-self-contained Python package. This is a deliberate choice with specific
+self-contained pixi workspace. This is a deliberate choice with specific
 tradeoffs.
 
 ### What the compiler produces
@@ -219,7 +219,7 @@ Given a `spec.yaml`, the compiler generates:
 - **Dependency graph visualization**: A rendered graph (via pydot) showing
   task dependencies
 
-The output is a **static Python package** that can be installed, version-pinned,
+The output is a **static pixi workspace** that can be installed, version-pinned,
 and deployed without the compiler present.
 
 ### Why compile rather than interpret?
@@ -238,7 +238,7 @@ for missing tasks, and verifies the DAG is acyclic before any code runs. Errors
 surface during CI, not during a production workflow execution.
 
 **No compiler at runtime.** The runner and invokers do not need the compiler
-installed. The compiled workflow is a standalone package with only the
+installed. The compiled workflow is a standalone pixi workspace with only the
 dependencies it actually uses (wt-task plus whatever task libraries it
 references). This keeps the runtime environment minimal.
 
@@ -300,3 +300,37 @@ via pip. Since conda is a first-class distribution channel, conda-compatible
 packaging is a requirement, not an afterthought. The metapackages are the
 minimal solution that keeps both pip and conda users well-served without
 duplicating any actual code.
+
+## Design inspirations
+
+The wt framework draws on several existing systems, adapting their ideas to a
+typed-function-first, conda-native context.
+
+### Function-driven DAG style (Airflow TaskFlow API)
+
+Methods like `.partial()`, `.call()`, and `.map()` attach to a **function**
+(task) rather than a dataset. This mirrors
+[Airflow's TaskFlow API](https://airflow.apache.org/docs/apache-airflow/stable/tutorial/taskflow.html),
+where the primitive is a decorated Python function with named parameters. The
+difference from data-centric frameworks (Spark, Dask): wt tasks have typed
+signatures, so argument binding is explicit by name rather than positional.
+
+### Parallel operators — `map` and `mapvalues` (PySpark + Airflow)
+
+The `map` operator draws from both PySpark (`RDD.map()`) and Airflow
+(`task.map()`). PySpark maps a single-argument lambda over a dataset; wt (like
+Airflow) maps over a task's **parameters**. The `argnames` field exists because
+wt tasks have multi-parameter signatures — it specifies which parameter receives
+each element of the iterable. `mapvalues` similarly parallels
+`RDD.mapValues()`, preserving dictionary keys while mapping over values.
+
+### YAML compilation (GitHub Actions + DAG Factory)
+
+The `spec.yaml` syntax borrows `${{ }}` expression syntax from
+[GitHub Actions](https://docs.github.com/en/actions/writing-workflows/workflow-syntax-for-github-actions)
+and the declarative YAML-to-DAG approach from
+[Astronomer's DAG Factory](https://github.com/astronomer/dag-factory). Two
+design choices distinguish wt: (a) compilation produces auto-generated web forms
+for non-developer configuration, and (b) first-class conda/pixi integration
+ensures reproducible scientific environments with native dependencies (GDAL, R,
+PyTorch) pinned at every level.

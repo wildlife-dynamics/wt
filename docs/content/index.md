@@ -1,9 +1,11 @@
 # Workflow Toolkit (`wt`)
 
 Workflow Toolkit (`wt` for short) lets you **register** Python functions as
-reusable tasks, **specify** how they connect in a YAML file, **compile** the
-spec into a standalone, reproducible package, and **run** it locally or in the
-cloud — with auto-generated web forms for configuration.
+reusable tasks and **specify** how they connect in a YAML file. The compiler
+produces a standalone, reproducible
+[pixi workspace](https://pixi.sh/latest/tutorials/first_workspace/) you can
+**run** locally or in the cloud — with auto-generated web forms for
+configuration.
 
 - **Type-driven registration.** Decorate functions with `@register` — type
   annotations generate JSON schemas that power web forms and compile-time
@@ -12,7 +14,8 @@ cloud — with auto-generated web forms for configuration.
 - **Declarative YAML specs.** Wire tasks together with `partial`, `map`,
   `mapvalues`, and `skipif` — no Python glue code required.
 
-- **Compile, don't interpret.** The compiler outputs a standalone pixi project
+- **Compile, don't interpret.** The compiler outputs a standalone
+  [pixi workspace](https://pixi.sh/latest/tutorials/first_workspace/)
   with plain Python DAG code you can read, diff, and version-control.
 
 - **Conda-native, fully reproducible.** Dependencies resolve through conda
@@ -32,13 +35,4 @@ workflow hands-on, go to [Getting Started](getting-started.md).
 
 ---
 
-## Contributing
-
-### Serving the docs locally
-
-```bash
-cd docs
-uv run mkdocs serve
-```
-
-Then open [http://127.0.0.1:8000](http://127.0.0.1:8000).
+For contribution guidelines, see [Contributing](contributing.md).
