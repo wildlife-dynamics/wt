@@ -212,3 +212,6 @@ __marimo__/
 
 
 .vscode
+
+# generated outputs from our docs examples
+docs/examples/**/wt-*-workflow

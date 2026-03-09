@@ -15,3 +15,6 @@ where = ["src"]
 
 [project.entry-points."wt_registry"]
 custom-tasks = "custom_tasks.tasks"
+
+[tool.uv.sources]
+wt-registry = { path = "../../../wt-registry", editable = true }
