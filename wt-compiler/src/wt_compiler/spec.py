@@ -7,6 +7,7 @@ the workflow specification (spec.yaml) input format.
 import builtins
 import hashlib
 import keyword
+import os
 from collections.abc import Generator
 from enum import Enum
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Self, TypedDict, cast
@@ -867,7 +868,7 @@ class PyPIRequirement(_ForbidExtra):
         rev: Git revision (commit hash)
         branch: Git branch name
         tag: Git tag name
-        path: Local filesystem path
+        path: Absolute local filesystem path (not a file:// URL, not relative)
         editable: Whether to install in editable mode (path only)
         url: Direct URL to a wheel or sdist
         subdirectory: Subdirectory within the source to install from
@@ -882,9 +883,9 @@ class PyPIRequirement(_ForbidExtra):
 
         Editable path dependency:
 
-        >>> req = PyPIRequirement(name="bar", path="./bar", editable=True)
+        >>> req = PyPIRequirement(name="bar", path="/home/user/bar", editable=True)
         >>> req.to_pixi_dict()
-        {'path': './bar', 'editable': True}
+        {'path': '/home/user/bar', 'editable': True}
     """
 
     name: str
@@ -922,6 +923,18 @@ class PyPIRequirement(_ForbidExtra):
             raise ValueError(
                 f"'editable' is only valid with 'path' for PyPI requirement '{self.name}'."
             )
+        if self.path is not None:
+            if self.path.startswith("file://"):
+                raise ValueError(
+                    f"'path' for PyPI requirement '{self.name}' must be a bare filesystem path, "
+                    f"not a file:// URL. Got: '{self.path}'. "
+                    f"Use an absolute path like '/home/user/my-package' instead."
+                )
+            if not os.path.isabs(self.path):
+                raise ValueError(
+                    f"'path' for PyPI requirement '{self.name}' must be an absolute filesystem "
+                    f"path. Got: '{self.path}'. Relative paths are not supported."
+                )
         return self
 
     def to_pixi_dict(self) -> dict[str, Any]:

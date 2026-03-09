@@ -297,13 +297,13 @@ class TestPyPIRequirement:
 
     def test_path_basic(self):
         """Test basic path requirement."""
-        req = PyPIRequirement(name="foo", path="./foo")
-        assert req.to_pixi_dict() == {"path": "./foo"}
+        req = PyPIRequirement(name="foo", path="/opt/foo")
+        assert req.to_pixi_dict() == {"path": "/opt/foo"}
 
     def test_path_editable(self):
         """Test editable path requirement."""
-        req = PyPIRequirement(name="foo", path="./foo", editable=True)
-        assert req.to_pixi_dict() == {"path": "./foo", "editable": True}
+        req = PyPIRequirement(name="foo", path="/opt/foo", editable=True)
+        assert req.to_pixi_dict() == {"path": "/opt/foo", "editable": True}
 
     def test_url(self):
         """Test URL requirement."""
@@ -335,12 +335,12 @@ class TestPyPIRequirement:
     def test_validate_multiple_sources(self):
         """Test that multiple sources raises error."""
         with pytest.raises(ValueError, match="Exactly one"):
-            PyPIRequirement(name="foo", git="https://github.com/org/foo.git", path="./foo")
+            PyPIRequirement(name="foo", git="https://github.com/org/foo.git", path="/opt/foo")
 
     def test_validate_rev_without_git(self):
         """Test that rev without git raises error."""
         with pytest.raises(ValueError, match="only valid with 'git'"):
-            PyPIRequirement(name="foo", path="./foo", rev="abc123")
+            PyPIRequirement(name="foo", path="/opt/foo", rev="abc123")
 
     def test_validate_editable_without_path(self):
         """Test that editable without path raises error."""
@@ -353,6 +353,16 @@ class TestPyPIRequirement:
             PyPIRequirement(
                 name="foo", git="https://github.com/org/foo.git", rev="abc", branch="main"
             )
+
+    def test_validate_path_file_url_rejected(self):
+        """Test that file:// URL in path raises error."""
+        with pytest.raises(ValueError, match="not a file:// URL"):
+            PyPIRequirement(name="foo", path="file:///home/user/foo")
+
+    def test_validate_path_relative_rejected(self):
+        """Test that relative path raises error."""
+        with pytest.raises(ValueError, match="must be an absolute filesystem path"):
+            PyPIRequirement(name="foo", path="./foo")
 
     def test_to_pip_install_arg_git(self):
         """Test pip install arg for git requirement."""
@@ -368,13 +378,13 @@ class TestPyPIRequirement:
 
     def test_to_pip_install_arg_path(self):
         """Test pip install arg for path requirement."""
-        req = PyPIRequirement(name="foo", path="./foo")
-        assert req.to_pip_install_arg() == "./foo"
+        req = PyPIRequirement(name="foo", path="/opt/foo")
+        assert req.to_pip_install_arg() == "/opt/foo"
 
     def test_to_pip_install_arg_path_editable(self):
         """Test pip install arg for editable path requirement."""
-        req = PyPIRequirement(name="foo", path="./foo", editable=True)
-        assert req.to_pip_install_arg() == "-e ./foo"
+        req = PyPIRequirement(name="foo", path="/opt/foo", editable=True)
+        assert req.to_pip_install_arg() == "-e /opt/foo"
 
     def test_to_pip_install_arg_url(self):
         """Test pip install arg for URL requirement."""
@@ -440,7 +450,7 @@ class TestSpecRequirementsUnion:
                 {"requirement": "python>=3.10"},
                 {"name": "foo", "git": "https://github.com/org/foo.git"},
                 {"requirement": "pandas>=2.0"},
-                {"name": "bar", "path": "./bar", "editable": True},
+                {"name": "bar", "path": "/opt/bar", "editable": True},
             ],
             workflow=[],
         )

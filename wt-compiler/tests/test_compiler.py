@@ -235,7 +235,7 @@ class TestDagCompiler:
             requirements=[
                 {"requirement": "python>=3.10"},
                 {"name": "foo", "git": "https://github.com/org/foo.git", "tag": "v1.0"},
-                {"name": "bar", "path": "./bar", "editable": True},
+                {"name": "bar", "path": "/opt/bar", "editable": True},
             ],
             workflow=[],
         )
@@ -252,7 +252,7 @@ class TestDagCompiler:
         assert pixi_toml.pypi_dependencies["foo"]["git"] == "https://github.com/org/foo.git"
         assert pixi_toml.pypi_dependencies["foo"]["tag"] == "v1.0"
         assert "bar" in pixi_toml.pypi_dependencies
-        assert pixi_toml.pypi_dependencies["bar"]["path"] == "./bar"
+        assert pixi_toml.pypi_dependencies["bar"]["path"] == "/opt/bar"
         assert pixi_toml.pypi_dependencies["bar"]["editable"] is True
 
     def test_get_pixi_toml_no_pypi_deps(self):
@@ -443,7 +443,7 @@ class TestParseRequirementsFromYaml:
                 "requirements": [
                     {"requirement": "python>=3.10"},
                     {"name": "foo", "git": "https://github.com/org/foo.git"},
-                    {"name": "bar", "path": "./bar", "editable": True},
+                    {"name": "bar", "path": "/opt/bar", "editable": True},
                 ],
                 "workflow": [],
             },
