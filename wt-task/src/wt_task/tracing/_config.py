@@ -97,7 +97,9 @@ def configure_tracer(
 
     Raises:
         ValueError: If an unknown exporter type is specified
-        ImportError: If tracing dependencies are not installed
+
+    Warns:
+        UserWarning: If tracing dependencies are not installed (tracing is silently disabled)
 
     Examples:
         >>> # Configure with console exporter to stdout
@@ -108,9 +110,14 @@ def configure_tracer(
         >>> configure_tracer("my-service", "1.0.0", "console", kws)
     """
     if not TRACING_AVAILABLE:
-        raise ImportError(
-            "OpenTelemetry dependencies not installed. Install with: pip install wt-task[gcp]"
+        import warnings
+
+        warnings.warn(
+            "OpenTelemetry dependencies not installed. Tracing is disabled. "
+            "Install with: pip install wt-task[gcp]",
+            stacklevel=2,
         )
+        return
 
     resource = Resource.create(
         {
@@ -177,8 +184,8 @@ def attach_context(traceparent: str, tracestate: str | None = None) -> None:
         traceparent: W3C traceparent header value
         tracestate: Optional W3C tracestate header value
 
-    Raises:
-        ImportError: If tracing dependencies are not installed
+    Warns:
+        UserWarning: If tracing dependencies are not installed (context attachment is skipped)
 
     Examples:
         >>> # In a distributed system, receive headers and attach context
@@ -187,9 +194,14 @@ def attach_context(traceparent: str, tracestate: str | None = None) -> None:
         ... )
     """
     if not TRACING_AVAILABLE:
-        raise ImportError(
-            "OpenTelemetry dependencies not installed. Install with: pip install wt-task[gcp]"
+        import warnings
+
+        warnings.warn(
+            "OpenTelemetry dependencies not installed. Cannot attach trace context. "
+            "Install with: pip install wt-task[gcp]",
+            stacklevel=2,
         )
+        return
 
     carrier: dict[str, str] = {"traceparent": traceparent}
     if tracestate:

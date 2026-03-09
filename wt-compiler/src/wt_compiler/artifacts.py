@@ -61,7 +61,15 @@ PixiTaskCommand = str | dict[str, Any]
 class Feature(_AllowArbitraryTypes):
     """A `pixi.toml` feature definition."""
 
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        populate_by_name=True,
+    )
+
     dependencies: dict[str, NamelessMatchSpecType]
+    pypi_dependencies: dict[str, str | dict[str, Any]] = Field(
+        default_factory=dict, alias="pypi-dependencies"
+    )
     tasks: dict[PixiTaskName, PixiTaskCommand] = Field(default_factory=dict)
 
 
@@ -91,6 +99,9 @@ class PixiToml(_AllowArbitraryAndValidateAssignment):
     workspace: PixiWorkspace
     system_requirements: dict[str, str] = Field(default_factory=dict, alias="system-requirements")
     dependencies: dict[str, NamelessMatchSpecType]
+    pypi_dependencies: dict[str, str | dict[str, Any]] = Field(
+        default_factory=dict, alias="pypi-dependencies"
+    )
     feature: dict[FeatureName, Feature] = Field(default_factory=dict)
     environments: dict[str, Environment] = Field(default_factory=dict)
     tasks: dict[PixiTaskName, PixiTaskCommand] = Field(default_factory=dict)
@@ -162,6 +173,17 @@ class PixiToml(_AllowArbitraryAndValidateAssignment):
         # unless we re-assign .dependencies, so do that
         self.dependencies = deps_copy
 
+    def _model_dump_for_toml(self) -> dict[str, Any]:
+        """Dump model to dict for TOML serialization, excluding empty pypi-dependencies."""
+        data = self.model_dump(by_alias=True, mode="json")
+        if not data.get("pypi-dependencies"):
+            data.pop("pypi-dependencies", None)
+        # Also strip empty pypi-dependencies from feature dicts
+        for feature_data in data.get("feature", {}).values():
+            if not feature_data.get("pypi-dependencies"):
+                feature_data.pop("pypi-dependencies", None)
+        return data
+
     def dump(self, dst: Path) -> None:
         """Write the PixiToml to a file.
 
@@ -179,7 +201,7 @@ class PixiToml(_AllowArbitraryAndValidateAssignment):
         with dst.open("wb") as f:
             f.write(self.file_header.encode("utf-8"))
             f.write(b"\n")
-            tomli_w.dump(self.model_dump(by_alias=True), f)
+            tomli_w.dump(self._model_dump_for_toml(), f)
 
     def to_toml(self) -> str:
         """Serialize to TOML string.
@@ -202,8 +224,7 @@ class PixiToml(_AllowArbitraryAndValidateAssignment):
         if self.file_header:
             buffer.write(self.file_header.encode("utf-8"))
             buffer.write(b"\n")
-        # Use mode="json" to ensure proper serialization of complex types
-        tomli_w.dump(self.model_dump(by_alias=True, mode="json"), buffer)
+        tomli_w.dump(self._model_dump_for_toml(), buffer)
         return buffer.getvalue().decode("utf-8")
 
 
@@ -452,7 +473,7 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
             update: Whether to carry over the lockfile from the clobbered directory
 
         Raises:
-            ValueError: If README.md or graph.png are not set
+            ValueError: If README.md is not set
             FileExistsError: If the release directory exists and clobber is False
             FileNotFoundError: If update is True but required files are missing
 
@@ -460,8 +481,8 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
             >>> # artifacts = WorkflowArtifacts(...)  # doctest: +SKIP
             >>> # artifacts.dump(clobber=True)  # doctest: +SKIP
         """
-        if not self.readme_md or not self.pydot_graph:
-            raise ValueError("README.md and graph.png must be set before dumping artifacts.")
+        if not self.readme_md:
+            raise ValueError("README.md must be set before dumping artifacts.")
 
         if self.release_dir.exists() and not clobber:
             raise FileExistsError(
@@ -493,7 +514,17 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
 
         # root artifacts
         self.pixi_toml.dump(self.release_dir.joinpath("pixi.toml"))
-        self.pydot_graph.write_png(path=self.release_dir.joinpath("graph.png"))  # type: ignore[attr-defined]
+        if self.pydot_graph is not None:
+            try:
+                self.pydot_graph.write_png(path=self.release_dir.joinpath("graph.png"))  # type: ignore[attr-defined]
+            except FileNotFoundError:
+                import warnings
+
+                warnings.warn(
+                    "Graphviz 'dot' binary not found; skipping graph.png generation. "
+                    "Install Graphviz to enable workflow visualization.",
+                    stacklevel=2,
+                )
         if update:
             self.release_dir.joinpath("pixi.lock").write_text(prior_lockfile)
             new_version.dump(self.release_dir.joinpath("VERSION.yaml"))

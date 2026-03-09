@@ -1,6 +1,7 @@
 """Command-line interface for wt-registry."""
 
 import argparse
+import importlib.metadata
 import sys
 import types
 from inspect import getmembers, ismodule
@@ -288,6 +289,41 @@ def format_pretty(entries: dict[str, RegistryEntry]) -> str:
     return "\n".join(lines)
 
 
+def auto_discover() -> list[str]:
+    """Discover and import task modules via ``wt_registry`` entry points.
+
+    Packages declare task modules using the ``wt_registry`` entry-point group
+    in their ``pyproject.toml``::
+
+        [project.entry-points."wt_registry"]
+        my-package = "my_package.tasks"
+
+    This function finds all such entry points, imports the declared modules
+    (which triggers ``@register`` decorators), and returns the list of
+    module paths that were successfully imported.
+
+    Returns:
+        List of module path strings that were imported.
+
+    Examples:
+        >>> # auto_discover()
+        ['my_package.tasks', 'other_package.tasks']
+    """
+    eps = importlib.metadata.entry_points(group="wt_registry")
+    imported_modules: list[str] = []
+    for ep in eps:
+        module_path = ep.value
+        try:
+            importlib.import_module(module_path)
+            imported_modules.append(module_path)
+        except ImportError as e:
+            print(
+                f"Warning: Could not import {module_path} (entry point '{ep.name}'): {e}",
+                file=sys.stderr,
+            )
+    return imported_modules
+
+
 def main() -> None:
     """
     Main CLI entry point.
@@ -328,13 +364,19 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    # Import specified packages to trigger task registration
+    # Auto-discover task modules via entry points
+    discovered_modules = auto_discover()
+
+    # Import explicitly specified packages to trigger task registration
+    all_packages: list[str] = list(discovered_modules)
     if args.packages:
         import importlib
 
         for package in args.packages:
             try:
                 importlib.import_module(package)
+                if package not in all_packages:
+                    all_packages.append(package)
             except ImportError as e:
                 print(f"Warning: Could not import {package}: {e}", file=sys.stderr)
 
@@ -347,7 +389,7 @@ def main() -> None:
 
         # Format and output
         if args.format == "json":
-            registry_output = serialize_entries(filtered_entries, packages=args.packages)
+            registry_output = serialize_entries(filtered_entries, packages=all_packages or None)
             # Use Pydantic's model_dump_json for proper serialization
             if args.pretty:
                 output = registry_output.model_dump_json(indent=2)

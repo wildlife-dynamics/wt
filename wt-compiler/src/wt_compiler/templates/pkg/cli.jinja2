@@ -92,7 +92,11 @@ def run(
         configure_tracer,
         make_otel_console_exporter_file_dst_kws,
     )
-    from opentelemetry import trace
+    try:
+        from opentelemetry import trace
+        _HAS_OTEL = True
+    except ImportError:
+        _HAS_OTEL = False
 
     from .dispatch import dispatch
     from .params import Params
@@ -138,15 +142,23 @@ def run(
     )
     if (traceparent := os.environ.get("TRACEPARENT")) is not None:
         attach_context(traceparent, tracestate=os.environ.get("TRACESTATE"))
-    tracer = trace.get_tracer(__name__)
-    tracer_attributes = {
-        "execution_mode": execution_mode,
-        "mock_io": mock_io,
-        "config.time_range": params.time_range.model_dump_json() if 'time_range' in params.model_fields_set else "",
-        "config.groupers": params.groupers.model_dump_json() if 'groupers' in params.model_fields_set else "",
-        "version": _version,
-    }
-    with tracer.start_as_current_span(f"{RELEASE_NAME}.cli", attributes=tracer_attributes):
+    if _HAS_OTEL:
+        tracer = trace.get_tracer(__name__)
+        tracer_attributes = {
+            "execution_mode": execution_mode,
+            "mock_io": mock_io,
+            "config.time_range": params.time_range.model_dump_json() if 'time_range' in params.model_fields_set else "",
+            "config.groupers": params.groupers.model_dump_json() if 'groupers' in params.model_fields_set else "",
+            "version": _version,
+        }
+        with tracer.start_as_current_span(f"{RELEASE_NAME}.cli", attributes=tracer_attributes):
+            response = dispatch(execution_mode, mock_io, params)
+            result_store = obstore.store.from_url(results_url)
+            result_bytes = response.model_dump_json().encode("utf-8")
+            put_result = result_store.put("result.json", result_bytes)
+            if not put_result:
+                raise RuntimeError("Failed to put result json in result store.")
+    else:
         response = dispatch(execution_mode, mock_io, params)
         result_store = obstore.store.from_url(results_url)
         result_bytes = response.model_dump_json().encode("utf-8")

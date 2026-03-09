@@ -21,11 +21,12 @@ from wt_contracts.registry import RegistryOutput
 
 from wt_compiler.exceptions import (
     EnvironmentCreationError,
+    PyPIInstallError,
     RegistryExecutionError,
     RegistryNotFoundError,
 )
 from wt_compiler.requirements import CHANNELS
-from wt_compiler.spec import KnownTask, TaskTag, known_tasks
+from wt_compiler.spec import KnownTask, PyPIRequirement, TaskTag, known_tasks
 
 # Retry configuration for handling transient ENOTEMPTY errors during parallel install
 MAX_INSTALL_RETRIES = 3
@@ -37,27 +38,31 @@ class DiscoveryResult(NamedTuple):
 
     tasks: dict[str, dict[str, KnownTask]]
     records: list[Any]  # list[RepoDataRecord] from rattler solve()
+    wt_pypi_deps: dict[str, str | dict[str, Any]] | None = None
 
 
 async def discover_tasks_from_requirements(
     requirements: list[MatchSpec],
     channels: list[Channel] | None = None,
     platform: Platform | None = None,
+    pypi_requirements: list[PyPIRequirement] | None = None,
     on_progress: Callable[[str], None] | None = None,
 ) -> DiscoveryResult:
     """Discover tasks by creating an ephemeral rattler environment.
 
     This async function:
     1. Creates a temporary directory
-    2. Uses py-rattler to solve and install the requirements
-    3. Calls wt-registry CLI in that environment
-    4. Parses the JSON output
-    5. Returns a dictionary of task name -> {module -> KnownTask}
+    2. Uses py-rattler to solve and install the conda requirements
+    3. Optionally installs PyPI requirements via pip into the environment
+    4. Calls wt-registry CLI in that environment
+    5. Parses the JSON output
+    6. Returns a dictionary of task name -> {module -> KnownTask}
 
     Args:
-        requirements: List of package requirements to install
+        requirements: List of conda package requirements to install
         channels: Optional list of channels (defaults to conda-forge)
         platform: Optional Platform object (defaults to current platform)
+        pypi_requirements: Optional list of PyPI requirements to pip-install
         on_progress: Optional callback invoked with a status message at each phase
 
     Returns:
@@ -68,6 +73,7 @@ async def discover_tasks_from_requirements(
     Raises:
         RegistryNotFoundError: If wt-registry is not installed in the environment
         RegistryExecutionError: If wt-registry CLI returns non-zero exit code
+        PyPIInstallError: If pip install of a PyPI requirement fails
         json.JSONDecodeError: If CLI output is not valid JSON
         ValueError: If CLI output doesn't match expected schema
 
@@ -94,6 +100,14 @@ async def discover_tasks_from_requirements(
         else:
             platform = Platform("linux-64")  # fallback
 
+    # When PyPI requirements exist, ensure python and uv are in conda requirements
+    if pypi_requirements:
+        existing_names = {str(r.name.normalized) for r in requirements if r.name}
+        if "python" not in existing_names:
+            requirements = [MatchSpec("python"), *requirements]
+        if "uv" not in existing_names:
+            requirements = [*requirements, MatchSpec("uv")]
+
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
         env_path = Path(tmpdir) / "env"
 
@@ -103,6 +117,49 @@ async def discover_tasks_from_requirements(
         records = await _create_environment(
             env_path, requirements, channels, platform, on_progress=on_progress
         )
+
+        # Install PyPI requirements into the environment via uv
+        if pypi_requirements:
+            if on_progress is not None:
+                on_progress("Installing PyPI dependencies...")
+            uv_exe = (
+                env_path / "Scripts" / "uv.exe"
+                if sys.platform == "win32"
+                else env_path / "bin" / "uv"
+            )
+            env_python = (
+                env_path / "Scripts" / "python.exe"
+                if sys.platform == "win32"
+                else env_path / "bin" / "python"
+            )
+            for pypi_req in pypi_requirements:
+                pip_arg = pypi_req.to_pip_install_arg()
+                # Handle editable installs which start with "-e "
+                if pip_arg.startswith("-e "):
+                    uv_args = [
+                        str(uv_exe),
+                        "pip",
+                        "install",
+                        "--python",
+                        str(env_python),
+                        "-e",
+                        pip_arg[3:],
+                    ]
+                else:
+                    uv_args = [str(uv_exe), "pip", "install", "--python", str(env_python), pip_arg]
+                uv_result = subprocess.run(
+                    uv_args,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                if uv_result.returncode != 0:
+                    raise PyPIInstallError(
+                        requirement=pypi_req,
+                        returncode=uv_result.returncode,
+                        stdout=uv_result.stdout,
+                        stderr=uv_result.stderr,
+                    )
 
         # Determine the executable path based on platform
         if sys.platform == "win32":
@@ -117,22 +174,8 @@ async def discover_tasks_from_requirements(
                 requirements=requirements,
             )
 
-        # Derive task module paths from requirements
-        # Convention: package 'foo-bar' has tasks in 'foo_bar.tasks'
-        task_modules = []
-        for req in requirements:
-            # Extract package name from MatchSpec (convert to string)
-            pkg_name = str(req.name.normalized) if req.name else None
-            # Skip wt-registry itself and other non-task packages
-            if pkg_name and not pkg_name.startswith("wt-"):
-                # Convert package name to module path: foo-bar -> foo_bar.tasks
-                module_path = pkg_name.replace("-", "_") + ".tasks"
-                task_modules.append(module_path)
-
-        # Build CLI command with --package arguments
+        # Build CLI command — wt-registry auto-discovers via entry points
         cli_args = [str(wt_registry_exe), "--format", "json"]
-        for module in task_modules:
-            cli_args.extend(["--package", module])
 
         # Call wt-registry CLI in the environment
         if on_progress is not None:
@@ -191,7 +234,25 @@ async def discover_tasks_from_requirements(
                 known_task.registry_ref = len(discovered_tasks[function_name])
                 discovered_tasks[function_name][public_module_path] = known_task
 
-        return DiscoveryResult(tasks=discovered_tasks, records=records)
+        # Detect if wt-registry came from PyPI (not in conda records)
+        wt_pypi_deps: dict[str, str | dict[str, Any]] | None = None
+        wt_registry_in_conda = any(str(r.name.normalized) == "wt-registry" for r in records)
+        if not wt_registry_in_conda:
+            from wt_compiler.pypi_source import (
+                derive_sibling_pypi_requirement,
+                detect_pypi_source,
+            )
+
+            direct_url, version = detect_pypi_source("wt-registry", env_path)
+            wt_pypi_deps = {}
+            for sibling in ("wt-runner", "wt-task"):
+                req = derive_sibling_pypi_requirement("wt-registry", sibling, direct_url, version)
+                if isinstance(req, str):
+                    wt_pypi_deps[sibling] = req
+                else:
+                    wt_pypi_deps[sibling] = req.to_pixi_dict()
+
+        return DiscoveryResult(tasks=discovered_tasks, records=records, wt_pypi_deps=wt_pypi_deps)
 
 
 async def _create_environment(
@@ -305,9 +366,10 @@ async def _create_environment(
 async def populate_known_tasks(
     requirements: list[MatchSpec],
     channels: list[Channel] | None = None,
+    pypi_requirements: list[PyPIRequirement] | None = None,
     on_progress: Callable[[str], None] | None = None,
     **kwargs: Any,
-) -> list[Any]:
+) -> DiscoveryResult:
     """Discover tasks and populate the global known_tasks dictionary.
 
     This async convenience function calls discover_tasks_from_requirements
@@ -318,11 +380,12 @@ async def populate_known_tasks(
         channels: Optional list of channels to search for packages.
             If not provided, defaults to conda-forge in discover_tasks_from_requirements.
             For custom package channels, this parameter must be provided.
+        pypi_requirements: Optional list of PyPI requirements to pip-install
         on_progress: Optional callback invoked with a status message at each phase
         **kwargs: Additional arguments to pass to discover_tasks_from_requirements
 
     Returns:
-        List of RepoDataRecord objects from the solved environment
+        DiscoveryResult containing tasks, records, and optional wt_pypi_deps
 
     Examples:
         >>> from rattler import MatchSpec
@@ -333,11 +396,15 @@ async def populate_known_tasks(
         True
     """
     result = await discover_tasks_from_requirements(
-        requirements, channels=channels, on_progress=on_progress, **kwargs
+        requirements,
+        channels=channels,
+        pypi_requirements=pypi_requirements,
+        on_progress=on_progress,
+        **kwargs,
     )
     known_tasks.clear()
     known_tasks.update(result.tasks)
-    return result.records
+    return result
 
 
 async def discover_tasks_from_spec_requirements(
@@ -378,11 +445,12 @@ async def discover_tasks_from_spec_requirements(
     unique_channels = list({c.name or c.base_url: c for c in channels}.values())
 
     # Add all known channels for transitive dependency resolution
-    # This uses CHANNELS from requirements.py as the single source of truth
-    for known_channel in CHANNELS:
-        key = known_channel.name or known_channel.base_url
-        if key not in {c.name or c.base_url for c in unique_channels}:
-            unique_channels.append(known_channel)
+    # (only needed when there are actual conda requirements from custom channels)
+    if spec_requirements:
+        for known_channel in CHANNELS:
+            key = known_channel.name or known_channel.base_url
+            if key not in {c.name or c.base_url for c in unique_channels}:
+                unique_channels.append(known_channel)
 
     return await discover_tasks_from_requirements(
         match_specs,
