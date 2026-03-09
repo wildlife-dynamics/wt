@@ -497,7 +497,7 @@ class DagCompiler(BaseModel):
             if task_pkg in self.wt_pypi_deps:
                 pypi_dependencies[task_pkg] = self.wt_pypi_deps[task_pkg]
 
-        runner_feature = Feature(dependencies=runner_conda_deps, pypi_dependencies=runner_pypi_deps)
+        runner_feature = Feature(dependencies=runner_conda_deps, pypi_dependencies=runner_pypi_deps)  # type: ignore[call-arg]
 
         # 5. Build feature.test (dependencies + tasks)
         test_dependencies: dict[str, NamelessMatchSpec] = {
