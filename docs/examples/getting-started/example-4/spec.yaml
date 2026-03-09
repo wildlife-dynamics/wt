@@ -9,8 +9,8 @@ workflow:
     name: "Add Two Numbers"
     task: add
     partial:
-      a: 1
-      b: 1
+      a: 4
+      b: 8
 
   - id: digits
     name: "Split Into Digits"

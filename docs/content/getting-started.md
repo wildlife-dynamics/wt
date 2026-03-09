@@ -256,9 +256,9 @@ pixi run wt-add-then-split-workflow run
 
 **Key points:**
 
-- Both parameters of `add` are bound via `partial`, so there are no user-facing
-  parameters.
-- `split_digits` returns `["1", "2"]` — a list of strings.
+- Both parameters of `add` are bound via `partial` (`4 + 8 = 12`), so there are
+  no user-facing parameters.
+- `split_digits(12)` returns `["1", "2"]` — a list of strings.
 - This output is a natural input for `map`, which we cover in
   [Tutorials](tutorials.md#map-fan-out).
 
