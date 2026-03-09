@@ -234,6 +234,12 @@ and `b` and watch the `formData` update live:
 
 <div class="rjsf-form" data-schema-url="../examples/getting-started/single-task/rjsf.json"></div>
 
+??? example "rjsf.json"
+
+    ```json
+    --8<-- "examples/getting-started/single-task/rjsf.json"
+    ```
+
 **The pipeline:** Type annotations → JSON Schema → RJSF web form.
 
 The form is generated entirely from the type annotations on your `add`

@@ -44,6 +44,18 @@ pixi run wt-add-with-partial-workflow run --config-json '{"total": {"a": 1}}'
 - Partial arguments can be literal values (integers, strings, lists) or
   `${{ }}` references to other task outputs.
 
+### Auto-generated form
+
+Because `b` is fixed via `partial`, the form only shows `a`:
+
+<div class="rjsf-form" data-schema-url="../examples/getting-started/partial/rjsf.json"></div>
+
+??? example "rjsf.json"
+
+    ```json
+    --8<-- "examples/getting-started/partial/rjsf.json"
+    ```
+
 ---
 
 ## Chaining task outputs
@@ -88,6 +100,12 @@ user-facing configuration. The generated web form only shows fields for
 `total`:
 
 <div class="rjsf-form" data-schema-url="../examples/getting-started/chaining-tasks/rjsf.json"></div>
+
+??? example "rjsf.json"
+
+    ```json
+    --8<-- "examples/getting-started/chaining-tasks/rjsf.json"
+    ```
 
 For more on how the compiler generates form schemas, see
 [Concepts — Auto-generated web forms](concepts.md#auto-generated-web-forms).
@@ -142,6 +160,12 @@ pixi run workflow run
 
 `map` always produces a **list** whose length matches the input iterable.
 Partial arguments (if any) are applied to every invocation.
+
+!!! info "No web form for this workflow"
+    Every parameter in this workflow is bound at compile time — `add` receives
+    both `a` and `b` via `partial`, and the remaining tasks receive their inputs
+    from `${{ }}` references or `map`. The compiled `rjsf.json` would contain an
+    empty schema with no user-facing fields.
 
 For the complete `map` and `mapvalues` reference, see
 [spec.yaml — map](reference/spec-yaml.md#map).

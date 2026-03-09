@@ -214,6 +214,12 @@ Here is a live form generated from the add-then-double workflow:
 
 <div class="rjsf-form" data-schema-url="../examples/getting-started/chaining-tasks/rjsf.json"></div>
 
+??? example "rjsf.json"
+
+    ```json
+    --8<-- "examples/getting-started/chaining-tasks/rjsf.json"
+    ```
+
 **The pipeline:** Type annotations → JSON Schema → RJSF web form.
 
 The compiler produces two schema files:
