@@ -44,21 +44,18 @@ workflow:
 
 ## `requirements`
 
-Each entry describes a conda package needed at runtime.
+Each entry describes a package needed at runtime. Requirements come in two
+flavors — **conda** and **PyPI** — and can be mixed freely.
 
-!!! note
-    `requirements` currently resolves from **conda channels only**. PyPI
-    support is on the roadmap. See
-    [Concepts — Tooling](../concepts.md#tooling) for details on packaging
-    options and the PyPI roadmap.
+### Conda requirements
+
+Conda packages are resolved from conda channels during environment creation.
 
 !!! warning "Restricted conda channels"
     The compiler only supports a fixed set of conda channels (`conda-forge`,
     `microsoft`, the `ecoscope-workflows` prefix.dev channels, and local
     file-based development channels). Using an unsupported channel will raise a
-    validation error. See
-    [Concepts — Tooling](../concepts.md#how-requirements-resolves) for the
-    full list.
+    validation error.
 
 ```yaml
 requirements:
@@ -78,6 +75,81 @@ requirements:
 | `requirement` | string | yes* | — | Shorthand that combines name and version (e.g. `"pandas>=2.0.0"`). |
 
 \* Provide either `name`/`version` or `requirement`, not both.
+
+### PyPI requirements
+
+PyPI requirements reference packages from a local path, a Git repository, or
+a direct URL. They are installed via `uv pip install` into the conda
+environment during task discovery and appear in the compiled workflow's
+`pixi.toml` under `[pypi-dependencies]`.
+
+The compiler distinguishes PyPI requirements from conda requirements
+automatically: any entry with a `git`, `path`, or `url` key is treated as
+PyPI.
+
+**Local path** — simplest option for local development:
+
+```yaml
+requirements:
+  - name: my-tasks
+    path: /home/user/my-tasks
+  - name: my-other-tasks
+    path: /home/user/my-other-tasks
+    editable: true
+```
+
+**Git repository:**
+
+```yaml
+requirements:
+  - name: my-tasks
+    git: https://github.com/org/my-tasks.git
+  - name: my-tasks
+    git: https://github.com/org/my-tasks.git
+    tag: v1.0.0
+```
+
+**Direct URL:**
+
+```yaml
+requirements:
+  - name: my-tasks
+    url: https://example.com/my_tasks-1.0.0-py3-none-any.whl
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|:--------:|---------|-------------|
+| `name` | string | yes | — | Package name. |
+| `git` | string | one of `git`/`path`/`url` | — | Git repository URL. |
+| `rev` | string | no | — | Git commit hash (only with `git`). |
+| `branch` | string | no | — | Git branch name (only with `git`). |
+| `tag` | string | no | — | Git tag name (only with `git`). |
+| `path` | string | one of `git`/`path`/`url` | — | Absolute local filesystem path (not `file://` URLs, not relative). |
+| `editable` | bool | no | — | Install in editable mode (only with `path`). |
+| `url` | string | one of `git`/`path`/`url` | — | Direct URL to a wheel or sdist. |
+| `subdirectory` | string | no | — | Subdirectory within the source to install from. |
+| `extras` | list | no | — | List of extras to install (e.g. `["dev", "test"]`). |
+
+**Validation rules:**
+
+- Exactly one of `git`, `path`, or `url` must be set.
+- At most one of `rev`, `branch`, or `tag` may be set (and only with `git`).
+- `editable` is only valid with `path`.
+- `path` must be an absolute filesystem path (not relative, not a `file://` URL).
+
+### Mixed requirements
+
+Conda and PyPI requirements can appear together:
+
+```yaml
+requirements:
+  - name: python
+    version: ">=3.10,<4"
+  - name: pandas
+    version: ">=2.0"
+  - name: my-tasks
+    path: /home/user/my-tasks
+```
 
 ---
 

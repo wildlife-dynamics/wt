@@ -1,0 +1,10 @@
+id: add_two_numbers
+
+requirements:
+  - name: custom-tasks
+    path: /absolute/path/to/custom-tasks
+
+workflow:
+  - id: sum
+    name: "Add Two Numbers"
+    task: add

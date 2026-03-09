@@ -1,39 +1,32 @@
 # Getting Started
 
-This guide walks you through building a workflow end-to-end: register task
-functions, wire them together in a `spec.yaml`, compile the workflow, and run
-it. By the end you will have a working workflow that generates numbers, doubles
-them, and sums the results.
+Build a workflow from scratch in seven steps. Each step adds one concept and
+produces a runnable workflow you can compile and test.
 
 ---
 
 ## Prerequisites
 
 - Python 3.10 or later
-- [uv](https://docs.astral.sh/uv/) or [pixi](https://pixi.sh) — see
-  [Concepts — Tooling](concepts.md#tooling) for when to use which
-- [pixi](https://pixi.sh) is **required** to run compiled workflows
+- [uv](https://docs.astral.sh/uv/) — for package development and running the compiler
+- [pixi](https://pixi.sh) — **required** to run compiled workflows
+- `wt-compiler` — install with `uv pip install wt-compiler` or `pixi global install wt-compiler`
 
 ---
 
-## 1. Create a task package
-
-!!! tip "Already have tasks?"
-    If you're composing a workflow entirely from tasks in an existing registry,
-    skip to [Step 2. Write the spec](#2-write-the-spec).
+## Step 1 — Create a task package
 
 The compiler discovers tasks by installing packages into an ephemeral
-environment and running `wt-registry` as a subprocess. This means your tasks
-must live in an **installable Python package** — a standalone `.py` file is not
-enough.
+environment and running `wt-registry` as a subprocess. Your tasks must live in
+an **installable Python package**.
 
-Set up the following directory structure:
+### Directory structure
 
 ```
-my-tasks/
+custom-tasks/
 ├── pyproject.toml
 └── src/
-    └── my_tasks/
+    └── custom_tasks/
         ├── __init__.py
         └── tasks.py
 ```
@@ -41,523 +34,258 @@ my-tasks/
 ### `pyproject.toml`
 
 ```toml
-[build-system]
-requires = ["setuptools>=64"]
-build-backend = "setuptools.build_meta"
-
-[project]
-name = "my-tasks"
-version = "0.1.0"
-requires-python = ">=3.10"
-dependencies = [
-    "wt-registry",
-    "wt-task",
-]
-
-[tool.setuptools.packages.find]
-where = ["src"]
+--8<-- "examples/custom-tasks/pyproject.toml"
 ```
 
-### `src/my_tasks/__init__.py`
+The `[project.entry-points."wt_registry"]` section tells `wt-registry` which
+module to import when discovering tasks. Without this entrypoint, the compiler
+will not find your functions.
 
-Re-export the task functions so the compiler can import them with a clean path:
-
-```python
-from my_tasks.tasks import double_number, generate_numbers, sum_numbers
-```
-
-### `src/my_tasks/tasks.py`
+### `src/custom_tasks/tasks.py`
 
 Every registered function **must** have complete type annotations on all
 parameters and on the return type. These annotations drive JSON schema
 generation for web forms and compile-time validation.
 
 ```python
-"""Simple numeric tasks for our first workflow."""
-
-from wt_registry import register
-
-
-@register(description="Generate a list of integers from 0 to count-1.")
-def generate_numbers(count: int) -> list[int]:
-    return list(range(count))
-
-
-@register(description="Double a single integer.")
-def double_number(value: int) -> int:
-    return value * 2
-
-
-@register(description="Sum a list of integers.")
-def sum_numbers(values: list[int]) -> int:
-    return sum(values)
+--8<-- "examples/custom-tasks/src/custom_tasks/tasks.py"
 ```
 
 The `@register` decorator auto-generates a title from the function name
-(`generate_numbers` becomes *Generate Numbers*), stores the entry in a global
-registry, and returns the original function unchanged.
-
-### Decorator parameters
-
-All parameters are keyword-only and optional:
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `title` | `str \| None` | Auto-generated from function name | Human-readable title |
-| `description` | `str \| None` | `None` | Detailed description |
-| `tags` | `list[str] \| None` | `[]` | Categorization tags (e.g. `["statistics", "math"]`) |
-| `deprecated` | `bool` | `False` | Mark the function as deprecated |
-| `deprecation_message` | `str \| None` | `None` | Explain what to use instead |
+(`add` becomes *Add*), stores the entry in a global registry, and returns the
+original function unchanged.
 
 ### Install and verify
 
-Install your package in editable mode, then verify the tasks are discoverable:
-
 ```bash
-pip install -e ./my-tasks
-wt-registry --package my_tasks --format pretty
+uv venv
+uv pip install -e ./custom-tasks
+uv run wt-registry --package custom_tasks --format pretty
 ```
 
-You should see output like:
+You should see each function listed with its title, description, and import
+path.
 
-```
-=== my_tasks.tasks.generate_numbers ===
-Title: Generate Numbers
-Description: Generate a list of integers from 0 to count-1.
-Deprecated: No
-Import: from my_tasks.tasks import generate_numbers as generate_numbers
+??? example "Expected `--format pretty` output"
 
-=== my_tasks.tasks.double_number ===
-Title: Double Number
-Description: Double a single integer.
-Deprecated: No
-Import: from my_tasks.tasks import double_number as double_number
+    ```
+    === custom_tasks.tasks.add ===
+    Title: Add
+    Description: Add two integers.
+    Deprecated: No
+    Import: from custom_tasks.tasks import add
 
-=== my_tasks.tasks.sum_numbers ===
-Title: Sum Numbers
-Description: Sum a list of integers.
-Deprecated: No
-Import: from my_tasks.tasks import sum_numbers as sum_numbers
-```
+    === custom_tasks.tasks.double ===
+    Title: Double
+    Description: Double a number.
+    Deprecated: No
+    Import: from custom_tasks.tasks import double
 
-Use `--format json` (the default) to see the machine-readable output that
-the compiler consumes, or add `--function calculate_mean` to filter by name.
+    === custom_tasks.tasks.split_digits ===
+    Title: Split Digits
+    Description: Split an integer into its individual digits as strings.
+    Deprecated: No
+    Import: from custom_tasks.tasks import split_digits
 
-### Validation rules
+    === custom_tasks.tasks.parse_int ===
+    Title: Parse Int
+    Description: Parse a string as an integer.
+    Deprecated: No
+    Import: from custom_tasks.tasks import parse_int
+    ```
 
-wt-registry uses **lazy validation**: the `@register` decorator itself does
-not validate your function's signature. Validation happens when the JSON schema
-is first accessed (typically during CLI export or compilation).
+??? example "Expected `--format json` output (what the compiler consumes)"
 
-| Rule | Error |
-|------|-------|
-| All parameters must have type annotations | `ValidationError: ... has untyped parameters: x` |
-| Return type must be annotated | `ValidationError: ... has no return type annotation` |
-| Async functions are not supported | `ValidationError: Async functions are not supported` |
-| Classes cannot be registered | `ValidationError: Classes are not supported` |
-| Duplicate fully-qualified names | `DuplicateRegistrationError` (raised at import time) |
+    Use `--format json` (the default) to see the machine-readable output.
+    The compiler consumes this JSON to generate web forms and perform
+    input validation — each entry's `json_schema` defines the parameter
+    types and constraints that drive the auto-generated UI.
 
-### Packaging for distribution
+    ```bash
+    uv run wt-registry --package custom_tasks --format json
+    ```
 
-For the compiler to resolve your task package from `requirements:`, it must be
-available on a conda channel. The simplest approach for local development is a
-**local file-based conda channel** built with `pixi build`.
+    ```json
+    {"entries":{"custom_tasks.tasks.add":{"metadata":{"title":"Add","description":"Add two integers.","tags":[],"deprecated":false,"deprecation_message":null},"module_path":"custom_tasks.tasks","public_module_path":"custom_tasks.tasks","function_name":"add","import_statement":"from custom_tasks.tasks import add as add","json_schema":{"additionalProperties":false,"properties":{"a":{"title":"A","type":"integer"},"b":{"title":"B","type":"integer"}},"required":["a","b"],"type":"object"}},"custom_tasks.tasks.double":{"metadata":{"title":"Double","description":"Double a number.","tags":[],"deprecated":false,"deprecation_message":null},"module_path":"custom_tasks.tasks","public_module_path":"custom_tasks.tasks","function_name":"double","import_statement":"from custom_tasks.tasks import double as double","json_schema":{"additionalProperties":false,"properties":{"n":{"anyOf":[{"type":"integer"},{"type":"number"}],"title":"N"}},"required":["n"],"type":"object"}},"custom_tasks.tasks.split_digits":{"metadata":{"title":"Split Digits","description":"Split an integer into its individual digits as strings.","tags":[],"deprecated":false,"deprecation_message":null},"module_path":"custom_tasks.tasks","public_module_path":"custom_tasks.tasks","function_name":"split_digits","import_statement":"from custom_tasks.tasks import split_digits as split_digits","json_schema":{"additionalProperties":false,"properties":{"n":{"title":"N","type":"integer"}},"required":["n"],"type":"object"}},"custom_tasks.tasks.parse_int":{"metadata":{"title":"Parse Int","description":"Parse a string as an integer.","tags":[],"deprecated":false,"deprecation_message":null},"module_path":"custom_tasks.tasks","public_module_path":"custom_tasks.tasks","function_name":"parse_int","import_statement":"from custom_tasks.tasks import parse_int as parse_int","json_schema":{"additionalProperties":false,"properties":{"s":{"title":"S","type":"string"}},"required":["s"],"type":"object"}}},"version":"1.0.0"}
+    ```
 
-#### Using pixi build
-
-```bash
-# Build a conda package from your pixi project
-pixi build
-```
-
-This produces a local conda package. Point the compiler to the output directory
-as a local channel.
-
-#### Standard pip packaging
-
-Task packages use standard `pyproject.toml` and can be published to PyPI or
-installed locally. This works for local development and registries whose
-dependencies are all on PyPI. However, the compiler's `requirements:` section
-currently resolves from **conda channels only** — see
-[Concepts — Tooling](concepts.md#tooling) for details and the PyPI roadmap.
-
-#### Key requirements for discoverability
-
-- Your package must declare `wt-registry` as a dependency (so the CLI is
-  available in the ephemeral environment).
-- Your tasks must be importable via the package name (i.e. `import my_tasks`
-  must trigger registration).
-- Every task function must have complete type annotations.
-
-### JSON schema generation
-
-Behind the scenes, wt-registry generates a JSON schema from each function's
-type annotations using Pydantic's `TypeAdapter`. You can inspect a function's
-schema directly:
-
-```python
-import json
-from wt_registry import get_registry
-import my_tasks  # noqa: F401
-
-registry = get_registry()
-entry = registry["my_tasks.tasks.generate_numbers"]
-print(json.dumps(entry.json_schema, indent=2))
-```
-
-You can use `pydantic.Field` inside `typing.Annotated` to add descriptions,
-defaults, and other metadata to individual parameters:
-
-```python
-from typing import Annotated
-from pydantic import Field
-
-@register()
-def calculate_mean(
-    values: Annotated[
-        list[float],
-        Field(description="List of numeric values to average"),
-    ],
-) -> float:
-    return sum(values) / len(values)
-```
+For more on the decorator, validation rules, and JSON schema generation, see
+the [wt-registry reference](reference/wt-registry.md).
 
 ---
 
-## 2. Write the spec
+## Step 2 — Set up results
 
-Create a file called `spec.yaml` next to your task package:
+Compiled workflows write their output to a **results directory**. The location
+is controlled by an environment variable (default: `WT_RESULTS`).
 
-```yaml
-id: double_and_sum
-
-requirements:
-  - name: my-tasks
-    version: ">=0.1.0"
-
-workflow:
-  # Step 1: generate a list of numbers
-  - id: numbers
-    name: "Generate Numbers"
-    task: generate_numbers
-
-  # Step 2: double each number (map over the list)
-  - id: doubled
-    name: "Double Each Number"
-    task: double_number
-    map:
-      argnames: value
-      argvalues: ${{ workflow.numbers.return }}
-
-  # Step 3: sum the doubled values
-  - id: total
-    name: "Sum Results"
-    task: sum_numbers
-    partial:
-      values: ${{ workflow.doubled.return }}
+```bash
+mkdir results
+export WT_RESULTS=file://$(pwd)/results
 ```
 
-**`id`** — A unique identifier for the workflow (valid Python identifier).
+Each workflow run writes a `result.json` file with three fields:
 
-**`requirements`** — Conda packages the workflow depends on at runtime. The
-compiler uses these to discover which tasks are available.
+- **`result`** — the return value of the terminal task (any JSON-serializable type)
+- **`error`** — error details if the workflow failed, otherwise `null`
+- **`trace`** — the Python traceback string if the workflow errored, otherwise `null`
 
-**`workflow`** — An ordered list of task instances. Each entry specifies:
-
-- **`id`** — A unique name for this step, used to reference its return value
-  elsewhere via `${{ workflow.<id>.return }}`.
-- **`task`** — The registered function name (or a fully-qualified dotted path
-  if names collide).
-- **`partial`** — Static keyword arguments bound to the task.
-- **`map`** — Applies the task to each element of an iterable, producing a list
-  of results. `argnames` names the parameter to bind and `argvalues` is a
-  reference to the iterable.
-
-Tasks must appear in **topological order** — every dependency is listed before
-the task that uses it.
-
-### Additional patterns
-
-**Fan-out with `mapvalues`** — like `map`, but operates on key-value pairs and
-preserves the keys. The upstream task must return a `Sequence[tuple[K, V]]`:
-
-```yaml
-  - id: results
-    task: process_group
-    mapvalues:
-      argnames: group_data
-      argvalues: ${{ workflow.grouped.return }}
-```
-
-**Conditional execution with `skipif`** — skip a task based on boolean
-condition functions:
-
-```yaml
-  - id: expensive_step
-    task: run_model
-    partial:
-      data: ${{ workflow.fetch.return }}
-    skipif:
-      conditions:
-        - is_dry_run
-      unpack_depth: 1
-```
-
-**Task groups** — group related tasks under a heading for organization (no
-effect on execution):
-
-```yaml
-  - type: task-group
-    title: "Data Ingestion"
-    description: "Fetch data from all sources"
-    tasks:
-      - id: fetch_a
-        task: fetch_source_a
-      - id: fetch_b
-        task: fetch_source_b
-```
-
-For the complete field-by-field reference, see [`spec.yaml`](reference/spec-yaml.md).
+Cloud storage (`gs://`, `s3://`) is also supported via
+[obstore](https://developmentseed.org/obstore/).
 
 ---
 
-## 3. Compile the workflow
+## Step 3 — Single task
 
-!!! warning "Requirements resolve from conda channels"
-    The `requirements:` section resolves packages from **conda channels only**.
-    `my-tasks` must be available as a conda package for the compiler to discover
-    it. See [Packaging for distribution](#packaging-for-distribution) above
-    for instructions on building conda packages from your task code. PyPI
-    support in `requirements:` is on the roadmap.
+The simplest workflow: one task, all parameters provided by the user at
+runtime.
 
-Run the compiler:
+```yaml
+--8<-- "examples/getting-started/example-1/spec.yaml"
+```
+
+!!! note "Replace the path"
+    Change `/absolute/path/to/custom-tasks` to the actual absolute path to
+    your `custom-tasks/` directory.
+
+**Compile and run:**
 
 ```bash
 wt-compiler compile --spec spec.yaml
+cd wt-add-two-numbers-workflow
+pixi run wt-add-two-numbers-workflow run --config-json '{"sum": {"a": 1, "b": 2}}'
 ```
 
-The compiler:
+The compiler generates a directory named `wt-add-two-numbers-workflow`
+containing a **pixi project** with a pixi task (entrypoint) of the same name.
+The `--config-json` keys correspond to the **task instance IDs** from the spec.
+For full detail on compiled artifacts, see the
+[wt-compiler reference](reference/wt-compiler.md).
 
-1. **Parses** the `requirements` from your spec.
-2. **Creates an ephemeral conda environment** (via
-   [py-rattler](https://github.com/conda/rattler)) containing those packages.
-3. **Discovers tasks** by running the `wt-registry` CLI inside that environment.
-4. **Validates** the spec against the discovered tasks.
-5. **Generates** the compiled artifacts.
+**Expected result** (contents of `result.json` in your results directory):
 
-On success:
-
-```
-Compiled workflow to: /path/to/wt-double-and-sum
+```json
+{"result": 3, "error": null, "trace": null}
 ```
 
-### CLI options
+**Key points:**
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--spec FILE` | *(required)* | Path to the workflow `spec.yaml`. |
-| `--clobber` | off | Overwrite the output directory if it already exists. |
-| `--update` | off | Carry over the lockfile from the previous build and bump the version. Requires `--clobber` and must not be combined with `--install`. |
-| `--install` | off | Run `pixi install -a` after compilation to generate a lockfile. |
-| `--pkg-name-prefix PREFIX` | `wt` | Prefix for the generated package and directory names. |
-| `--variant VARIANT` | *none* | Platform variant suffix (e.g. `--variant gcp` emits GCP dependencies). |
-| `--results-env-var ENV_VAR` | `WT_RESULTS` | Environment variable the generated CLI reads for the results URL. |
-| `--no-progress` | off | Disable the progress spinner (useful in CI). |
-
-### Common recipes
-
-```bash
-# Overwrite an existing build
-wt-compiler compile --spec spec.yaml --clobber
-
-# Re-compile and preserve the lockfile (bumps version)
-wt-compiler compile --spec spec.yaml --clobber --update
-
-# Compile and install dependencies
-wt-compiler compile --spec spec.yaml --install
-
-# Compile with GCP variant
-wt-compiler compile --spec spec.yaml --variant gcp
-
-# Change the package name prefix
-wt-compiler compile --spec spec.yaml --pkg-name-prefix myorg
-```
-
-### Troubleshooting
-
-| Error | Fix |
-|-------|-----|
-| `FileExistsError: Path '...' already exists` | Add `--clobber` to overwrite. |
-| `wt-registry executable not found` | Ensure at least one package in `requirements` depends on `wt-registry`, or add it explicitly. |
-| `wt-registry CLI failed with exit code ...` | Check for incompatible versions, missing dependencies, or import errors in task modules. |
-| `Environment creation failed during solve phase` | Check package names, version constraints, and channel reachability. |
-| `Task '<name>' not found in known tasks` | Verify the task is decorated with `@register`, the package is in `requirements`, and the name is spelled correctly. Use the fully qualified path if two packages export the same function name. |
-
-### Compiled artifacts
-
-The compiler produces a self-contained package directory:
-
-```
-wt-double-and-sum/
-├── pixi.toml                 # Reproducible environment definition
-├── Dockerfile                # Container image for deployment
-├── .dockerignore
-├── README.md                 # Auto-generated documentation with DAG graph
-├── VERSION.yaml              # Semantic version tracking
-├── graph.png                 # Visual DAG of the workflow
-├── tests/
-│   ├── conftest.py
-│   ├── test_metadata.py
-│   └── test_results.py
-└── wt_double_and_sum/        # Python package
-    ├── __init__.py
-    ├── params.json            # JSON Schema for workflow parameters
-    ├── params.py              # Pydantic parameter models
-    ├── formdata.py            # Form-data models for web UIs
-    ├── rjsf.json              # React JSON Schema Form configuration
-    ├── cli.py                 # CLI entry point for running the workflow
-    ├── dispatch.py            # Dispatch logic for execution backends
-    ├── metadata.py            # Workflow metadata
-    ├── response.py            # Response models
-    └── dags/
-        ├── __init__.py
-        ├── run_sequential.py       # Sequential DAG execution code
-        └── run_sequential_mock_io.py  # DAG with mocked I/O for testing
-```
-
-### What the compiled DAG looks like
-
-The generated `run_sequential.py` contains code similar to this (simplified):
-
-```python
-from my_tasks import generate_numbers, double_number, sum_numbers
-from wt_task import task
-
-# Wrap each imported function as a Task
-generate_numbers = task(generate_numbers)
-double_number = task(double_number)
-sum_numbers = task(sum_numbers)
-
-def run(params: dict):
-    # Step 1: generate numbers
-    numbers = (
-        generate_numbers
-        .set_task_instance_id("numbers")
-        .validate()
-        .handle_errors()
-        .call(count=params["numbers"]["count"])
-    )
-
-    # Step 2: double each number (map)
-    doubled = (
-        double_number
-        .set_task_instance_id("doubled")
-        .validate()
-        .handle_errors()
-        .map("value", numbers)
-    )
-
-    # Step 3: sum results
-    total = (
-        sum_numbers
-        .set_task_instance_id("total")
-        .partial(values=doubled)
-        .validate()
-        .handle_errors()
-        .call()
-    )
-
-    return total
-```
-
-Each task is wrapped with `wt-task`, given a unique instance ID, then executed
-via `.call()` or `.map()`. The `.validate()` method adds Pydantic parsing so
-string inputs from a web form or CLI are coerced to the correct Python types.
+- The `requirements` section uses a `path:` source to reference your local task
+  package — no conda channel needed.
+- Both parameters (`a` and `b`) are unbound, so they become user-facing
+  configuration.
+- The `--config-json` key `"sum"` matches the task instance `id` in the spec.
 
 ---
 
-## 4. Run the workflow
+## Step 4 — Partial arguments
 
-### Install dependencies
+Bind one parameter at compile time so only the other is user-configurable.
 
-```bash
-cd wt-double-and-sum
-pixi install
-```
-
-### Run via the generated CLI
-
-Pass parameters as a JSON string:
-
-```bash
-pixi run workflow run --config-json '{"numbers": {"count": 5}}'
-```
-
-Or create a YAML config file:
-
-```yaml title="config.yaml"
-numbers:
-  count: 5
+```yaml
+--8<-- "examples/getting-started/example-2/spec.yaml"
 ```
 
 ```bash
-pixi run workflow run --config-file config.yaml
+wt-compiler compile --spec spec.yaml --clobber
+cd wt-add-with-partial-workflow
+pixi run wt-add-with-partial-workflow run --config-json '{"sum": {"a": 1}}'
 ```
 
-Parameter keys correspond to **task instance IDs** from the spec. Only
-parameters that are *not* wired to other task outputs appear here — `numbers.count`
-is the only user-facing parameter because `doubled` and `total` get their
-inputs from other task outputs.
-
-### Inspect the output
-
-The workflow prints a JSON result to stdout:
+**Expected result** (contents of `result.json` in your results directory):
 
 ```json
-{
-  "result": 20
-}
+{"result": 6, "error": null, "trace": null}
 ```
 
-The result is `20` because: `generate_numbers(5)` produces `[0, 1, 2, 3, 4]`,
-`double_number` maps over each to produce `[0, 2, 4, 6, 8]`, and
-`sum_numbers` returns `0 + 2 + 4 + 6 + 8 = 20`.
+**Key points:**
 
-### Run with mock I/O
+- `partial` fixes `b` to `5`. Only `a` remains as a user parameter.
+- The result is `1 + 5 = 6`.
 
-If your workflow includes tasks tagged with `io`, the compiler generates a mock
-variant. Activate it with `--mock-io`:
+---
+
+## Step 5 — Piping task outputs
+
+Chain two tasks together so the output of one feeds into the next.
+
+```yaml
+--8<-- "examples/getting-started/example-3/spec.yaml"
+```
 
 ```bash
-pixi run workflow run --config-file config.yaml --mock-io
+wt-compiler compile --spec spec.yaml --clobber
+cd wt-add-then-double-workflow
+pixi run wt-add-then-double-workflow run --config-json '{"sum": {"a": 3, "b": 3}}'
 ```
 
-### OpenTelemetry tracing
+**Expected result** (contents of `result.json` in your results directory):
+
+```json
+{"result": 12, "error": null, "trace": null}
+```
+
+**Key points:**
+
+- `${{ workflow.sum.return }}` references the return value of the `sum` task.
+- Tasks must appear in **topological order** — every dependency before its
+  dependent.
+- The terminal task's return value becomes `result.json`'s `result` field.
+
+---
+
+## Step 6 — List return types
+
+A task can return any JSON-serializable type, including lists.
+
+```yaml
+--8<-- "examples/getting-started/example-4/spec.yaml"
+```
 
 ```bash
-pixi run workflow run --config-file config.yaml --otel-exporter console
+wt-compiler compile --spec spec.yaml --clobber
+cd wt-add-then-split-workflow
+pixi run wt-add-then-split-workflow run
 ```
 
-Use `--otel-exporter gcp` for Google Cloud Trace export. Tracing is off by
-default.
+**Expected result** (contents of `result.json` in your results directory):
 
-### Run via wt-runner (HTTP)
-
-For production use, workflows are typically executed through `wt-runner`, a
-FastAPI server. The compiled workflow includes a `runner` pixi environment:
-
-```bash
-pixi run -e runner start
+```json
+{"result": ["1", "2"], "error": null, "trace": null}
 ```
 
-Then trigger the workflow via HTTP:
+**Key points:**
 
-```bash
-curl -X POST http://localhost:8080/workflow \
-  -H "Content-Type: application/json" \
-  -d '{"params": {"numbers": {"count": 5}}}'
-```
+- Both parameters of `add` are bound via `partial` (`4 + 8 = 12`), so there are
+  no user-facing parameters.
+- `split_digits(12)` returns `["1", "2"]` — a list of strings.
+- This output is a natural input for `map`, which we cover in
+  [Tutorials](tutorials.md#map-fan-out).
 
-The server can dispatch to different backends (local subprocess, Cloud Batch)
-depending on configuration. See the [wt-runner](reference/wt-runner.md) and
-[wt-invokers](reference/wt-invokers.md) reference pages for details.
+---
+
+## Step 7 — What's next
+
+You now know how to register tasks, write specs with `partial` and `${{ }}`
+references, compile workflows, and run them.
+
+**Continue learning:**
+
+- [**Tutorials**](tutorials.md) — `map` fan-out picks up right where
+  Example 4 left off
+- [**spec.yaml reference**](reference/spec-yaml.md) — complete field-by-field
+  documentation including `map`, `mapvalues`, `skipif`, and task groups
+- [**Concepts**](concepts.md) — the full mental model behind the framework
+- [**wt-compiler reference**](reference/wt-compiler.md) — CLI options,
+  compiled artifacts, and troubleshooting
+
+### Quick reference: compiler CLI
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--spec FILE` | *(required)* | Path to the workflow `spec.yaml` |
+| `--clobber` | off | Overwrite the output directory if it exists |
+| `--update` | off | Carry over the lockfile and bump version (requires `--clobber`) |
+| `--pkg-name-prefix PREFIX` | `wt` | Prefix for generated package/directory names |
+| `--variant VARIANT` | *none* | Platform variant suffix (e.g. `gcp`) |
+| `--no-progress` | off | Disable progress spinner (useful in CI) |

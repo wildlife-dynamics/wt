@@ -1,0 +1,19 @@
+id: add_then_split
+
+requirements:
+  - name: custom-tasks
+    path: /absolute/path/to/custom-tasks
+
+workflow:
+  - id: sum
+    name: "Add Two Numbers"
+    task: add
+    partial:
+      a: 4
+      b: 8
+
+  - id: digits
+    name: "Split Into Digits"
+    task: split_digits
+    partial:
+      n: ${{ workflow.sum.return }}

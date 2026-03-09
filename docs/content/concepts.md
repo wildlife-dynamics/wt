@@ -34,10 +34,24 @@ The rest of this page unpacks each phase.
 
 ## Workflows
 
-A **workflow** is a pipeline of steps that produces a JSON result. Side effects
+A **workflow** is a DAG of tasks that produces a JSON result. Side effects
 (writing files, calling APIs, updating databases) can happen along the way, but
-the final output is always a JSON object — returned on stdout when running from
-the CLI, or in the HTTP response body when triggered through the REST API.
+the final output is always a `result.json` file written to the results
+directory configured by the `WT_RESULTS` environment variable. The file
+contains three fields:
+
+```json
+{"result": <return value>, "error": <error string or null>, "trace": <traceback string or null>}
+```
+
+- **`result`** — the return value of the terminal task (any JSON-serializable
+  type).
+- **`error`** — error details if the workflow failed, otherwise `null`.
+- **`trace`** — the Python traceback string if the workflow errored, otherwise
+  `null`.
+
+The output format is identical regardless of how the workflow is executed —
+CLI, REST API, or Cloud Batch.
 
 ---
 
@@ -48,8 +62,8 @@ decorated with `@register` from `wt-registry`. Registration serves two
 purposes:
 
 1. **Discovery without imports.** The compiler discovers tasks by running
-   `wt-registry` as a subprocess inside an ephemeral conda environment. This
-   avoids importing task code directly, which would create dependency conflicts
+   `wt-registry` as a subprocess inside an ephemeral environment. This avoids
+   importing task code directly, which would create dependency conflicts
    between the compiler and the task packages.
 
 2. **Schema generation.** Type annotations on registered functions are used to
@@ -59,10 +73,13 @@ purposes:
 ```python
 from wt_registry import register
 
-@register(description="Generate a list of integers from 0 to count-1.")
-def generate_numbers(count: int) -> list[int]:
-    return list(range(count))
+@register(description="Add two integers.")
+def add(a: int, b: int) -> int:
+    return a + b
 ```
+
+This is the same `add` function used throughout
+[Getting Started](getting-started.md).
 
 The `@register` decorator accepts optional metadata (`title`, `description`,
 `tags`, `deprecated`) but leaves the function itself completely unchanged.
@@ -76,28 +93,62 @@ is required from function authors.
 
 ## The DAG
 
-Functions in a workflow form a **directed acyclic graph** (DAG). Each step can
-reference the return value of an earlier step using `${{ workflow.<id>.return }}`
-expressions. Data flows forward through the graph; cycles are not allowed.
+Functions in a workflow form a **directed acyclic graph** (DAG). In practical
+terms: tasks are nodes, data flows forward along edges, and circular
+dependencies are impossible — the compiler rejects them. If task B uses the
+output of task A, then A must run before B.
+
+Here is the add→double chain from
+[Getting Started — Step 5](getting-started.md#step-5-piping-task-outputs),
+expressed as a spec:
+
+```yaml
+workflow:
+  - id: sum
+    name: "Add Two Numbers"
+    task: add
+
+  - id: doubled
+    name: "Double the Sum"
+    task: double
+    partial:
+      n: ${{ workflow.sum.return }}
+```
+
+That spec produces the following DAG:
 
 ```
-┌──────────────────┐
-│ generate_numbers  │
-└────────┬─────────┘
-         │  list[int]
+  user input
+    a: int, b: int
+         │
          ▼
-┌──────────────────┐
-│  double_number    │  (mapped over each item)
-└────────┬─────────┘
-         │  list[int]
+  ┌─────────────┐
+  │     sum     │  add(a: int, b: int) -> int
+  └──────┬──────┘
+         │
+         │  int  ─── ${{ workflow.sum.return }}
+         │
          ▼
-┌──────────────────┐
-│   sum_numbers     │
-└──────────────────┘
+  ┌─────────────┐
+  │   doubled   │  double(n: int) -> int
+  └──────┬──────┘
+         │
          │  int
          ▼
-      result
+    result.json
+    {"result": 12, ...}
 ```
+
+Key rules:
+
+- Tasks are listed in **topological order** — every dependency before its
+  dependent.
+- `${{ workflow.<id>.return }}` passes one task's output as another's input.
+- The terminal (last) task's return value becomes the `result` field in
+  `result.json`.
+
+For the complete spec syntax, see the
+[`spec.yaml` reference](reference/spec-yaml.md).
 
 ---
 
@@ -130,7 +181,8 @@ workflows easy to read, diff, and version-control.
 
 During compilation, the compiler:
 
-1. Resolves `requirements` into a temporary conda environment.
+1. Resolves `requirements` into a temporary environment (conda packages and/or
+   PyPI packages).
 2. Discovers registered functions by running `wt-registry` as a **subprocess**
    inside that environment — no direct imports, no dependency conflicts.
 3. Validates the spec against the discovered function schemas.
@@ -139,7 +191,10 @@ During compilation, the compiler:
 5. Pins every dependency version so the workflow is fully reproducible.
 
 The compiled output includes DAG code, parameter schemas (JSON Schema for web
-forms), a `pixi.toml` for environment management, a Dockerfile, and tests.
+forms), a `pixi.toml` for environment management, a Dockerfile, and tests. The
+output directory is named `<prefix>-<id-with-hyphens>-workflow` — for example,
+a spec with `id: add_then_double` and the default `wt` prefix produces
+`wt-add-then-double-workflow`.
 
 ---
 
@@ -149,7 +204,8 @@ Once compiled, a workflow can run in several ways:
 
 - **Locally via CLI** — run the generated entry point with `pixi run`.
 - **Through the REST API** — `wt-runner` is a FastAPI server that accepts
-  workflow parameters as JSON and returns the workflow's JSON output.
+  workflow parameters as JSON. Like all execution paths, the canonical output
+  is the `result.json` file written to the configured results path.
 - **On Cloud Batch** — for heavy workloads, the runner can dispatch to Google
   Cloud Batch.
 
@@ -203,23 +259,37 @@ supports
 
 ### How `requirements:` resolves
 
-The `requirements:` section in `spec.yaml` resolves packages from **conda
-channels only**. The compiler supports a fixed set of channels: `conda-forge`,
-`microsoft`, the `ecoscope-workflows` prefix.dev channels, and local file-based
-development channels. Specifying a channel outside this set raises a validation
-error.
+The `requirements:` section in `spec.yaml` supports two kinds of package
+sources:
 
-!!! tip "Roadmap — PyPI support in requirements"
-    Support for pip-compatible package sources in the `requirements:` section
-    is forthcoming. This will enable editable installs during development and
-    simpler packaging workflows.
+- **Conda packages** — resolved from conda channels (`conda-forge`,
+  `microsoft`, the `ecoscope-workflows` prefix.dev channels, and local
+  file-based development channels). Specifying a channel outside this set
+  raises a validation error.
+
+- **PyPI packages** — referenced via `path:` (local filesystem), `git:`
+  (Git repo URL), or `url:` (direct URL to a wheel or sdist). These are
+  installed via `uv pip install` into the conda environment during task
+  discovery, and appear in the compiled workflow's `pixi.toml` under
+  `[pypi-dependencies]`.
+
+For local development, `path:` is the simplest option — point directly at
+your task package directory without needing to publish to any channel:
+
+```yaml
+requirements:
+  - name: my-tasks
+    path: /home/user/my-tasks
+```
+
+For the complete requirements reference, see
+[spec.yaml — requirements](reference/spec-yaml.md#requirements).
 
 ### Which tool when?
 
 | You want to... | Use |
 |---|---|
-| Develop a task package (PyPI-only deps) | uv or pixi |
-| Develop a task package with system deps | pixi |
+| Develop a task package | uv or pixi |
 | Run `wt-compiler compile` | uv or pixi |
 | Run a compiled workflow | pixi (required) |
 | Use one tool for everything | pixi |

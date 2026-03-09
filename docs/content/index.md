@@ -1,29 +1,29 @@
 # Workflow Toolkit (`wt`)
 
-Workflow Toolkit (`wt` for short) is a modular collection of Python packages
-comprising a compiler, a task framework, and execution backends that together
-allow you to build reproducible, webform-configurable workflows with native
-access to the scientific software ecosystem. Key design goals:
+Workflow Toolkit (`wt` for short) lets you **register** Python functions as
+reusable tasks, **specify** how they connect in a YAML file, **compile** the
+spec into a standalone, reproducible package, and **run** it locally or in the
+cloud — with auto-generated web forms for configuration.
 
-- **No-code web forms for workflow templates.** Configure and launch workflows
-  through auto-generated forms in the browser. Developers define the templates;
-  the compiler handles the rest.
+- **Type-driven registration.** Decorate functions with `@register` — type
+  annotations generate JSON schemas that power web forms and compile-time
+  validation.
 
-- **Conda-native, pixi-driven.** Compiled workflows are pixi projects.
-  Dependencies resolve through conda channels, so the full scientific stack —
-  GDAL, R, PyTorch, system libraries — is natively supported.
+- **Declarative YAML specs.** Wire tasks together with `partial`, `map`,
+  `mapvalues`, and `skipif` — no Python glue code required.
 
-- **Fan-out over collections.** `map` and `mapvalues` distribute work across
-  items. Execution strategy is configurable per workflow — sequential today,
-  with concurrent backends on the roadmap.
+- **Compile, don't interpret.** The compiler outputs a standalone pixi project
+  with plain Python DAG code you can read, diff, and version-control.
 
-- **Multiple execution backends.** Run locally via CLI. On the cloud, trigger
-  workflows through a REST API or Pub/Sub — lightweight jobs run as local
-  server processes, heavy jobs with custom hardware run on Cloud Batch.
+- **Conda-native, fully reproducible.** Dependencies resolve through conda
+  channels and PyPI, so the full scientific stack (GDAL, R, PyTorch) is
+  natively supported. Every version is pinned.
 
-- **Compile, don't interpret.** Compiled DAGs are plain Python you can read,
-  diff, and version-control. No opaque runtime interpreter — what you see in
-  the generated code is what runs.
+- **Run anywhere.** Execute locally via CLI, through a REST API, or on Google
+  Cloud Batch.
+
+- **No-code web forms.** Auto-generated browser forms let non-developers
+  configure and launch workflows without touching code.
 
 ---
 

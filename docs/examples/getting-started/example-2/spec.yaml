@@ -1,0 +1,12 @@
+id: add_with_partial
+
+requirements:
+  - name: custom-tasks
+    path: /absolute/path/to/custom-tasks
+
+workflow:
+  - id: sum
+    name: "Add With Default"
+    task: add
+    partial:
+      b: 5

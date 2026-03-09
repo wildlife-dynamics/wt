@@ -72,7 +72,7 @@ Pydantic models representing the parsed workflow specification.
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | `str` | Unique workflow identifier |
-| `requirements` | `list[SpecRequirement]` | Conda package requirements |
+| `requirements` | `list[SpecRequirement \| PyPIRequirement]` | Package requirements (conda and/or PyPI) |
 | `rjsf_overrides` | `dict` | React JSON Schema Form overrides |
 | `task_instance_defaults` | `dict` | Default options applied to every task instance |
 | `workflow` | `list[TaskInstance \| TaskGroup]` | Ordered list of task instances and groups |
@@ -97,6 +97,19 @@ Named group of related task instances for organizational purposes.
 
 Conda package requirement with `name`, `version`, and optional `channel`.
 
+### `PyPIRequirement`
+
+PyPI package requirement with `name` and exactly one source (`git`, `path`,
+or `url`). Optional fields include `rev`/`branch`/`tag` (git only),
+`editable` (path only), `subdirectory`, and `extras`.
+
+Key methods:
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `.to_pixi_dict()` | `dict` | Convert to pixi.toml `[pypi-dependencies]` format |
+| `.to_pip_install_arg()` | `str` | Convert to a `pip install` argument string |
+
 ### `KnownTask`
 
 Metadata for a discovered/registered task. The global `known_tasks` dict is
@@ -106,17 +119,19 @@ populated during discovery before `Spec` validation.
 
 ## Task Discovery
 
-Task discovery creates ephemeral conda environments to discover registered
-functions without importing task code into the compiler process.
+Task discovery creates ephemeral environments to discover registered functions
+without importing task code into the compiler process.
 
 ### How it works
 
-1. Solve dependencies using py-rattler's async `solve()`.
-2. Install packages with py-rattler's async `install()`.
-3. Execute `wt-registry --format json` in the ephemeral environment.
-4. Parse output against `RegistryOutput` from wt-contracts.
-5. Convert entries to `KnownTask` models.
-6. Update the global `known_tasks` dict.
+1. Solve conda dependencies using py-rattler's async `solve()`.
+2. Install conda packages with py-rattler's async `install()`.
+3. If PyPI requirements are present, install them via `uv pip install` into
+   the conda environment.
+4. Execute `wt-registry --format json` in the ephemeral environment.
+5. Parse output against `RegistryOutput` from wt-contracts.
+6. Convert entries to `KnownTask` models.
+7. Update the global `known_tasks` dict.
 
 ### Functions
 
@@ -133,6 +148,7 @@ functions without importing task code into the compiler process.
 | `RegistryNotFoundError` | `wt-registry` executable not found in environment |
 | `RegistryExecutionError` | `wt-registry` returned non-zero exit code |
 | `EnvironmentCreationError` | py-rattler failed to solve or install |
+| `PyPIInstallError` | `uv pip install` failed for a PyPI requirement |
 
 ---
 
