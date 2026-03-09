@@ -95,7 +95,8 @@ respect the shared schema.
 When the compiler needs to know what tasks are available in a set of
 third-party libraries, it does not `import` those libraries. Instead, it:
 
-1. Creates an ephemeral conda environment using py-rattler (solve + install)
+1. Creates an ephemeral conda environment using py-rattler (solve + install),
+   then installs any PyPI requirements via `uv pip install`
 2. Locates the `wt-registry` executable in that environment
 3. Calls `wt-registry --format json --package <module>` as a subprocess
 4. Parses the JSON output using the `RegistryOutput` Pydantic model from

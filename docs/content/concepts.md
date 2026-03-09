@@ -48,8 +48,8 @@ decorated with `@register` from `wt-registry`. Registration serves two
 purposes:
 
 1. **Discovery without imports.** The compiler discovers tasks by running
-   `wt-registry` as a subprocess inside an ephemeral conda environment. This
-   avoids importing task code directly, which would create dependency conflicts
+   `wt-registry` as a subprocess inside an ephemeral environment. This avoids
+   importing task code directly, which would create dependency conflicts
    between the compiler and the task packages.
 
 2. **Schema generation.** Type annotations on registered functions are used to
@@ -130,7 +130,8 @@ workflows easy to read, diff, and version-control.
 
 During compilation, the compiler:
 
-1. Resolves `requirements` into a temporary conda environment.
+1. Resolves `requirements` into a temporary environment (conda packages and/or
+   PyPI packages).
 2. Discovers registered functions by running `wt-registry` as a **subprocess**
    inside that environment — no direct imports, no dependency conflicts.
 3. Validates the spec against the discovered function schemas.
@@ -203,23 +204,37 @@ supports
 
 ### How `requirements:` resolves
 
-The `requirements:` section in `spec.yaml` resolves packages from **conda
-channels only**. The compiler supports a fixed set of channels: `conda-forge`,
-`microsoft`, the `ecoscope-workflows` prefix.dev channels, and local file-based
-development channels. Specifying a channel outside this set raises a validation
-error.
+The `requirements:` section in `spec.yaml` supports two kinds of package
+sources:
 
-!!! tip "Roadmap — PyPI support in requirements"
-    Support for pip-compatible package sources in the `requirements:` section
-    is forthcoming. This will enable editable installs during development and
-    simpler packaging workflows.
+- **Conda packages** — resolved from conda channels (`conda-forge`,
+  `microsoft`, the `ecoscope-workflows` prefix.dev channels, and local
+  file-based development channels). Specifying a channel outside this set
+  raises a validation error.
+
+- **PyPI packages** — referenced via `path:` (local filesystem), `git:`
+  (Git repo URL), or `url:` (direct URL to a wheel or sdist). These are
+  installed via `uv pip install` into the conda environment during task
+  discovery, and appear in the compiled workflow's `pixi.toml` under
+  `[pypi-dependencies]`.
+
+For local development, `path:` is the simplest option — point directly at
+your task package directory without needing to publish to any channel:
+
+```yaml
+requirements:
+  - name: my-tasks
+    path: /home/user/my-tasks
+```
+
+For the complete requirements reference, see
+[spec.yaml — requirements](reference/spec-yaml.md#requirements).
 
 ### Which tool when?
 
 | You want to... | Use |
 |---|---|
-| Develop a task package (PyPI-only deps) | uv or pixi |
-| Develop a task package with system deps | pixi |
+| Develop a task package | uv or pixi |
 | Run `wt-compiler compile` | uv or pixi |
 | Run a compiled workflow | pixi (required) |
 | Use one tool for everything | pixi |

@@ -26,12 +26,18 @@ plugins:
   - search
 markdown_extensions:
   - admonition
+  - pymdownx.details
   - pymdownx.highlight
   - pymdownx.superfences
+  - pymdownx.snippets:
+      base_path:
+        - content
+        - .
 nav:
   - Home: index.md
   - Concepts: concepts.md
   - Getting Started: getting-started.md
+  - Tutorials: tutorials.md
   - Reference:
     - "spec.yaml": reference/spec-yaml.md
     - wt-contracts: reference/wt-contracts.md

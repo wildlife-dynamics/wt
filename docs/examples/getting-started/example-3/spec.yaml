@@ -1,0 +1,16 @@
+id: add_then_double
+
+requirements:
+  - name: custom-tasks
+    path: /absolute/path/to/custom-tasks
+
+workflow:
+  - id: sum
+    name: "Add Two Numbers"
+    task: add
+
+  - id: result
+    name: "Double the Sum"
+    task: double
+    partial:
+      n: ${{ workflow.sum.return }}

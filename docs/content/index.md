@@ -10,8 +10,9 @@ access to the scientific software ecosystem. Key design goals:
   the compiler handles the rest.
 
 - **Conda-native, pixi-driven.** Compiled workflows are pixi projects.
-  Dependencies resolve through conda channels, so the full scientific stack —
-  GDAL, R, PyTorch, system libraries — is natively supported.
+  Dependencies resolve through conda channels and PyPI sources, so the full
+  scientific stack — GDAL, R, PyTorch, system libraries — is natively
+  supported alongside standard Python packages.
 
 - **Fan-out over collections.** `map` and `mapvalues` distribute work across
   items. Execution strategy is configurable per workflow — sequential today,
