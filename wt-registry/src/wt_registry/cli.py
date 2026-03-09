@@ -1,7 +1,6 @@
 """Command-line interface for wt-registry."""
 
 import argparse
-import importlib.metadata
 import sys
 import types
 from inspect import getmembers, ismodule
@@ -319,7 +318,10 @@ def auto_discover() -> list[str]:
             importlib.import_module(module_path)
             imported_modules.append(module_path)
         except ImportError as e:
-            print(f"Warning: Could not import {module_path} (entry point '{ep.name}'): {e}", file=sys.stderr)
+            print(
+                f"Warning: Could not import {module_path} (entry point '{ep.name}'): {e}",
+                file=sys.stderr,
+            )
     return imported_modules
 
 
