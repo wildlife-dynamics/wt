@@ -34,7 +34,7 @@ The rest of this page unpacks each phase.
 
 ## Workflows
 
-A **workflow** is a pipeline of steps that produces a JSON result. Side effects
+A **workflow** is a DAG of tasks that produces a JSON result. Side effects
 (writing files, calling APIs, updating databases) can happen along the way, but
 the final output is always a `result.json` file written to the results
 directory configured by the `WT_RESULTS` environment variable. The file
@@ -73,10 +73,13 @@ purposes:
 ```python
 from wt_registry import register
 
-@register(description="Generate a list of integers from 0 to count-1.")
-def generate_numbers(count: int) -> list[int]:
-    return list(range(count))
+@register(description="Add two integers.")
+def add(a: int, b: int) -> int:
+    return a + b
 ```
+
+This is the same `add` function used throughout
+[Getting Started](getting-started.md).
 
 The `@register` decorator accepts optional metadata (`title`, `description`,
 `tags`, `deprecated`) but leaves the function itself completely unchanged.
@@ -90,28 +93,62 @@ is required from function authors.
 
 ## The DAG
 
-Functions in a workflow form a **directed acyclic graph** (DAG). Each step can
-reference the return value of an earlier step using `${{ workflow.<id>.return }}`
-expressions. Data flows forward through the graph; cycles are not allowed.
+Functions in a workflow form a **directed acyclic graph** (DAG). In practical
+terms: tasks are nodes, data flows forward along edges, and circular
+dependencies are impossible — the compiler rejects them. If task B uses the
+output of task A, then A must run before B.
+
+Here is the add→double chain from
+[Getting Started — Step 5](getting-started.md#step-5-piping-task-outputs),
+expressed as a spec:
+
+```yaml
+workflow:
+  - id: sum
+    name: "Add Two Numbers"
+    task: add
+
+  - id: doubled
+    name: "Double the Sum"
+    task: double
+    partial:
+      n: ${{ workflow.sum.return }}
+```
+
+That spec produces the following DAG:
 
 ```
-┌──────────────────┐
-│ generate_numbers  │
-└────────┬─────────┘
-         │  list[int]
+  user input
+    a: int, b: int
+         │
          ▼
-┌──────────────────┐
-│  double_number    │  (mapped over each item)
-└────────┬─────────┘
-         │  list[int]
+  ┌─────────────┐
+  │     sum     │  add(a: int, b: int) -> int
+  └──────┬──────┘
+         │
+         │  int  ─── ${{ workflow.sum.return }}
+         │
          ▼
-┌──────────────────┐
-│   sum_numbers     │
-└──────────────────┘
+  ┌─────────────┐
+  │   doubled   │  double(n: int) -> int
+  └──────┬──────┘
+         │
          │  int
          ▼
-      result
+    result.json
+    {"result": 12, ...}
 ```
+
+Key rules:
+
+- Tasks are listed in **topological order** — every dependency before its
+  dependent.
+- `${{ workflow.<id>.return }}` passes one task's output as another's input.
+- The terminal (last) task's return value becomes the `result` field in
+  `result.json`.
+
+For the complete spec syntax, see the
+[`spec.yaml` reference](reference/spec-yaml.md).
 
 ---
 
@@ -154,7 +191,10 @@ During compilation, the compiler:
 5. Pins every dependency version so the workflow is fully reproducible.
 
 The compiled output includes DAG code, parameter schemas (JSON Schema for web
-forms), a `pixi.toml` for environment management, a Dockerfile, and tests.
+forms), a `pixi.toml` for environment management, a Dockerfile, and tests. The
+output directory is named `<prefix>-<id-with-hyphens>-workflow` — for example,
+a spec with `id: add_then_double` and the default `wt` prefix produces
+`wt-add-then-double-workflow`.
 
 ---
 
@@ -164,7 +204,8 @@ Once compiled, a workflow can run in several ways:
 
 - **Locally via CLI** — run the generated entry point with `pixi run`.
 - **Through the REST API** — `wt-runner` is a FastAPI server that accepts
-  workflow parameters as JSON and returns the workflow's JSON output.
+  workflow parameters as JSON. Like all execution paths, the canonical output
+  is the `result.json` file written to the configured results path.
 - **On Cloud Batch** — for heavy workloads, the runner can dispatch to Google
   Cloud Batch.
 
