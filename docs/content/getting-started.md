@@ -175,11 +175,14 @@ The output directory is named `wt-add-two-numbers-workflow`. Take a look inside:
 wt-add-two-numbers-workflow/
 ├── pixi.toml
 ├── Dockerfile
+├── ...
 ├── wt_add_two_numbers_workflow/
-│   ├── dag.py            # Generated DAG code
+│   ├── dags/             # Generated DAG code
 │   ├── params.json       # Flat parameter schema (CLI)
-│   └── rjsf.json         # Hierarchical schema (web forms)
+│   ├── rjsf.json         # Hierarchical schema (web forms)
+│   └── ...
 └── tests/
+    └── ...
 ```
 
 Two schema files are generated from your type annotations:
