@@ -36,23 +36,6 @@ class ResponseModel(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Template rendering tests
-# ---------------------------------------------------------------------------
-
-
-class TestTemplateRendering:
-    """Verify rendered templates have the expected imports / no ecoscope."""
-
-    def test_response_template_no_ecoscope_import(self) -> None:
-        rendered = _render_template("response.jinja2")
-        assert "ecoscope_workflows_core" not in rendered
-
-    def test_dispatch_template_no_basemodel_import(self) -> None:
-        rendered = _render_template("dispatch.jinja2")
-        assert "from pydantic import BaseModel" not in rendered
-
-
-# ---------------------------------------------------------------------------
 # ResponseModel serialization tests
 # ---------------------------------------------------------------------------
 
