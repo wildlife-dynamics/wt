@@ -42,21 +42,30 @@ Using the dependency graph from the script output:
 For each package being released:
 
 1. Compose concise markdown release notes from the diff/commit analysis (use bullet points)
-2. Prepend a new entry to `<package>/CHANGELOG.md` (create the file with a `# Changelog` header if it doesn't exist):
+2. Present the draft release notes to the user for review. For each package:
+   - Show the proposed bullet points
+   - Explain why each bullet was included (which PR/commit it corresponds to)
+   - If any PRs or commits were excluded, explicitly list them with justification for the exclusion
+   - Ask the user for feedback — they may request changes, rewordings, additions, or removals
+   - Iterate on the notes until the user explicitly approves them
+3. Prepend a new entry to `<package>/CHANGELOG.md` (create the file with a `# Changelog` header if it doesn't exist):
    ```markdown
    ## v<version> — YYYY-MM-DD
 
    - Description of change 1
    - Description of change 2
    ```
-3. Commit **all** CHANGELOG updates in a single commit before tagging (message: `Update CHANGELOGs for release`)
+4. After preparing all CHANGELOG updates, ask the user for final confirmation before committing
+5. Commit **all** CHANGELOG updates in a single commit (message: `Update CHANGELOGs for release`)
 
 ## Step 6 — Tag and push
 
-1. For each confirmed release, pipe the release notes into the tag script:
+1. For each confirmed release, read the release notes back from the committed `<package>/CHANGELOG.md` (the single source of truth) and pipe them into the tag script:
    ```bash
-   printf '%s\n' "- change 1" "- change 2" | bash scripts/release-tag.sh <package-name> <version>
+   # Extract the bullet lines from the latest CHANGELOG entry and pipe to the tag script
+   sed -n '/^## v<version>/,/^## /{/^- /p}' <package>/CHANGELOG.md | bash scripts/release-tag.sh <package-name> <version>
    ```
+   Always read from the CHANGELOG rather than relying on session context — this ensures correctness even if the session was interrupted and resumed after the commit step.
    This embeds the notes in the annotated tag, which the publish workflow uses for the GitHub Release body.
 2. After all tags are created, push tags **one at a time** to trigger the PyPI publish workflow:
    - For each tag, show the exact command: `git push origin <tag>`
