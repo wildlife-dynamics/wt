@@ -52,8 +52,37 @@ jobs:
         working-directory: ${{ needs.parse.outputs.package }}
         run: uv publish
 
+      - name: Generate package-scoped release notes
+        id: notes
+        env:
+          TAG: ${{ needs.parse.outputs.package }}/v${{ needs.parse.outputs.version }}
+          PACKAGE: ${{ needs.parse.outputs.package }}
+        run: |
+          # Try to extract notes from annotated tag (skip the header line)
+          annotation="$(git tag -l --format='%(contents)' "$TAG")"
+          body="$(echo "$annotation" | tail -n +3)"
+
+          if [ -n "$(echo "$body" | tr -d '[:space:]')" ]; then
+            echo "$body" > /tmp/release-notes.md
+          else
+            # Fallback: generate notes from commits since previous tag
+            prev_tag="$(git tag --list "${PACKAGE}/v*" --sort=-version:refname \
+              | grep -v "^${TAG}$" | head -1)"
+            if [ -n "$prev_tag" ]; then
+              range="${prev_tag}..${TAG}"
+            else
+              range="$TAG"
+            fi
+            git log "$range" --oneline -- "${PACKAGE}/" \
+              | sed 's/^[0-9a-f]* /- /' > /tmp/release-notes.md
+            # If still empty, add a placeholder
+            if [ ! -s /tmp/release-notes.md ]; then
+              echo "Release ${PACKAGE} v${{ needs.parse.outputs.version }}" > /tmp/release-notes.md
+            fi
+          fi
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: "${{ needs.parse.outputs.package }} v${{ needs.parse.outputs.version }}"
-          generate_release_notes: true
+          body_path: /tmp/release-notes.md
