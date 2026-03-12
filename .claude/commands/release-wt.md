@@ -27,7 +27,7 @@ Using the dependency graph from the script output:
    - Recommend releasing the dependent package as well (at minimum a patch bump)
 4. Only recommend cascading releases when breaking changes genuinely affect the dependent — don't recommend unnecessary bumps
 
-## Step 4 — Confirm and tag
+## Step 4 — Confirm versions
 
 1. Present a summary table:
 
@@ -35,9 +35,30 @@ Using the dependency graph from the script output:
    |---------|----------------|-------------|--------|
    | ... | ... | ... | ... |
 
-2. Ask for final confirmation before creating any tags
-3. For each confirmed release, run: `bash scripts/release-tag.sh <package-name> <version>`
-4. After all tags are created, push tags **one at a time** to trigger the PyPI publish workflow:
+2. Ask for final confirmation before proceeding
+
+## Step 5 — Generate release notes and update CHANGELOGs
+
+For each package being released:
+
+1. Compose concise markdown release notes from the diff/commit analysis (use bullet points)
+2. Prepend a new entry to `<package>/CHANGELOG.md` (create the file with a `# Changelog` header if it doesn't exist):
+   ```markdown
+   ## v<version> — YYYY-MM-DD
+
+   - Description of change 1
+   - Description of change 2
+   ```
+3. Commit **all** CHANGELOG updates in a single commit before tagging (message: `Update CHANGELOGs for release`)
+
+## Step 6 — Tag and push
+
+1. For each confirmed release, pipe the release notes into the tag script:
+   ```bash
+   printf '%s\n' "- change 1" "- change 2" | bash scripts/release-tag.sh <package-name> <version>
+   ```
+   This embeds the notes in the annotated tag, which the publish workflow uses for the GitHub Release body.
+2. After all tags are created, push tags **one at a time** to trigger the PyPI publish workflow:
    - For each tag, show the exact command: `git push origin <tag>`
    - Ask for explicit confirmation before each push — do NOT push automatically
    - Wait for confirmation before proceeding to the next tag

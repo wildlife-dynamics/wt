@@ -97,9 +97,23 @@ main() {
         exit 1
     fi
 
+    # Read release notes from stdin if piped (hang-safe: read -t 0 guards
+    # against sockets with no data, e.g. Claude Code's Bash tool).
+    local notes=""
+    if [[ ! -t 0 ]] && read -t 0; then
+        notes="$(cat)"
+    fi
+
     # Create annotated tag
     log_info "Creating tag: $tag"
-    git -C "$REPO_ROOT" tag -a "$tag" -m "$pkg v$version"
+    if [[ -n "$notes" ]]; then
+        _RELEASE_TAG_TMPFILE="$(mktemp)"
+        trap 'rm -f "$_RELEASE_TAG_TMPFILE"' EXIT
+        printf '%s v%s\n\n%s\n' "$pkg" "$version" "$notes" > "$_RELEASE_TAG_TMPFILE"
+        git -C "$REPO_ROOT" tag -a "$tag" -F "$_RELEASE_TAG_TMPFILE"
+    else
+        git -C "$REPO_ROOT" tag -a "$tag" -m "$pkg v$version"
+    fi
 
     log_info "Successfully created tag: $tag"
     echo ""
