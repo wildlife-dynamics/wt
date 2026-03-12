@@ -37,13 +37,15 @@ Using the dependency graph from the script output:
 
 2. Ask for final confirmation before creating any tags
 3. For each confirmed release, run: `bash scripts/release-tag.sh <package-name> <version>`
-4. After all tags are created, offer to push tags to trigger the PyPI publish workflow:
-   - Show the exact command: `git push origin <tag1> <tag2> ...`
-   - Do NOT push automatically — wait for explicit confirmation
+4. After all tags are created, push tags **one at a time** to trigger the PyPI publish workflow:
+   - For each tag, show the exact command: `git push origin <tag>`
+   - Ask for explicit confirmation before each push — do NOT push automatically
+   - Wait for confirmation before proceeding to the next tag
+   - This is required because the publish workflow only processes one tag per push event (it reads `GITHUB_REF` which contains a single ref)
 
 ## Important notes
 
 - All packages are pre-1.0, so breaking changes bump the minor version (not major)
 - GCP metapackages (`wt-task-gcp`, `wt-invokers-gcp`, `wt-runner-gcp`) are dependency-only — they only need releasing when their dependency pins change
-- The publish workflow (`.github/workflows/publish.yml`) triggers on tag pushes matching `*/v*`
+- The publish workflow (`.github/workflows/publish.yml`) triggers on tag pushes matching `*/v*`. **Only one tag may be pushed per `git push` command** — the workflow reads `GITHUB_REF` which resolves to a single ref, so pushing multiple tags at once will only publish one package
 - Tags use the format `<package-name>/v<version>` (e.g., `wt-contracts/v0.2.0`)
