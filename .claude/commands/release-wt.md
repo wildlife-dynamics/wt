@@ -72,10 +72,11 @@ For each package being released:
 
 1. For each confirmed release, read the release notes from the committed `<package>/CHANGELOG.md` (the single source of truth) into a temp file and pass it to the tag script via `-f`:
    ```bash
-   sed -n '/^## v<version>/,/^## /{/^- /p}' <package>/CHANGELOG.md > /tmp/release-notes.md
+   awk '/^## v<version>/{found=1; next} /^## /{found=0} found && /^- /' <package>/CHANGELOG.md > /tmp/release-notes.md
    bash scripts/release-tag.sh -f /tmp/release-notes.md <package-name> <version>
    rm -f /tmp/release-notes.md
    ```
+   Use `awk` (not `sed`) to extract release notes — the `sed` equivalent is not portable across macOS and Linux.
    Always read from the CHANGELOG rather than relying on session context — this ensures correctness even if the session was interrupted and resumed after the commit step.
    This embeds the notes in the annotated tag, which the publish workflow uses for the GitHub Release body.
 
@@ -109,3 +110,4 @@ For each package being released:
 - Tags use the format `<package-name>/v<version>` (e.g., `wt-contracts/v0.2.0`)
 - Tags should be pushed in dependency order so the conda channel has upstream packages available when users install downstream ones
 - If a publish partially fails (e.g., conda uploaded but PyPI didn't), use the `workflow_dispatch` sync trigger on the publish workflow to recover — it idempotently syncs all packages to both registries
+- **If a tag must be re-created** (e.g., to pick up a workflow fix): delete the remote tag (`git push --delete origin <tag>`), delete the corresponding GitHub Release, then re-create and re-push. If prefix.dev already received a package at that version (even with wrong contents), you cannot overwrite it — bump the patch version instead and release under the new version
