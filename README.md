@@ -17,6 +17,7 @@ Run `/release-wt` in Claude Code for an interactive assistant that:
 - Analyzes changes and recommends version bumps
 - Generates per-package release notes from diffs/commits
 - Updates each package's `CHANGELOG.md`
+- Syncs `[tool.pixi.package] version` in each package's `pyproject.toml` (required for correct conda package versions)
 - Creates annotated tags (with notes embedded) and pushes with confirmation
 
 ### Manual release

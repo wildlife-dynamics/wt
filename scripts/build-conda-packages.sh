@@ -96,7 +96,19 @@ build_package() {
         return 1
     fi
 
-    # Set version for setuptools-scm
+    # Verify [tool.pixi.package] version matches the git-tag-derived version.
+    # Release packages with the /release-wt Claude command to keep this in sync.
+    local pyproject="$pkg_dir/pyproject.toml"
+    local pixi_version
+    pixi_version=$(awk '/^\[tool\.pixi\.package\]/{found=1; next} /^\[/{found=0} found && /^version/ {gsub(/[" ]/, ""); sub(/version=/, ""); print; exit}' "$pyproject")
+    if [[ "$pixi_version" != "$version" ]]; then
+        log_error "[tool.pixi.package] version in $pyproject is '$pixi_version' but expected '$version' (from git tag)"
+        log_error "Release packages with the /release-wt Claude command to synchronize versions, or manually update [tool.pixi.package] version in $pyproject"
+        return 1
+    fi
+
+    # Set version for setuptools-scm (controls the Python package version
+    # inside the conda package, i.e. the installed wheel's __version__)
     export SETUPTOOLS_SCM_PRETEND_VERSION="$version"
 
     # Build the package

@@ -61,11 +61,12 @@ For each package being released:
    - Description of change 1
    - Description of change 2
    ```
-4. After preparing all CHANGELOG updates, ask the user for final confirmation before committing
-5. Commit **all** CHANGELOG updates in a single commit (message: `Update CHANGELOGs for release`)
-6. Push the release branch and create a PR to `main` via `gh pr create`. Include today's date in the PR title (e.g., `Update CHANGELOGs for release YYYY-MM-DD`) to avoid duplicate PR names across releases.
-7. Ask the user to merge the PR (branch protection requires a PR to update `main`)
-8. After the user confirms the PR is merged, checkout `main` and pull to get the merge commit — tags must point to commits on `main`
+4. Update `[tool.pixi.package] version` in each released package's `pyproject.toml` to match the new version. For GCP metapackages released in lockstep, update their `pyproject.toml` too.
+5. After preparing all CHANGELOG and pyproject.toml updates, ask the user for final confirmation before committing
+6. Commit **all** CHANGELOG and pyproject.toml updates in a single commit (message: `Update CHANGELOGs and pixi versions for release`)
+7. Push the release branch and create a PR to `main` via `gh pr create`. Include today's date in the PR title (e.g., `Update CHANGELOGs for release YYYY-MM-DD`) to avoid duplicate PR names across releases.
+8. Ask the user to merge the PR (branch protection requires a PR to update `main`)
+9. After the user confirms the PR is merged, checkout `main` and pull to get the merge commit — tags must point to commits on `main`
 
 ## Step 6 — Tag and push
 
