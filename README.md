@@ -11,6 +11,8 @@ Releases are managed via git tags and automated PyPI publishing. Each release ge
 
 ### Recommended: `/release-wt` in Claude Code
 
+> **Tip**: Use `/release-wt` for all releases. It handles GCP metapackage auto-tagging, correct push ordering, and conda-aware release flow. Manual tagging risks missing the lockstep GCP tags or pushing in the wrong order.
+
 Run `/release-wt` in Claude Code for an interactive assistant that:
 - Analyzes changes and recommends version bumps
 - Generates per-package release notes from diffs/commits

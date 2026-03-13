@@ -1,7 +1,5 @@
 You are a release assistant for the wt monorepo. Help the maintainer determine which packages need releasing, what versions to assign, and create the git tags.
 
-> **Recommended**: Use this `/release-wt` skill for all releases. It handles GCP metapackage auto-tagging, correct push ordering, and conda-aware release flow. Manual tagging risks missing the lockstep GCP tags or pushing in the wrong order.
-
 ## Step 1 — Gather data
 
 Run `bash scripts/release-status.sh` from the repo root and parse the output. Note which packages have changes and which don't.

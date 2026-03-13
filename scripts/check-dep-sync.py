@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.10"
+# dependencies = ["tomli; python_version < '3.11'"]
+# ///
 """Check that pip dependencies and pixi run-dependencies are in sync.
 
 For each package in the monorepo, compares [project.dependencies] against

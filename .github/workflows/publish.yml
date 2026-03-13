@@ -35,12 +35,13 @@ jobs:
             exit 1
           fi
 
-  conda-build:
+  publish-prefix:
     needs: parse
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,32 +65,7 @@ jobs:
             -c ecoscope-workflows \
             /tmp/wt-conda-channel/noarch/${{ needs.parse.outputs.package }}-*.conda
 
-  publish:
-    needs: [parse, conda-build]
-    if: github.event_name == 'push' && !contains(needs.parse.outputs.package, '-gcp')
-    runs-on: ubuntu-latest
-    environment: release-${{ needs.parse.outputs.package }}
-    permissions:
-      id-token: write
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-
-      - name: Build package
-        working-directory: ${{ needs.parse.outputs.package }}
-        run: uv build
-
-      - name: Publish to PyPI
-        working-directory: ${{ needs.parse.outputs.package }}
-        run: uv publish
-
       - name: Generate package-scoped release notes
-        id: notes
         env:
           TAG: ${{ needs.parse.outputs.package }}/v${{ needs.parse.outputs.version }}
           PACKAGE: ${{ needs.parse.outputs.package }}
@@ -123,36 +99,28 @@ jobs:
           name: "${{ needs.parse.outputs.package }} v${{ needs.parse.outputs.version }}"
           body_path: /tmp/release-notes.md
 
-  release-gcp:
-    needs: [parse, conda-build]
-    if: github.event_name == 'push' && contains(needs.parse.outputs.package, '-gcp')
+  publish-pypi:
+    needs: [parse, publish-prefix]
+    if: github.event_name == 'push' && !contains(needs.parse.outputs.package, '-gcp')
     runs-on: ubuntu-latest
+    environment: release-${{ needs.parse.outputs.package }}
     permissions:
-      contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Generate release notes
-        env:
-          TAG: ${{ needs.parse.outputs.package }}/v${{ needs.parse.outputs.version }}
-          PACKAGE: ${{ needs.parse.outputs.package }}
-        run: |
-          annotation="$(git tag -l --format='%(contents)' "$TAG")"
-          body="$(echo "$annotation" | tail -n +3)"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
 
-          if [ -n "$(echo "$body" | tr -d '[:space:]')" ]; then
-            echo "$body" > /tmp/release-notes.md
-          else
-            echo "Release ${PACKAGE} v${{ needs.parse.outputs.version }} (conda-only)" > /tmp/release-notes.md
-          fi
+      - name: Build package
+        working-directory: ${{ needs.parse.outputs.package }}
+        run: uv build
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: "${{ needs.parse.outputs.package }} v${{ needs.parse.outputs.version }}"
-          body_path: /tmp/release-notes.md
+      - name: Publish to PyPI
+        working-directory: ${{ needs.parse.outputs.package }}
+        run: uv publish
 
   # ============================================================================
   # Manual sync job (workflow_dispatch only)
