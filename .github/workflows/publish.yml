@@ -53,11 +53,13 @@ jobs:
           pixi-version: v0.63.0
           run-install: false
 
+      - name: Install rattler-build & rattler-index
+        run: |
+          pixi global install rattler-build
+          pixi global install rattler-index
+
       - name: Build conda package
         run: ./scripts/build-conda-packages.sh ${{ needs.parse.outputs.package }}
-
-      - name: Install rattler-build
-        run: pixi global install rattler-build
 
       - name: Upload to prefix.dev
         run: |
