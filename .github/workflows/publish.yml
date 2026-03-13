@@ -1,12 +1,18 @@
-name: Publish to PyPI
+name: Publish to PyPI & Conda
 
 on:
   push:
     tags:
       - "*/v*"
+  workflow_dispatch: {}
 
 jobs:
+  # ============================================================================
+  # Tag-triggered jobs (push only)
+  # ============================================================================
+
   parse:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
       package: ${{ steps.parse.outputs.package }}
@@ -29,8 +35,38 @@ jobs:
             exit 1
           fi
 
-  publish:
+  conda-build:
     needs: parse
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          pixi-version: v0.63.0
+          run-install: false
+
+      - name: Build conda package
+        run: ./scripts/build-conda-packages.sh ${{ needs.parse.outputs.package }}
+
+      - name: Install rattler-build
+        run: pixi global install rattler-build
+
+      - name: Upload to prefix.dev
+        run: |
+          rattler-build upload prefix \
+            -c ecoscope-workflows \
+            /tmp/wt-conda-channel/noarch/${{ needs.parse.outputs.package }}-*.conda
+
+  publish:
+    needs: [parse, conda-build]
+    if: github.event_name == 'push' && !contains(needs.parse.outputs.package, '-gcp')
     runs-on: ubuntu-latest
     environment: release-${{ needs.parse.outputs.package }}
     permissions:
@@ -86,3 +122,64 @@ jobs:
         with:
           name: "${{ needs.parse.outputs.package }} v${{ needs.parse.outputs.version }}"
           body_path: /tmp/release-notes.md
+
+  release-gcp:
+    needs: [parse, conda-build]
+    if: github.event_name == 'push' && contains(needs.parse.outputs.package, '-gcp')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate release notes
+        env:
+          TAG: ${{ needs.parse.outputs.package }}/v${{ needs.parse.outputs.version }}
+          PACKAGE: ${{ needs.parse.outputs.package }}
+        run: |
+          annotation="$(git tag -l --format='%(contents)' "$TAG")"
+          body="$(echo "$annotation" | tail -n +3)"
+
+          if [ -n "$(echo "$body" | tr -d '[:space:]')" ]; then
+            echo "$body" > /tmp/release-notes.md
+          else
+            echo "Release ${PACKAGE} v${{ needs.parse.outputs.version }} (conda-only)" > /tmp/release-notes.md
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "${{ needs.parse.outputs.package }} v${{ needs.parse.outputs.version }}"
+          body_path: /tmp/release-notes.md
+
+  # ============================================================================
+  # Manual sync job (workflow_dispatch only)
+  # ============================================================================
+
+  sync:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          pixi-version: v0.63.0
+          run-install: false
+
+      - name: Install rattler-build
+        run: pixi global install rattler-build
+
+      - name: Sync all packages to registries
+        run: bash scripts/sync-registries.sh
