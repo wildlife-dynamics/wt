@@ -76,3 +76,16 @@ jobs:
       - name: Run pytest
         working-directory: ${{ matrix.package }}
         run: uv run pytest
+
+  dep-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Check dependency sync
+        run: python3 scripts/check-dep-sync.py

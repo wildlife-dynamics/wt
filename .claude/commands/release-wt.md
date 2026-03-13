@@ -67,7 +67,20 @@ For each package being released:
    ```
    Always read from the CHANGELOG rather than relying on session context — this ensures correctness even if the session was interrupted and resumed after the commit step.
    This embeds the notes in the annotated tag, which the publish workflow uses for the GitHub Release body.
-2. After all tags are created, push tags **one at a time** to trigger the PyPI publish workflow:
+
+2. **GCP metapackage auto-tagging**: After creating a parent package tag, also create the corresponding GCP metapackage tag at the same version. The mapping is:
+   - `wt-task` → `wt-task-gcp`
+   - `wt-invokers` → `wt-invokers-gcp`
+   - `wt-runner` → `wt-runner-gcp`
+
+   For each parent tag `<parent>/v<version>`, also run:
+   ```bash
+   echo "Lockstep release with <parent> v<version>" | bash scripts/release-tag.sh <parent>-gcp <version>
+   ```
+   Only create the GCP tag if the parent package is being released in this session. If the GCP metapackage's own dependencies changed independently, it should have been flagged in Step 2.
+
+3. After all tags are created, push tags **one at a time** to trigger the publish workflow:
+   - Push **parent package tags first**, then their GCP metapackage tags — this ensures the parent conda package is on prefix.dev before the metapackage that depends on it
    - For each tag, show the exact command: `git push origin <tag>`
    - Ask for explicit confirmation before each push — do NOT push automatically
    - Wait for confirmation before proceeding to the next tag
@@ -77,5 +90,9 @@ For each package being released:
 
 - All packages are pre-1.0, so breaking changes bump the minor version (not major)
 - GCP metapackages (`wt-task-gcp`, `wt-invokers-gcp`, `wt-runner-gcp`) are dependency-only — they only need releasing when their dependency pins change
-- The publish workflow (`.github/workflows/publish.yml`) triggers on tag pushes matching `*/v*`. **Only one tag may be pushed per `git push` command** — the workflow reads `GITHUB_REF` which resolves to a single ref, so pushing multiple tags at once will only publish one package
+- **GCP metapackages are conda-only** — they skip PyPI publish. They are tagged in lockstep with their parent package at the same version
+- The publish workflow (`.github/workflows/publish.yml`) publishes to both **PyPI and the `ecoscope-workflows` conda channel on prefix.dev**. The conda build gates PyPI — if it fails, the PyPI publish is skipped
+- **Only one tag may be pushed per `git push` command** — the workflow reads `GITHUB_REF` which resolves to a single ref, so pushing multiple tags at once will only publish one package
 - Tags use the format `<package-name>/v<version>` (e.g., `wt-contracts/v0.2.0`)
+- Tags should be pushed in dependency order so the conda channel has upstream packages available when users install downstream ones
+- If a publish partially fails (e.g., conda uploaded but PyPI didn't), use the `workflow_dispatch` sync trigger on the publish workflow to recover — it idempotently syncs all packages to both registries
