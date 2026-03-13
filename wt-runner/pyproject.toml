@@ -29,12 +29,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Google Cloud Platform dependencies (tracing, Pub/Sub, ecoscope-eda-core)
+# Google Cloud Platform dependencies (tracing, Pub/Sub)
+# Note: ecoscope-eda-core is excluded here because PyPI forbids direct git
+# references in extras. Install it separately or use the wt-runner-gcp conda
+# metapackage which includes it.
 gcp = [
     "opentelemetry-sdk>=1.37.0,<2",
     "opentelemetry-exporter-gcp-trace>=1.9.0,<2",
     "gcloud-aio-pubsub>=6.1.0,<7",
-    "ecoscope-eda-core @ git+https://github.com/wildlife-dynamics/ecoscope-eda-core.git",
 ]
 
 [dependency-groups]
