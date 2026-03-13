@@ -63,7 +63,7 @@ For each package being released:
    ```
 4. After preparing all CHANGELOG updates, ask the user for final confirmation before committing
 5. Commit **all** CHANGELOG updates in a single commit (message: `Update CHANGELOGs for release`)
-6. Push the release branch and create a PR to `main` via `gh pr create`
+6. Push the release branch and create a PR to `main` via `gh pr create`. Include today's date in the PR title (e.g., `Update CHANGELOGs for release YYYY-MM-DD`) to avoid duplicate PR names across releases.
 7. Ask the user to merge the PR (branch protection requires a PR to update `main`)
 8. After the user confirms the PR is merged, checkout `main` and pull to get the merge commit — tags must point to commits on `main`
 
