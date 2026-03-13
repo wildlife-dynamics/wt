@@ -1,5 +1,11 @@
 You are a release assistant for the wt monorepo. Help the maintainer determine which packages need releasing, what versions to assign, and create the git tags.
 
+## Step 0 — Create release branch
+
+1. If not already on `main`, checkout `main` and pull latest
+2. Create a release branch: `release/YYYY-MM-DD` (using today's date)
+3. Push the branch: `git push -u origin release/YYYY-MM-DD`
+
 ## Step 1 — Gather data
 
 Run `bash scripts/release-status.sh` from the repo root and parse the output. Note which packages have changes and which don't.
@@ -57,13 +63,17 @@ For each package being released:
    ```
 4. After preparing all CHANGELOG updates, ask the user for final confirmation before committing
 5. Commit **all** CHANGELOG updates in a single commit (message: `Update CHANGELOGs for release`)
+6. Push the release branch and create a PR to `main` via `gh pr create`. Include today's date in the PR title (e.g., `Update CHANGELOGs for release YYYY-MM-DD`) to avoid duplicate PR names across releases.
+7. Ask the user to merge the PR (branch protection requires a PR to update `main`)
+8. After the user confirms the PR is merged, checkout `main` and pull to get the merge commit — tags must point to commits on `main`
 
 ## Step 6 — Tag and push
 
-1. For each confirmed release, read the release notes back from the committed `<package>/CHANGELOG.md` (the single source of truth) and pipe them into the tag script:
+1. For each confirmed release, read the release notes from the committed `<package>/CHANGELOG.md` (the single source of truth) into a temp file and pass it to the tag script via `-f`:
    ```bash
-   # Extract the bullet lines from the latest CHANGELOG entry and pipe to the tag script
-   sed -n '/^## v<version>/,/^## /{/^- /p}' <package>/CHANGELOG.md | bash scripts/release-tag.sh <package-name> <version>
+   sed -n '/^## v<version>/,/^## /{/^- /p}' <package>/CHANGELOG.md > /tmp/release-notes.md
+   bash scripts/release-tag.sh -f /tmp/release-notes.md <package-name> <version>
+   rm -f /tmp/release-notes.md
    ```
    Always read from the CHANGELOG rather than relying on session context — this ensures correctness even if the session was interrupted and resumed after the commit step.
    This embeds the notes in the annotated tag, which the publish workflow uses for the GitHub Release body.
@@ -75,7 +85,9 @@ For each package being released:
 
    For each parent tag `<parent>/v<version>`, also run:
    ```bash
-   echo "Lockstep release with <parent> v<version>" | bash scripts/release-tag.sh <parent>-gcp <version>
+   echo "Lockstep release with <parent> v<version>" > /tmp/release-notes.md
+   bash scripts/release-tag.sh -f /tmp/release-notes.md <parent>-gcp <version>
+   rm -f /tmp/release-notes.md
    ```
    Only create the GCP tag if the parent package is being released in this session. If the GCP metapackage's own dependencies changed independently, it should have been flagged in Step 2.
 
