@@ -3,8 +3,8 @@ set -euo pipefail
 
 # Create an annotated git tag for a wt package release.
 #
-# Usage: ./scripts/release-tag.sh <package-name> <version>
-# Example: ./scripts/release-tag.sh wt-contracts 0.2.0
+# Usage: ./scripts/release-tag.sh [-f <notes-file>] <package-name> <version>
+# Example: ./scripts/release-tag.sh -f release-notes.md wt-contracts 0.2.0
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -60,9 +60,19 @@ validate_version() {
 }
 
 main() {
+    local notes_file=""
+    while getopts ":f:" opt; do
+        case $opt in
+            f) notes_file="$OPTARG" ;;
+            \?) log_error "Unknown option: -$OPTARG"; exit 1 ;;
+            :) log_error "Option -$OPTARG requires an argument"; exit 1 ;;
+        esac
+    done
+    shift $((OPTIND - 1))
+
     if [[ $# -ne 2 ]]; then
-        echo "Usage: $0 <package-name> <version>"
-        echo "Example: $0 wt-contracts 0.2.0"
+        echo "Usage: $0 [-f <notes-file>] <package-name> <version>"
+        echo "Example: $0 -f release-notes.md wt-contracts 0.2.0"
         echo ""
         echo "Valid packages:"
         for pkg in "${VALID_PACKAGES[@]}"; do
@@ -97,10 +107,15 @@ main() {
         exit 1
     fi
 
-    # Read release notes from stdin if piped (hang-safe: read -t 0 guards
-    # against sockets with no data, e.g. Claude Code's Bash tool).
+    # Read release notes: -f file takes priority, then stdin pipe, then empty.
     local notes=""
-    if [[ ! -t 0 ]] && read -t 0; then
+    if [[ -n "$notes_file" ]]; then
+        if [[ ! -r "$notes_file" ]]; then
+            log_error "Cannot read notes file: $notes_file"
+            exit 1
+        fi
+        notes="$(cat "$notes_file")"
+    elif [[ ! -t 0 ]] && read -t 0; then
         notes="$(cat)"
     fi
 
