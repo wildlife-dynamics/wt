@@ -5,9 +5,25 @@ import asyncio
 import resource
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from wt_compiler.compiler import compile_workflow_from_yaml
+from wt_compiler.wizard import DefaultWizardProvider
+from wt_compiler.wizard.abstract import WizardQuestionLoop, _make_loop_type
+from wt_compiler.wizard.default import non_empty_str, workflow_id_type
+
+# Module-level: build requirements argparse type for the init subparser.
+# Placed outside main() so compile subcommand is unaffected if wizard
+# construction ever becomes expensive, and to avoid repeated construction
+# in tests that call main() multiple times.
+_wt_tmp_provider = DefaultWizardProvider()
+_wt_req_loop_type = _make_loop_type(
+    cast(
+        WizardQuestionLoop,
+        next(q for q in _wt_tmp_provider.get_questions() if q["dest"] == "requirements"),
+    )["questions"]
+)
+del _wt_tmp_provider
 
 
 def main() -> None:
@@ -83,10 +99,81 @@ def main() -> None:
         ),
     )
 
+    # init subcommand
+    init_parser = subparsers.add_parser(
+        "init",
+        help="Scaffold a new workflow project directory",
+        description=(
+            "Interactively scaffold a new workflow project. "
+            "Pass --workflow-id, --workflow-name, and --author-name to run non-interactively."
+        ),
+    )
+    init_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help="Parent directory to scaffold into (default: current directory)",
+    )
+    init_parser.add_argument(
+        "--clobber",
+        action="store_true",
+        help="Overwrite existing output directory if it exists",
+    )
+    init_parser.add_argument(
+        "--workflow-id",
+        type=workflow_id_type,
+        default=None,
+        metavar="ID",
+        help="Workflow ID — valid Python identifier, ≤64 chars (batch mode)",
+    )
+    init_parser.add_argument(
+        "--workflow-name",
+        type=non_empty_str,
+        default=None,
+        metavar="NAME",
+        help="Workflow name, human-readable (batch mode)",
+    )
+    init_parser.add_argument(
+        "--workflow-description",
+        type=str,
+        default=None,
+        metavar="DESC",
+        help="Workflow description, optional (batch mode)",
+    )
+    init_parser.add_argument(
+        "--author-name",
+        type=non_empty_str,
+        default=None,
+        metavar="AUTHOR",
+        help="Author name (batch mode)",
+    )
+    init_parser.add_argument(
+        "--license-type",
+        type=str,
+        choices=["BSD-3-Clause", "MIT", "Apache-2.0"],
+        default=None,
+        help="License type (batch mode; default: BSD-3-Clause)",
+    )
+    init_parser.add_argument(
+        "--requirements",
+        type=_wt_req_loop_type,
+        action="append",
+        default=None,
+        metavar="JSON",
+        help=(
+            "Conda requirement as JSON object: "
+            '\'{"name":"pkg","version":"*","channel":"conda-forge"}\' '
+            "(batch mode; repeatable)"
+        ),
+    )
+
     args = parser.parse_args()
 
     if args.command == "compile":
         _compile(args)
+    elif args.command == "init":
+        _init(args)
 
 
 def _compile(args: argparse.Namespace) -> None:
@@ -152,6 +239,112 @@ def _compile(args: argparse.Namespace) -> None:
         print(f"Error: {e}", file=sys.stderr)
         print("Use --clobber to overwrite existing directory", file=sys.stderr)
         sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _init(args: argparse.Namespace) -> None:
+    """
+    Execute the init command.
+
+    Scaffolds a new workflow project directory by driving DefaultWizardProvider
+    either interactively (input() prompts) or in batch mode (CLI flags).
+    Batch mode activates when --workflow-id, --workflow-name, and --author-name
+    are all provided. Providing any batch flag without all three required flags
+    is an error.
+
+    Args:
+        args: Parsed command-line arguments.
+    """
+    provider = DefaultWizardProvider()
+
+    # Partial batch validation: if any batch flag is provided, all required
+    # ones must be present — prevents silent data loss in interactive fallback.
+    _any_batch = (
+        args.workflow_id is not None
+        or args.workflow_name is not None
+        or args.workflow_description is not None
+        or args.author_name is not None
+        or args.license_type is not None
+        or args.requirements is not None
+    )
+    _required_batch = {
+        "--workflow-id": args.workflow_id,
+        "--workflow-name": args.workflow_name,
+        "--author-name": args.author_name,
+    }
+    if _any_batch:
+        _missing = [k for k, v in _required_batch.items() if v is None]
+        if _missing:
+            print(
+                f"Error: partial batch flags provided. "
+                f"When using batch mode, all required flags must be present. "
+                f"Missing: {', '.join(_missing)}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+    batch_mode = (
+        args.workflow_id is not None
+        and args.workflow_name is not None
+        and args.author_name is not None
+    )
+
+    if batch_mode:
+        provider._answers["workflow_id"] = args.workflow_id
+        provider._answers["workflow_name"] = args.workflow_name
+        provider._answers["workflow_description"] = args.workflow_description or ""
+        provider._answers["author_name"] = args.author_name
+        provider._answers["license_type"] = args.license_type or "BSD-3-Clause"
+        provider._answers["requirements"] = (
+            args.requirements if args.requirements is not None else []
+        )
+    else:
+        gen = provider.input_generator()
+        try:
+            question = next(gen)
+            while True:
+                error = question.get("wizard", {}).get("error")
+                if error:
+                    print(f"Error: {error}", file=sys.stderr)
+                choices = question["argparse"].get("choices")
+                if choices:
+                    print(f"Choices: {', '.join(choices)}")
+                prompt = question["argparse"].get("help", question["dest"])
+                answer = input(f"{prompt}: ")
+                # Pre-validate choices before sending to generator to avoid
+                # ValueError from input_generator's choices check (which does
+                # not re-yield — it raises, terminating the generator).
+                if choices and answer not in choices:
+                    print(
+                        f"Error: '{answer}' is not a valid choice. "
+                        f"Choose from: {', '.join(choices)}",
+                        file=sys.stderr,
+                    )
+                    continue
+                question = gen.send(answer)
+        except StopIteration:
+            pass
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+
+        if "workflow_id" not in provider.answers:
+            print("Error: wizard did not complete successfully", file=sys.stderr)
+            sys.exit(1)
+
+    output_dir = args.output_dir if args.output_dir is not None else Path.cwd()
+    workdir = output_dir / provider.answers["workflow_id"]
+
+    if workdir.exists() and not args.clobber:
+        print(f"Error: Output directory already exists: {workdir}", file=sys.stderr)
+        print("Use --clobber to overwrite existing directory", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        provider.dump(workdir)
+        print(f"Initialized workflow project at: {workdir}")
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
