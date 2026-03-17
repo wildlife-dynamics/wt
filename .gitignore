@@ -156,6 +156,7 @@ venv.bak/
 
 # mkdocs documentation
 /site
+docs/site/
 
 # mypy
 .mypy_cache/
@@ -211,3 +212,6 @@ __marimo__/
 
 
 .vscode
+
+# generated outputs from our docs examples
+docs/examples/**/wt-*-workflow
