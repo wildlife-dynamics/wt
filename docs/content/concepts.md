@@ -337,11 +337,3 @@ requirements:
 For the complete requirements reference, see
 [spec.yaml — requirements](reference/spec-yaml.md#requirements).
 
-### Which tool when?
-
-| You want to... | Use |
-|---|---|
-| Develop a task package | uv or pixi |
-| Run `wt-compiler compile` | uv or pixi |
-| Run a compiled workflow | pixi (required) |
-| Use one tool for everything | pixi |
