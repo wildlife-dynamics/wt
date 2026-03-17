@@ -200,9 +200,8 @@ which are defined in wt-contracts.
 ## The compilation model
 
 Workflows in the wt framework are **compiled** rather than interpreted. The
-compiler reads a declarative YAML specification and produces a complete,
-self-contained pixi workspace. This is a deliberate choice with specific
-tradeoffs.
+compiler reads the imperative YAML specification and produces a collection of 
+generated files within a self-contained pixi workspace. 
 
 ### What the compiler produces
 
