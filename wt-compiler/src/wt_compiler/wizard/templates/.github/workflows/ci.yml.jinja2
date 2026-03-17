@@ -17,10 +17,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
-      - name: Install yq
-        run: |
-          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
-          sudo chmod +x /usr/local/bin/yq
       - name: Parse test cases
         id: parse
         run: |
@@ -35,7 +31,7 @@ jobs:
           echo "release_dir=${dirs[0]%/}" >> $GITHUB_OUTPUT
 
           # Fail if no test cases defined
-          keys=$(yq -o=json 'keys' test-cases.yaml)
+          keys=$(yq -o=json -I=0 'keys' test-cases.yaml)
           if [ "$keys" = "[]" ] || [ "$keys" = "null" ]; then
             echo "::error::test-cases.yaml has no test cases defined" && exit 1
           fi
@@ -93,7 +89,7 @@ jobs:
           docker ps
       - name: Invoke container with curl
         run: |
-          params=$(yq -c ".[\"$CI_TEST_CASE\"].params" test-cases.yaml)
+          params=$(yq -o=json -I=0 ".[\"$CI_TEST_CASE\"].params" test-cases.yaml)
           curl --fail-with-body \
             -X POST "http://localhost:4000/?execution_mode=sequential&mock_io=true&results_url=/workflow/results" \
             -H "Content-Type: application/json" \
