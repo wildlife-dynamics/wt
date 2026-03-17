@@ -8,12 +8,59 @@ on:
     branches: ["**"]
 
 jobs:
+  parse-test-cases:
+    runs-on: ubuntu-latest
+    outputs:
+      cases: {% raw %}${{ steps.parse.outputs.cases }}{% endraw %}
+
+      first_case: {% raw %}${{ steps.parse.outputs.first_case }}{% endraw %}
+
+      release_dir: {% raw %}${{ steps.parse.outputs.release_dir }}{% endraw %}
+
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+      - name: Parse test cases
+        id: parse
+        run: |
+{% raw %}
+          # Discover release directory
+          shopt -s nullglob
+          dirs=(*-workflow/)
+          if [ ${#dirs[@]} -eq 0 ]; then
+            echo "Error: no *-workflow directory found" >&2; exit 1
+          elif [ ${#dirs[@]} -gt 1 ]; then
+            echo "Error: multiple *-workflow directories found: ${dirs[*]}" >&2; exit 1
+          fi
+          echo "release_dir=${dirs[0]%/}" >> $GITHUB_OUTPUT
+
+          # Fail if no test cases defined
+          keys=$(yq -o=json 'keys' test-cases.yaml)
+          if [ "$keys" = "[]" ] || [ "$keys" = "null" ]; then
+            echo "::error::test-cases.yaml has no test cases defined" && exit 1
+          fi
+          # Fail if any case is missing .params
+          for case in $(yq 'keys | .[]' test-cases.yaml); do
+            params=$(yq ".[\"$case\"].params" test-cases.yaml)
+            if [ "$params" = "null" ]; then
+              echo "::error::test case '$case' is missing required 'params' field" && exit 1
+            fi
+          done
+
+          echo "cases=$keys" >> $GITHUB_OUTPUT
+          echo "first_case=$(yq 'keys | .[0]' test-cases.yaml)" >> $GITHUB_OUTPUT
+{% endraw %}
+
   test:
+    needs: parse-test-cases
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        deployment: ["local", "docker"]
+        case: {% raw %}${{ fromJSON(needs.parse-test-cases.outputs.cases) }}{% endraw %}
 
     steps:
       - uses: actions/checkout@v6
@@ -22,29 +69,31 @@ jobs:
       - name: Set CI variables
         run: |
 {% raw %}
-          shopt -s nullglob
-          dirs=(*-workflow/)
-          if [ ${#dirs[@]} -eq 0 ]; then
-            echo "Error: no *-workflow directory found" >&2; exit 1
-          elif [ ${#dirs[@]} -gt 1 ]; then
-            echo "Error: multiple *-workflow directories found: ${dirs[*]}" >&2; exit 1
-          fi
-          echo "RELEASE_DIR=${dirs[0]%/}" >> $GITHUB_ENV
+          echo "RELEASE_DIR=${{ needs.parse-test-cases.outputs.release_dir }}" >> $GITHUB_ENV
 {% endraw %}
-{% if ci_test_case %}
-          echo "CI_TEST_CASE={{ ci_test_case }}" >> $GITHUB_ENV
-{% else %}
-          echo "CI_TEST_CASE=$(yq 'keys | .[0]' test-cases.yaml)" >> $GITHUB_ENV
-{% endif %}
       - name: Test
-        if: matrix.deployment == 'local'
         run: >-
           pixi run --manifest-path $RELEASE_DIR/pixi.toml
           --locked -e test
           test-app-sequential-mock-io
-          --case $CI_TEST_CASE
+{% raw %}
+          --case ${{ matrix.case }}
+{% endraw %}
+
+  docker:
+    needs: parse-test-cases
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install pixi
+        run: curl -fsSL https://pixi.sh/install.sh | bash && echo "$HOME/.pixi/bin" >> $GITHUB_PATH
+      - name: Set CI variables
+        run: |
+{% raw %}
+          echo "RELEASE_DIR=${{ needs.parse-test-cases.outputs.release_dir }}" >> $GITHUB_ENV
+          echo "CI_TEST_CASE=${{ needs.parse-test-cases.outputs.first_case }}" >> $GITHUB_ENV
+{% endraw %}
       - name: Docker build + run
-        if: matrix.deployment == 'docker'
         run: |
           pixi run --manifest-path $RELEASE_DIR/pixi.toml --locked -e default docker-build
           docker run --name $RELEASE_DIR -d \
@@ -53,7 +102,6 @@ jobs:
           sleep 5
           docker ps
       - name: Invoke container with curl
-        if: matrix.deployment == 'docker'
         run: |
 {% raw %}
           params=$(yq -c ".[\"$CI_TEST_CASE\"].params" test-cases.yaml)

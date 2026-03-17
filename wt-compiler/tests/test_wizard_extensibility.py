@@ -391,7 +391,6 @@ class TestCustomTemplates:
             "desc",
             "Author",
             "MIT",
-            "",  # ci_test_case (default)
             "",  # ci_tmp_dir (default)
             "",  # end requirements loop
         ]
@@ -442,7 +441,6 @@ class TestCustomTemplates:
             "desc",
             "Author",
             "MIT",
-            "",  # ci_test_case (default)
             "",  # ci_tmp_dir (default)
             "",  # end requirements loop
         ]
@@ -477,7 +475,6 @@ class TestCustomTemplates:
             "desc",
             "Author",
             "MIT",
-            "",  # ci_test_case (default)
             "",  # ci_tmp_dir (default)
             "",
         ]

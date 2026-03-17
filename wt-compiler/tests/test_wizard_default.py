@@ -100,7 +100,6 @@ class TestRequirementsLoop:
             "desc",  # workflow_description
             "Author",  # author_name
             "MIT",  # license_type
-            "",  # ci_test_case (default)
             "",  # ci_tmp_dir (default)
             # Requirement 1
             "numpy",  # name
@@ -133,7 +132,6 @@ class TestRequirementsLoop:
             "desc",  # workflow_description
             "Author",  # author_name
             "MIT",  # license_type
-            "",  # ci_test_case (default)
             "",  # ci_tmp_dir (default)
             "",  # empty name = done immediately
         ]
@@ -151,7 +149,6 @@ class TestRequirementsLoop:
             "desc",
             "Author",
             "MIT",
-            "",  # ci_test_case (default)
             "",  # ci_tmp_dir (default)
         ]
         q = next(gen)
@@ -192,7 +189,6 @@ class TestLicenseDefaults:
             "desc",
             "Author",
             "",  # empty → default
-            "",  # ci_test_case (default)
             "",  # ci_tmp_dir (default)
             "",  # end requirements loop
         ]
@@ -222,7 +218,7 @@ class TestDump:
     """Tests for dump() template rendering."""
 
     def _make_provider_with_answers(
-        self, ci_test_case: str = "", ci_tmp_dir: str = "",
+        self, ci_tmp_dir: str = "",
     ) -> DefaultWizardProvider:
         """Create a provider with all answers populated."""
         provider = DefaultWizardProvider()
@@ -232,7 +228,6 @@ class TestDump:
             "A test workflow",
             "Test Author",
             "MIT",
-            ci_test_case,  # ci_test_case
             ci_tmp_dir,  # ci_tmp_dir
             "numpy",
             ">=1.0",
@@ -315,28 +310,42 @@ class TestDump:
         text = (tmp_path / ".gitattributes").read_text()
         assert "linguist-generated=true" in text
 
-    def test_dump_ci_yml_with_explicit_test_case(self, tmp_path: Path) -> None:
-        """CI workflow contains explicit test case and ci_tmp_dir."""
-        provider = self._make_provider_with_answers(
-            ci_test_case="my_case", ci_tmp_dir=".wt-tmp",
-        )
+    def test_dump_ci_yml_parse_test_cases_job(self, tmp_path: Path) -> None:
+        """CI workflow contains parse-test-cases job with expected outputs."""
+        provider = self._make_provider_with_answers(ci_tmp_dir=".wt-tmp")
         provider.dump(tmp_path)
         text = (tmp_path / ".github/workflows/ci.yml").read_text()
-        assert "CI_TEST_CASE=my_case" in text
+        assert "parse-test-cases:" in text
+        assert "steps.parse.outputs.cases" in text
+        assert "steps.parse.outputs.first_case" in text
+        assert "steps.parse.outputs.release_dir" in text
+
+    def test_dump_ci_yml_validation_errors(self, tmp_path: Path) -> None:
+        """CI workflow contains validation error messages for empty test-cases and missing params."""
+        provider = self._make_provider_with_answers(ci_tmp_dir=".wt-tmp")
+        provider.dump(tmp_path)
+        text = (tmp_path / ".github/workflows/ci.yml").read_text()
+        assert "test-cases.yaml has no test cases defined" in text
+        assert "is missing required 'params' field" in text
+
+    def test_dump_ci_yml_test_job_matrix(self, tmp_path: Path) -> None:
+        """CI test job uses matrix.case strategy."""
+        provider = self._make_provider_with_answers(ci_tmp_dir=".wt-tmp")
+        provider.dump(tmp_path)
+        text = (tmp_path / ".github/workflows/ci.yml").read_text()
+        assert "needs: parse-test-cases" in text
+        assert "matrix:" in text
+        assert "fromJSON(needs.parse-test-cases.outputs.cases)" in text
+        assert "matrix.case" in text
+
+    def test_dump_ci_yml_docker_job_uses_first_case(self, tmp_path: Path) -> None:
+        """CI docker job uses first_case output from parse-test-cases."""
+        provider = self._make_provider_with_answers(ci_tmp_dir=".wt-tmp")
+        provider.dump(tmp_path)
+        text = (tmp_path / ".github/workflows/ci.yml").read_text()
+        assert "needs.parse-test-cases.outputs.first_case" in text
         assert ".wt-tmp/" in text
         assert "$RELEASE_DIR" in text
-        # When ci_test_case is set, should NOT have yq auto-select
-        assert "yq 'keys | .[0]'" not in text
-
-    def test_dump_ci_yml_auto_select_test_case(self, tmp_path: Path) -> None:
-        """CI workflow auto-selects test case when ci_test_case is empty."""
-        provider = self._make_provider_with_answers(ci_test_case="", ci_tmp_dir=".wt-tmp")
-        provider.dump(tmp_path)
-        text = (tmp_path / ".github/workflows/ci.yml").read_text()
-        # Should use yq to auto-select first key
-        assert "yq 'keys | .[0]' test-cases.yaml" in text
-        # Should NOT have a hardcoded test case
-        assert "CI_TEST_CASE=my_case" not in text
 
     def test_dump_tag_yml_preserves_github_expressions(self, tmp_path: Path) -> None:
         """Tag workflow preserves ${{ }} GitHub Actions expressions literally."""
