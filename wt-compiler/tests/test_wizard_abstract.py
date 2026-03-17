@@ -49,6 +49,7 @@ class TestGeneratorMechanics:
             "A description",  # workflow_description
             "Author Name",  # author_name
             "MIT",  # license_type
+            "",  # ci_tmp_dir
             "numpy",  # requirements[0].name
             "*",  # requirements[0].version
             "conda-forge",  # requirements[0].channel
@@ -76,6 +77,7 @@ class TestGeneratorMechanics:
             "A description",  # workflow_description
             "Author Name",  # author_name
             "MIT",  # license_type
+            "",  # ci_tmp_dir
             "numpy",  # requirements[0].name
             "*",  # requirements[0].version
             "conda-forge",  # requirements[0].channel
@@ -88,6 +90,7 @@ class TestGeneratorMechanics:
         assert provider.answers["workflow_description"] == "A description"
         assert provider.answers["author_name"] == "Author Name"
         assert provider.answers["license_type"] == "MIT"
+        assert provider.answers["ci_tmp_dir"] == ".wt-tmp"
         assert provider.answers["requirements"] == [
             {"name": "numpy", "version": "*", "channel": "conda-forge"}
         ]
