@@ -1,0 +1,26 @@
+id: split_and_parse
+
+requirements:
+  - name: custom-tasks
+    path: /absolute/path/to/custom-tasks
+
+workflow:
+  - id: total
+    name: "Add Two Numbers"
+    task: custom_tasks.tasks.add
+    partial:
+      a: 4
+      b: 8
+
+  - id: digits
+    name: "Split Into Digits"
+    task: custom_tasks.tasks.split_digits
+    partial:
+      n: ${{ workflow.total.return }}
+
+  - id: result
+    name: "Parse Each Digit"
+    task: custom_tasks.tasks.parse_int
+    map:
+      argnames: s
+      argvalues: ${{ workflow.digits.return }}
