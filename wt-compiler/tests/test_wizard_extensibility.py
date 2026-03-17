@@ -391,6 +391,8 @@ class TestCustomTemplates:
             "desc",
             "Author",
             "MIT",
+            "",  # ci_test_case (default)
+            "",  # ci_tmp_dir (default)
             "",  # end requirements loop
         ]
         drive_wizard(provider, answers)
@@ -440,6 +442,8 @@ class TestCustomTemplates:
             "desc",
             "Author",
             "MIT",
+            "",  # ci_test_case (default)
+            "",  # ci_tmp_dir (default)
             "",  # end requirements loop
         ]
         drive_wizard(provider, answers)
@@ -451,14 +455,18 @@ class TestCustomTemplates:
         assert (out_dir / "extra.yaml").exists()
         extra_content = (out_dir / "extra.yaml").read_text()
         assert "my_workflow" in extra_content
-        # Default files also exist (7 total: 6 defaults + 1 extra)
-        files = {f.name for f in out_dir.iterdir() if f.is_file()}
-        default_files = {
+        # Default files also exist
+        top_level_files = {f.name for f in out_dir.iterdir() if f.is_file()}
+        default_top_files = {
             "spec.yaml", "test-cases.yaml", "README.md",
             "LICENSE", ".gitignore", ".gitattributes",
         }
-        assert default_files.issubset(files)
-        assert len(files) == 7
+        assert default_top_files.issubset(top_level_files)
+        # Extra + 6 defaults at top level = 7 files
+        assert len(top_level_files) == 7
+        # Also verify nested CI files exist
+        assert (out_dir / ".github" / "workflows" / "ci.yml").exists()
+        assert (out_dir / ".github" / "workflows" / "tag.yml").exists()
 
     def test_default_templates_inherited(self, tmp_path: Path) -> None:
         """Subclass with no custom templates inherits all defaults."""
@@ -469,11 +477,16 @@ class TestCustomTemplates:
             "desc",
             "Author",
             "MIT",
+            "",  # ci_test_case (default)
+            "",  # ci_tmp_dir (default)
             "",
         ]
         drive_wizard(provider, answers)
         provider.dump(tmp_path)
 
-        expected = {"spec.yaml", "test-cases.yaml", "README.md", "LICENSE", ".gitignore", ".gitattributes"}
-        actual = {f.name for f in tmp_path.iterdir() if f.is_file()}
-        assert expected == actual
+        expected_top = {"spec.yaml", "test-cases.yaml", "README.md", "LICENSE", ".gitignore", ".gitattributes"}
+        actual_top = {f.name for f in tmp_path.iterdir() if f.is_file()}
+        assert expected_top == actual_top
+        # Nested CI files
+        assert (tmp_path / ".github" / "workflows" / "ci.yml").exists()
+        assert (tmp_path / ".github" / "workflows" / "tag.yml").exists()

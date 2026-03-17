@@ -100,6 +100,8 @@ class TestRequirementsLoop:
             "desc",  # workflow_description
             "Author",  # author_name
             "MIT",  # license_type
+            "",  # ci_test_case (default)
+            "",  # ci_tmp_dir (default)
             # Requirement 1
             "numpy",  # name
             ">=1.0",  # version
@@ -131,6 +133,8 @@ class TestRequirementsLoop:
             "desc",  # workflow_description
             "Author",  # author_name
             "MIT",  # license_type
+            "",  # ci_test_case (default)
+            "",  # ci_tmp_dir (default)
             "",  # empty name = done immediately
         ]
         drive_wizard(provider, answers)
@@ -147,6 +151,8 @@ class TestRequirementsLoop:
             "desc",
             "Author",
             "MIT",
+            "",  # ci_test_case (default)
+            "",  # ci_tmp_dir (default)
         ]
         q = next(gen)
         for ans in answers_before_loop:
@@ -186,13 +192,15 @@ class TestLicenseDefaults:
             "desc",
             "Author",
             "",  # empty → default
+            "",  # ci_test_case (default)
+            "",  # ci_tmp_dir (default)
             "",  # end requirements loop
         ]
         drive_wizard(provider, answers)
         assert provider.answers["license_type"] == "BSD-3-Clause"
 
     def test_license_invalid_choice_reyields(self) -> None:
-        """Send invalid license string — re-yield with error."""
+        """Send invalid license string — verify choices present."""
         provider = DefaultWizardProvider()
         gen = provider.input_generator()
         # Skip to license question
@@ -213,7 +221,9 @@ class TestLicenseDefaults:
 class TestDump:
     """Tests for dump() template rendering."""
 
-    def _make_provider_with_answers(self) -> DefaultWizardProvider:
+    def _make_provider_with_answers(
+        self, ci_test_case: str = "", ci_tmp_dir: str = "",
+    ) -> DefaultWizardProvider:
         """Create a provider with all answers populated."""
         provider = DefaultWizardProvider()
         answers = [
@@ -222,6 +232,8 @@ class TestDump:
             "A test workflow",
             "Test Author",
             "MIT",
+            ci_test_case,  # ci_test_case
+            ci_tmp_dir,  # ci_tmp_dir
             "numpy",
             ">=1.0",
             "conda-forge",
@@ -231,7 +243,7 @@ class TestDump:
         return provider
 
     def test_dump_creates_all_files(self, tmp_path: Path) -> None:
-        """All 6 files exist after dump."""
+        """All expected files exist after dump, including nested paths."""
         provider = self._make_provider_with_answers()
         provider.dump(tmp_path)
         expected_files = [
@@ -241,6 +253,8 @@ class TestDump:
             "LICENSE",
             ".gitignore",
             ".gitattributes",
+            ".github/workflows/ci.yml",
+            ".github/workflows/tag.yml",
         ]
         for fname in expected_files:
             assert (tmp_path / fname).exists(), f"{fname} not found"
@@ -279,12 +293,20 @@ class TestDump:
         assert "MIT" in text
 
     def test_dump_gitignore_contents(self, tmp_path: Path) -> None:
-        """Has __pycache__/, .pixi/."""
-        provider = self._make_provider_with_answers()
+        """Has __pycache__/, .pixi/, and ci_tmp_dir."""
+        provider = self._make_provider_with_answers(ci_tmp_dir=".wt-tmp")
         provider.dump(tmp_path)
         text = (tmp_path / ".gitignore").read_text()
         assert "__pycache__/" in text
         assert ".pixi/" in text
+        assert ".wt-tmp/" in text
+
+    def test_dump_gitignore_custom_ci_tmp_dir(self, tmp_path: Path) -> None:
+        """Custom ci_tmp_dir value appears in .gitignore."""
+        provider = self._make_provider_with_answers(ci_tmp_dir=".my-ci-tmp")
+        provider.dump(tmp_path)
+        text = (tmp_path / ".gitignore").read_text()
+        assert ".my-ci-tmp/" in text
 
     def test_dump_gitattributes_contents(self, tmp_path: Path) -> None:
         """Has linguist-generated=true."""
@@ -292,6 +314,45 @@ class TestDump:
         provider.dump(tmp_path)
         text = (tmp_path / ".gitattributes").read_text()
         assert "linguist-generated=true" in text
+
+    def test_dump_ci_yml_with_explicit_test_case(self, tmp_path: Path) -> None:
+        """CI workflow contains explicit test case and ci_tmp_dir."""
+        provider = self._make_provider_with_answers(
+            ci_test_case="my_case", ci_tmp_dir=".wt-tmp",
+        )
+        provider.dump(tmp_path)
+        text = (tmp_path / ".github/workflows/ci.yml").read_text()
+        assert "CI_TEST_CASE=my_case" in text
+        assert ".wt-tmp/" in text
+        assert "$RELEASE_DIR" in text
+        # When ci_test_case is set, should NOT have yq auto-select
+        assert "yq 'keys | .[0]'" not in text
+
+    def test_dump_ci_yml_auto_select_test_case(self, tmp_path: Path) -> None:
+        """CI workflow auto-selects test case when ci_test_case is empty."""
+        provider = self._make_provider_with_answers(ci_test_case="", ci_tmp_dir=".wt-tmp")
+        provider.dump(tmp_path)
+        text = (tmp_path / ".github/workflows/ci.yml").read_text()
+        # Should use yq to auto-select first key
+        assert "yq 'keys | .[0]' test-cases.yaml" in text
+        # Should NOT have a hardcoded test case
+        assert "CI_TEST_CASE=my_case" not in text
+
+    def test_dump_tag_yml_preserves_github_expressions(self, tmp_path: Path) -> None:
+        """Tag workflow preserves ${{ }} GitHub Actions expressions literally."""
+        provider = self._make_provider_with_answers()
+        provider.dump(tmp_path)
+        text = (tmp_path / ".github/workflows/tag.yml").read_text()
+        assert "${{ steps.create_tag.outputs.result }}" in text
+        assert "${{ steps.find_release_dir.outputs.name }}" in text
+        assert "${{ github.event.pull_request.merge_commit_sha }}" in text
+        assert "${{ needs.generate-tag.outputs.tag }}" in text
+
+    def test_dump_creates_nested_directories(self, tmp_path: Path) -> None:
+        """dump() creates .github/workflows/ directory automatically."""
+        provider = self._make_provider_with_answers()
+        provider.dump(tmp_path)
+        assert (tmp_path / ".github" / "workflows").is_dir()
 
     def test_dump_raises_on_incomplete_answers(self, tmp_path: Path) -> None:
         """Incomplete provider raises UndefinedError when rendering."""
