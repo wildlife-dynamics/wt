@@ -25,7 +25,7 @@ import keyword
 
 from rattler import NamelessMatchSpec
 
-from wt_compiler.requirements import CHANNELS, _channel_from_str, _serialize_channel
+from wt_compiler.requirements import CHANNELS, _serialize_channel
 from wt_compiler.wizard.abstract import (
     AbstractWizardProvider,
     WizardQuestion,
@@ -122,36 +122,6 @@ def requirement_version_type(value: str) -> str:
     return value
 
 
-def channel_type(value: str) -> str:
-    """Validate a channel string and return its base URL.
-
-    Looks up *value* in ``CHANNELS`` by name or base URL and returns the
-    matched channel's ``base_url``.
-
-    Args:
-        value: Channel name or base URL to look up.
-
-    Returns:
-        The ``base_url`` of the matched channel.
-
-    Raises:
-        argparse.ArgumentTypeError: If *value* does not match any known channel.
-
-    Examples:
-        >>> channel_type("conda-forge")
-        'https://conda.anaconda.org/conda-forge/'
-        >>> channel_type("unknown-channel")
-        Traceback (most recent call last):
-            ...
-        argparse.ArgumentTypeError: Unknown channel unknown-channel; ...
-    """
-    try:
-        channel = _channel_from_str(value)
-    except ValueError as e:
-        raise argparse.ArgumentTypeError(str(e)) from e
-    return channel.base_url
-
-
 CHANNEL_CHOICES: list[str] = [_serialize_channel(c) for c in CHANNELS]
 """Channel choices list built from ``requirements.CHANNELS``."""
 
@@ -210,11 +180,7 @@ _Q_REQUIREMENTS: WizardQuestion = {
         },
         {
             "dest": "channel",
-            "argparse": {
-                "help": "Channel",
-                "type": channel_type,
-                "default": channel_type("conda-forge"),
-            },
+            "argparse": {"help": "Channel", "choices": CHANNEL_CHOICES, "default": "conda-forge"},
             "wizard": {},
         },
     ],
