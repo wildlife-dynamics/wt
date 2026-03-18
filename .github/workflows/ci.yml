@@ -47,6 +47,9 @@ jobs:
           - package: wt-invokers
             python-version: "3.13"
             extras: "--extra gcp"
+          - package: wt-runner-gcp
+            python-version: "3.13"
+            extras: ""
 
     steps:
       - uses: actions/checkout@v4
