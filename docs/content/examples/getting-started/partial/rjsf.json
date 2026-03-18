@@ -1,0 +1,18 @@
+{
+  "properties": {
+    "total": {
+      "type": "object",
+      "title": "Add With Default",
+      "properties": {
+        "a": { "type": "integer", "title": "A" }
+      },
+      "required": ["a"],
+      "additionalProperties": false
+    }
+  },
+  "uiSchema": {
+    "total": { "ui:order": ["a"] },
+    "ui:order": ["total"]
+  },
+  "additionalProperties": false
+}
