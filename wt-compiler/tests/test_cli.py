@@ -373,6 +373,60 @@ class TestInitCommand:
         assert p.answers["workflow_description"] == ""
         assert p.answers["license_type"] == "BSD-3-Clause"
 
+    def test_init_batch_mode_with_requirements(self, tmp_path: Path) -> None:
+        """Batch mode: --requirements flags are expanded through the loop generator."""
+        from wt_compiler.wizard import DefaultWizardProvider
+
+        captured_provider: list[DefaultWizardProvider] = []
+
+        def capture_dump(self: DefaultWizardProvider, workdir: Path) -> None:
+            captured_provider.append(self)
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "wt-compiler", "init",
+                "--workflow-id", "my_wf",
+                "--workflow-name", "My Workflow",
+                "--author-name", "Author",
+                "--requirements", '{"name":"pandas","version":">=2.0","channel":"conda-forge"}',
+                "--requirements", '{"name":"numpy","version":"*","channel":"conda-forge"}',
+                "--output-dir", str(tmp_path),
+            ],
+        ):
+            with patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump", capture_dump):
+                main()
+
+        reqs = captured_provider[0].answers["requirements"]
+        assert len(reqs) == 2
+        assert reqs[0] == {"name": "pandas", "version": ">=2.0", "channel": "conda-forge"}
+        assert reqs[1] == {"name": "numpy", "version": "*", "channel": "conda-forge"}
+
+    def test_init_batch_mode_no_input_calls(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    ) -> None:
+        """Batch mode never calls input() regardless of which flags are supplied."""
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "wt-compiler", "init",
+                "--workflow-id", "my_wf",
+                "--workflow-name", "My Workflow",
+                "--workflow-description", "desc",
+                "--author-name", "Author",
+                "--license-type", "MIT",
+                "--requirements", '{"name":"pkg","version":"*","channel":"conda-forge"}',
+                "--output-dir", str(tmp_path),
+            ],
+        ):
+            with patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump"):
+                with patch("builtins.input") as mock_input:
+                    main()
+
+        mock_input.assert_not_called()
+
     def test_init_interactive_mode(
         self, capsys: pytest.CaptureFixture[str], tmp_path: Path
     ) -> None:
