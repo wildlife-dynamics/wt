@@ -56,6 +56,46 @@ class TestMainParser:
         assert "--spec" in captured.err
 
 
+class TestMakeQuestionaryValidator:
+    """Unit tests for _make_questionary_validator()."""
+
+    def test_returns_true_on_valid_input(self) -> None:
+        """Valid input returns True."""
+        from wt_compiler.cli import _make_questionary_validator
+        from wt_compiler.wizard.default import workflow_id_type
+
+        validator = _make_questionary_validator(workflow_id_type)
+        assert validator("my_workflow") is True
+
+    def test_returns_error_string_on_invalid_input(self) -> None:
+        """Invalid input returns an error string (not raises)."""
+        from wt_compiler.cli import _make_questionary_validator
+        from wt_compiler.wizard.default import workflow_id_type
+
+        validator = _make_questionary_validator(workflow_id_type)
+        result = validator("123bad")
+        assert isinstance(result, str)
+        assert result  # non-empty error message
+
+    def test_returns_true_for_non_empty_str(self) -> None:
+        """non_empty_str validator returns True for valid input."""
+        from wt_compiler.cli import _make_questionary_validator
+        from wt_compiler.wizard.default import non_empty_str
+
+        validator = _make_questionary_validator(non_empty_str)
+        assert validator("Author Name") is True
+
+    def test_returns_error_string_for_empty_str(self) -> None:
+        """non_empty_str validator returns error string for whitespace-only input."""
+        from wt_compiler.cli import _make_questionary_validator
+        from wt_compiler.wizard.default import non_empty_str
+
+        validator = _make_questionary_validator(non_empty_str)
+        result = validator("   ")
+        assert isinstance(result, str)
+        assert result  # non-empty error message
+
+
 class TestCompileCommand:
     """Tests for the compile command."""
 
@@ -430,76 +470,58 @@ class TestInitCommand:
     def test_init_interactive_mode(
         self, capsys: pytest.CaptureFixture[str], tmp_path: Path
     ) -> None:
-        """Interactive mode: input() drives wizard, dump() called with correct workdir."""
-        input_sequence = iter([
-            "my_workflow",    # workflow_id
-            "My Workflow",    # workflow_name
-            "A description",  # workflow_description
-            "Author",         # author_name
-            "MIT",            # license_type (valid choice — no pre-validation error)
-            "",               # end requirements loop
-        ])
+        """Interactive mode: questionary drives wizard, dump() called with correct workdir."""
+        # questionary.confirm for loop entry: first returns True (add one), second False (stop)
+        confirm_mock = MagicMock()
+        confirm_mock.return_value.ask.side_effect = [True, False]
+        # questionary.text answers: workflow_id, workflow_name, description, author_name,
+        #                           then loop: name, version
+        text_mock = MagicMock()
+        text_mock.return_value.ask.side_effect = [
+            "my_workflow", "My Workflow", "", "Author",
+            "numpy", "*",
+        ]
+        # questionary.select answers: license_type, then channel
+        select_mock = MagicMock()
+        select_mock.return_value.ask.side_effect = ["MIT", "conda-forge"]
 
         with patch.object(sys, "argv", ["wt-compiler", "init", "--output-dir", str(tmp_path)]):
-            with patch("builtins.input", side_effect=input_sequence):
-                with patch(
-                    "wt_compiler.wizard.abstract.AbstractWizardProvider.dump"
-                ) as mock_dump:
-                    main()
+            with patch("questionary.text", text_mock):
+                with patch("questionary.select", select_mock):
+                    with patch("questionary.confirm", confirm_mock):
+                        with patch(
+                            "wt_compiler.wizard.abstract.AbstractWizardProvider.dump"
+                        ) as mock_dump:
+                            main()
 
         mock_dump.assert_called_once()
         assert mock_dump.call_args[0][0] == tmp_path / "my_workflow"
 
-    def test_init_interactive_choices_prevalidation(
+    def test_init_interactive_select_for_choice_fields(
         self, capsys: pytest.CaptureFixture[str], tmp_path: Path
     ) -> None:
-        """Interactive mode: invalid choice is re-prompted without calling gen.send()."""
-        inputs = [
-            "my_workflow",
-            "My Workflow",
-            "A description",
-            "Author",
-            "INVALID",  # invalid license_type — triggers pre-validation error, no gen.send()
-            "MIT",      # valid retry
-            "",         # end requirements loop
+        """Choice fields use questionary.select, not questionary.text."""
+        confirm_mock = MagicMock()
+        confirm_mock.return_value.ask.side_effect = [True, False]
+        text_mock = MagicMock()
+        text_mock.return_value.ask.side_effect = [
+            "my_workflow", "My Workflow", "", "Author",
+            "numpy", "*",
         ]
+        select_mock = MagicMock()
+        select_mock.return_value.ask.side_effect = ["MIT", "conda-forge"]
 
         with patch.object(sys, "argv", ["wt-compiler", "init", "--output-dir", str(tmp_path)]):
-            with patch("builtins.input", side_effect=inputs) as mock_input:
-                with patch(
-                    "wt_compiler.wizard.abstract.AbstractWizardProvider.dump"
-                ) as mock_dump:
-                    main()
+            with patch("questionary.text", text_mock):
+                with patch("questionary.select", select_mock):
+                    with patch("questionary.confirm", confirm_mock):
+                        with patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump"):
+                            main()
 
-        mock_dump.assert_called_once()
-        # 7 input() calls: 5 valid answers + 1 invalid (re-prompt, no gen.send) + 1 loop terminator
-        assert mock_input.call_count == len(inputs)
-        assert "not a valid choice" in capsys.readouterr().err
-
-    def test_init_interactive_validation_reprompt(
-        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
-    ) -> None:
-        """Interactive mode: type validation failure (invalid workflow_id) re-prompts."""
-        input_sequence = iter([
-            "123bad",      # invalid workflow_id — _validate_answer re-yields with error
-            "my_workflow", # valid retry
-            "My Workflow",
-            "A description",
-            "Author",
-            "MIT",
-            "",            # end requirements loop
-        ])
-
-        with patch.object(sys, "argv", ["wt-compiler", "init", "--output-dir", str(tmp_path)]):
-            with patch("builtins.input", side_effect=input_sequence):
-                with patch(
-                    "wt_compiler.wizard.abstract.AbstractWizardProvider.dump"
-                ) as mock_dump:
-                    main()
-
-        mock_dump.assert_called_once()
-        # Error message should contain the specific validation error from workflow_id_type
-        assert "is not a valid Python identifier" in capsys.readouterr().err
+        # questionary.select called for license_type and channel (both have choices)
+        assert select_mock.call_count == 2
+        # questionary.text called for free-text fields only
+        assert text_mock.call_count == 6  # workflow_id, workflow_name, description, author, name, version
 
     def test_init_existing_dir_error(
         self, capsys: pytest.CaptureFixture[str], tmp_path: Path

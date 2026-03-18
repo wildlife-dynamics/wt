@@ -92,7 +92,10 @@ class MyProvider(DefaultWizardProvider):
 - **Batch/static**: each question's `argparse` dict defines CLI flags like `--workflow-id VALUE`
 - Both modes use the same question definitions
 
-## Rich Interactive Renderers
+## Rich Interactive Renderers (questionary)
+
+The `wt-compiler init` interactive mode uses [questionary](https://github.com/tmbo/questionary)
+to provide arrow-key select prompts, inline validation, and loop confirm prompts.
 
 The generator protocol is designed to support renderers richer than a plain `input()` loop.
 When `input_generator()` is inside a `WizardQuestionLoop`, it injects `loop_context` into

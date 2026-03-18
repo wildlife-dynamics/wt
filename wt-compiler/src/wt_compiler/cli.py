@@ -4,16 +4,127 @@ import argparse
 import asyncio
 import resource
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
+
+import questionary
 
 from wt_compiler.compiler import compile_workflow_from_yaml
 from wt_compiler.wizard import DefaultWizardProvider
 from wt_compiler.wizard.abstract import (
+    LoopContext,
     SingleWizardQuestion,
     WizardQuestion,
     _is_loop,
 )
+
+
+def _make_questionary_validator(
+    type_fn: Callable[[str], Any],
+) -> Callable[[str], bool | str]:
+    """Wrap an argparse type callable into a questionary validate function.
+
+    questionary's ``validate`` parameter expects a callable that returns
+    ``True`` on success or an error string on failure.
+
+    Args:
+        type_fn: An argparse-style type callable that raises
+            ``argparse.ArgumentTypeError`` or ``ValueError`` on invalid input.
+
+    Returns:
+        A callable suitable for ``questionary.text(validate=...)``.
+    """
+
+    def validator(answer: str) -> bool | str:
+        try:
+            type_fn(answer)
+            return True
+        except (argparse.ArgumentTypeError, ValueError) as e:
+            return str(e)
+
+    return validator
+
+
+def _interactive_init(provider: DefaultWizardProvider) -> None:
+    """Drive DefaultWizardProvider interactively using questionary prompts.
+
+    Replaces the raw ``input()`` loop with rich terminal widgets:
+    - ``questionary.text()`` for free-text fields, with inline validation
+    - ``questionary.select()`` for choice fields (arrow-key navigation)
+    - ``questionary.confirm()`` for loop iteration control
+
+    Loop boundaries are detected via ``wizard.loop_context`` injected by
+    ``_process_question()``. When ``loop_context`` is present on a yielded
+    question, a confirm prompt is shown before the question itself:
+    - ``iteration == 0``: "Add a {dest}?" (default True)
+    - ``iteration > 0``: "Add another {dest}?" (default False)
+    If the user declines, ``""`` is sent to the generator to end the loop.
+
+    Args:
+        provider: A fresh ``DefaultWizardProvider`` instance. Answers are
+            stored on ``provider._answers`` by the generator.
+
+    Raises:
+        SystemExit: On questionary cancellation (Ctrl+C) or unexpected
+            generator error.
+    """
+    gen = provider.input_generator()
+    try:
+        question = next(gen)
+        while True:
+            wizard_meta = question.get("wizard", {})
+
+            # --- Display any validation error from the generator ---
+            error: str | None = wizard_meta.get("error")
+            if error:
+                print(f"Error: {error}", file=sys.stderr)
+
+            # --- Loop boundary detection ---
+            loop_ctx: LoopContext | None = wizard_meta.get("loop_context")
+            if loop_ctx is not None:
+                is_first = loop_ctx["iteration"] == 0
+                confirm_msg = (
+                    f"Add a {loop_ctx['dest']}?" if is_first else f"Add another {loop_ctx['dest']}?"
+                )
+                confirmed = questionary.confirm(confirm_msg, default=is_first).ask()
+                if confirmed is None:
+                    # Ctrl+C
+                    sys.exit(1)
+                if not confirmed:
+                    question = gen.send("")
+                    continue
+
+            choices = question["argparse"].get("choices")
+            default = question["argparse"].get("default")
+            prompt = question["argparse"].get("help", question["dest"])
+            type_fn = question["argparse"].get("type")
+
+            if choices:
+                answer = questionary.select(
+                    prompt,
+                    choices=choices,
+                    default=default if default in choices else choices[0],
+                ).ask()
+            else:
+                validate_fn = _make_questionary_validator(type_fn) if type_fn else None
+                answer = questionary.text(
+                    prompt,
+                    default=str(default) if default is not None else "",
+                    validate=validate_fn,
+                ).ask()
+
+            if answer is None:
+                # Ctrl+C
+                sys.exit(1)
+
+            question = gen.send(answer)
+
+    except StopIteration:
+        pass
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 def main() -> None:
@@ -257,37 +368,23 @@ def _init(args: argparse.Namespace, questions: list[WizardQuestion]) -> None:
                 _seq.append(str(v) if v is not None else str(sq["argparse"].get("default") or ""))
     _answer_iter = iter(_seq)
 
-    gen = provider.input_generator()
-    try:
-        question = next(gen)
-        while True:
-            error = question.get("wizard", {}).get("error")
-            if error:
-                print(f"Error: {error}", file=sys.stderr)
-            if batch_mode:
+    if batch_mode:
+        gen = provider.input_generator()
+        try:
+            question = next(gen)
+            while True:
+                error = question.get("wizard", {}).get("error")
+                if error:
+                    print(f"Error: {error}", file=sys.stderr)
                 answer = next(_answer_iter)
-            else:
-                choices = question["argparse"].get("choices")
-                if choices:
-                    print(f"Choices: {', '.join(choices)}")
-                prompt = question["argparse"].get("help", question["dest"])
-                answer = input(f"{prompt}: ")
-                # Pre-validate choices before sending to generator to avoid
-                # ValueError from input_generator's choices check (which does
-                # not re-yield — it raises, terminating the generator).
-                if choices and answer not in choices:
-                    print(
-                        f"Error: '{answer}' is not a valid choice. "
-                        f"Choose from: {', '.join(choices)}",
-                        file=sys.stderr,
-                    )
-                    continue
-            question = gen.send(answer)
-    except StopIteration:
-        pass
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+                question = gen.send(answer)
+        except StopIteration:
+            pass
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        _interactive_init(provider)
 
     if "workflow_id" not in provider.answers:
         print("Error: wizard did not complete successfully", file=sys.stderr)
