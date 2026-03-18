@@ -231,7 +231,7 @@ class TestDump:
         return provider
 
     def test_dump_creates_all_files(self, tmp_path: Path) -> None:
-        """All 6 files exist after dump."""
+        """All expected files exist after dump, including nested paths."""
         provider = self._make_provider_with_answers()
         provider.dump(tmp_path)
         expected_files = [
@@ -241,6 +241,8 @@ class TestDump:
             "LICENSE",
             ".gitignore",
             ".gitattributes",
+            ".github/workflows/ci.yml",
+            ".github/workflows/tag.yml",
         ]
         for fname in expected_files:
             assert (tmp_path / fname).exists(), f"{fname} not found"
@@ -279,12 +281,13 @@ class TestDump:
         assert "MIT" in text
 
     def test_dump_gitignore_contents(self, tmp_path: Path) -> None:
-        """Has __pycache__/, .pixi/."""
+        """Has __pycache__/, .pixi/, and .wt-tmp/."""
         provider = self._make_provider_with_answers()
         provider.dump(tmp_path)
         text = (tmp_path / ".gitignore").read_text()
         assert "__pycache__/" in text
         assert ".pixi/" in text
+        assert ".wt-tmp/" in text
 
     def test_dump_gitattributes_contents(self, tmp_path: Path) -> None:
         """Has linguist-generated=true."""
@@ -292,6 +295,59 @@ class TestDump:
         provider.dump(tmp_path)
         text = (tmp_path / ".gitattributes").read_text()
         assert "linguist-generated=true" in text
+
+    def test_dump_ci_yml_parse_test_cases_job(self, tmp_path: Path) -> None:
+        """CI workflow contains parse-test-cases job with expected outputs."""
+        provider = self._make_provider_with_answers()
+        provider.dump(tmp_path)
+        text = (tmp_path / ".github/workflows/ci.yml").read_text()
+        assert "parse-test-cases:" in text
+        assert "steps.parse.outputs.cases" in text
+        assert "steps.parse.outputs.first_case" in text
+        assert "steps.parse.outputs.release_dir" in text
+
+    def test_dump_ci_yml_validation_errors(self, tmp_path: Path) -> None:
+        """CI workflow contains validation error messages for empty test-cases and missing params."""
+        provider = self._make_provider_with_answers()
+        provider.dump(tmp_path)
+        text = (tmp_path / ".github/workflows/ci.yml").read_text()
+        assert "test-cases.yaml has no test cases defined" in text
+        assert "is missing required 'params' field" in text
+
+    def test_dump_ci_yml_test_job_matrix(self, tmp_path: Path) -> None:
+        """CI test job uses matrix.case strategy."""
+        provider = self._make_provider_with_answers()
+        provider.dump(tmp_path)
+        text = (tmp_path / ".github/workflows/ci.yml").read_text()
+        assert "needs: parse-test-cases" in text
+        assert "matrix:" in text
+        assert "fromJSON(needs.parse-test-cases.outputs.cases)" in text
+        assert "matrix.case" in text
+
+    def test_dump_ci_yml_docker_job_uses_first_case(self, tmp_path: Path) -> None:
+        """CI docker job uses first_case output from parse-test-cases."""
+        provider = self._make_provider_with_answers()
+        provider.dump(tmp_path)
+        text = (tmp_path / ".github/workflows/ci.yml").read_text()
+        assert "needs.parse-test-cases.outputs.first_case" in text
+        assert ".wt-tmp/" in text
+        assert "$RELEASE_DIR" in text
+
+    def test_dump_tag_yml_preserves_github_expressions(self, tmp_path: Path) -> None:
+        """Tag workflow preserves ${{ }} GitHub Actions expressions literally."""
+        provider = self._make_provider_with_answers()
+        provider.dump(tmp_path)
+        text = (tmp_path / ".github/workflows/tag.yml").read_text()
+        assert "${{ steps.create_tag.outputs.result }}" in text
+        assert "${{ steps.find_release_dir.outputs.name }}" in text
+        assert "${{ github.event.pull_request.merge_commit_sha }}" in text
+        assert "${{ needs.generate-tag.outputs.tag }}" in text
+
+    def test_dump_creates_nested_directories(self, tmp_path: Path) -> None:
+        """dump() creates .github/workflows/ directory automatically."""
+        provider = self._make_provider_with_answers()
+        provider.dump(tmp_path)
+        assert (tmp_path / ".github" / "workflows").is_dir()
 
     def test_dump_raises_on_incomplete_answers(self, tmp_path: Path) -> None:
         """Incomplete provider raises UndefinedError when rendering."""

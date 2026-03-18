@@ -429,4 +429,5 @@ class AbstractWizardProvider(ABC):
             template = env.get_template(tname)
             output_name = tname.removesuffix(".jinja2")
             output_path = workdir / output_name
+            output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text(template.render(context))
