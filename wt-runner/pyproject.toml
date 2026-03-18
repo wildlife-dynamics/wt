@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "wt-runner"
 dynamic = ["version"]
 description = "FastAPI application for workflow execution using wt-invokers"
-requires-python = ">=3.13,<3.16"
+requires-python = ">=3.13,<3.14"
 license = { text = "BSD-3-Clause" }
 classifiers = [
     "Development Status :: 3 - Alpha",
