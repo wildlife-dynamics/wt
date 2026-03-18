@@ -81,6 +81,7 @@ class WizardQuestionLoop(TypedDict, total=False):
     """
 
     dest: str  # pyright: ignore[reportGeneralTypeIssues]  # Required
+    argparse: ArgparseKwargs
     questions: list[WizardQuestion]  # pyright: ignore[reportGeneralTypeIssues]  # Required
     condition: Callable[[MappingProxyType[str, Any]], bool]
 

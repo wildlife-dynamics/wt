@@ -13,7 +13,6 @@ from wt_compiler.wizard.abstract import (
     SingleWizardQuestion,
     WizardQuestion,
     _is_loop,
-    _make_loop_type,
 )
 
 
@@ -115,22 +114,8 @@ def main() -> None:
     )
     for q in init_questions:
         flag = "--" + q["dest"].replace("_", "-")
-        if _is_loop(q):
-            init_parser.add_argument(
-                flag,
-                type=_make_loop_type(q["questions"]),
-                action="append",
-                default=None,
-                metavar="JSON",
-                help=(
-                    "Conda requirement as JSON object: "
-                    '\'{"name":"pkg","version":"*","channel":"conda-forge"}\' '
-                    "(batch mode; repeatable)"
-                ),
-            )
-        else:
-            ap_kwargs: Any = {**cast(SingleWizardQuestion, q)["argparse"], "default": None}
-            init_parser.add_argument(flag, **ap_kwargs)
+        ap_kwargs: Any = {**cast(SingleWizardQuestion, q)["argparse"], "default": None}
+        init_parser.add_argument(flag, **ap_kwargs)
 
     args = parser.parse_args()
 

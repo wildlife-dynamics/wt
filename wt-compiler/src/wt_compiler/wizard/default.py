@@ -29,6 +29,7 @@ from wt_compiler.requirements import CHANNELS, _serialize_channel
 from wt_compiler.wizard.abstract import (
     AbstractWizardProvider,
     WizardQuestion,
+    _make_loop_type,
 )
 
 # --- Validation callables ---------------------------------------------------
@@ -165,25 +166,34 @@ _Q_LICENSE_TYPE: WizardQuestion = {
     "wizard": {},
 }
 
+_Q_REQUIREMENTS_LOOP_QUESTIONS: list[WizardQuestion] = [
+    {
+        "dest": "name",
+        "argparse": {"help": "Package name", "type": non_empty_str},
+        "wizard": {},
+    },
+    {
+        "dest": "version",
+        "argparse": {"help": "Version spec", "type": requirement_version_type, "default": "*"},
+        "wizard": {},
+    },
+    {
+        "dest": "channel",
+        "argparse": {"help": "Channel", "choices": CHANNEL_CHOICES, "default": "conda-forge"},
+        "wizard": {},
+    },
+]
 _Q_REQUIREMENTS: WizardQuestion = {
     "dest": "requirements",
-    "questions": [
-        {
-            "dest": "name",
-            "argparse": {"help": "Package name", "type": non_empty_str},
-            "wizard": {},
-        },
-        {
-            "dest": "version",
-            "argparse": {"help": "Version spec", "type": requirement_version_type, "default": "*"},
-            "wizard": {},
-        },
-        {
-            "dest": "channel",
-            "argparse": {"help": "Channel", "choices": CHANNEL_CHOICES, "default": "conda-forge"},
-            "wizard": {},
-        },
-    ],
+    "argparse": {
+        "action": "append",
+        "default": None,
+        "help": "Conda requirement as JSON object: "
+        "{'name':'pkg','version':'*','channel':'conda-forge'} "
+        "(batch mode; repeatable)",
+        "type": _make_loop_type(_Q_REQUIREMENTS_LOOP_QUESTIONS),
+    },
+    "questions": _Q_REQUIREMENTS_LOOP_QUESTIONS,
 }
 
 _DEFAULT_QUESTIONS: list[WizardQuestion] = [
