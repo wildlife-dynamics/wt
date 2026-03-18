@@ -192,7 +192,7 @@ class TestLicenseDefaults:
         assert provider.answers["license_type"] == "BSD-3-Clause"
 
     def test_license_invalid_choice_reyields(self) -> None:
-        """Send invalid license string — verify choices present."""
+        """Send invalid license string — re-yield with error."""
         provider = DefaultWizardProvider()
         gen = provider.input_generator()
         # Skip to license question
