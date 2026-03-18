@@ -250,26 +250,38 @@ def _init(args: argparse.Namespace, questions: list[WizardQuestion]) -> None:
         and args.author_name is not None
     )
 
+    # Pre-build answers in generator-expected order for batch mode.
+    # Single questions → one string answer; loop questions → one string per
+    # sub-field per item, then "" to signal loop end.
+    # In interactive mode _seq stays empty and _answer_iter is never consumed.
+    _seq: list[str] = []
     if batch_mode:
         for q in questions:
-            dest = q["dest"]
-            val = getattr(args, dest)
-            if val is not None:
-                provider._answers[dest] = val
-            elif _is_loop(q):
-                provider._answers[dest] = []
+            if _is_loop(q):
+                for item in getattr(args, q["dest"]) or []:
+                    for sub_q in q["questions"]:
+                        sq = cast(SingleWizardQuestion, sub_q)
+                        v = item.get(sq["dest"])
+                        _seq.append(
+                            str(v) if v is not None else str(sq["argparse"].get("default") or "")
+                        )
+                _seq.append("")  # signal loop end
             else:
-                provider._answers[dest] = cast(SingleWizardQuestion, q)["argparse"].get(
-                    "default", ""
-                )
-    else:
-        gen = provider.input_generator()
-        try:
-            question = next(gen)
-            while True:
-                error = question.get("wizard", {}).get("error")
-                if error:
-                    print(f"Error: {error}", file=sys.stderr)
+                sq = cast(SingleWizardQuestion, q)
+                v = getattr(args, q["dest"])
+                _seq.append(str(v) if v is not None else str(sq["argparse"].get("default") or ""))
+    _answer_iter = iter(_seq)
+
+    gen = provider.input_generator()
+    try:
+        question = next(gen)
+        while True:
+            error = question.get("wizard", {}).get("error")
+            if error:
+                print(f"Error: {error}", file=sys.stderr)
+            if batch_mode:
+                answer = next(_answer_iter)
+            else:
                 choices = question["argparse"].get("choices")
                 if choices:
                     print(f"Choices: {', '.join(choices)}")
@@ -285,16 +297,16 @@ def _init(args: argparse.Namespace, questions: list[WizardQuestion]) -> None:
                         file=sys.stderr,
                     )
                     continue
-                question = gen.send(answer)
-        except StopIteration:
-            pass
-        except Exception as e:
-            print(f"Error: {e}", file=sys.stderr)
-            sys.exit(1)
+            question = gen.send(answer)
+    except StopIteration:
+        pass
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
-        if "workflow_id" not in provider.answers:
-            print("Error: wizard did not complete successfully", file=sys.stderr)
-            sys.exit(1)
+    if "workflow_id" not in provider.answers:
+        print("Error: wizard did not complete successfully", file=sys.stderr)
+        sys.exit(1)
 
     output_dir = args.output_dir if args.output_dir is not None else Path.cwd()
     workdir = output_dir / provider.answers["workflow_id"]
