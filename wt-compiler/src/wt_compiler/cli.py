@@ -9,22 +9,12 @@ from typing import Any, cast
 
 from wt_compiler.compiler import compile_workflow_from_yaml
 from wt_compiler.wizard import DefaultWizardProvider
-from wt_compiler.wizard.abstract import WizardQuestionLoop, _make_loop_type
-from wt_compiler.wizard.default import non_empty_str, workflow_id_type
-
-# Module-level: build requirements argparse type for the init subparser.
-# Placed outside main() so compile subcommand is unaffected if wizard
-# construction ever becomes expensive, and to avoid repeated construction
-# in tests that call main() multiple times.
-_wt_tmp_provider = DefaultWizardProvider()
-_wt_req_q = next((q for q in _wt_tmp_provider.get_questions() if q["dest"] == "requirements"), None)
-if _wt_req_q is None:
-    raise RuntimeError(
-        "wt_compiler.cli: DefaultWizardProvider has no 'requirements' question; "
-        "cannot build init subparser."
-    )
-_wt_req_loop_type = _make_loop_type(cast(WizardQuestionLoop, _wt_req_q)["questions"])
-del _wt_tmp_provider, _wt_req_q
+from wt_compiler.wizard.abstract import (
+    SingleWizardQuestion,
+    WizardQuestion,
+    _is_loop,
+    _make_loop_type,
+)
 
 
 def main() -> None:
@@ -101,6 +91,8 @@ def main() -> None:
     )
 
     # init subcommand
+    init_questions = DefaultWizardProvider().get_questions()
+
     init_parser = subparsers.add_parser(
         "init",
         help="Scaffold a new workflow project directory",
@@ -121,60 +113,31 @@ def main() -> None:
         action="store_true",
         help="Overwrite existing output directory if it exists",
     )
-    init_parser.add_argument(
-        "--workflow-id",
-        type=workflow_id_type,
-        default=None,
-        metavar="ID",
-        help="Workflow ID — valid Python identifier, ≤64 chars (batch mode)",
-    )
-    init_parser.add_argument(
-        "--workflow-name",
-        type=non_empty_str,
-        default=None,
-        metavar="NAME",
-        help="Workflow name, human-readable (batch mode)",
-    )
-    init_parser.add_argument(
-        "--workflow-description",
-        type=str,
-        default=None,
-        metavar="DESC",
-        help="Workflow description, optional (batch mode)",
-    )
-    init_parser.add_argument(
-        "--author-name",
-        type=non_empty_str,
-        default=None,
-        metavar="AUTHOR",
-        help="Author name (batch mode)",
-    )
-    init_parser.add_argument(
-        "--license-type",
-        type=str,
-        choices=["BSD-3-Clause", "MIT", "Apache-2.0"],
-        default=None,
-        help="License type (batch mode; default: BSD-3-Clause)",
-    )
-    init_parser.add_argument(
-        "--requirements",
-        type=_wt_req_loop_type,
-        action="append",
-        default=None,
-        metavar="JSON",
-        help=(
-            "Conda requirement as JSON object: "
-            '\'{"name":"pkg","version":"*","channel":"conda-forge"}\' '
-            "(batch mode; repeatable)"
-        ),
-    )
+    for q in init_questions:
+        flag = "--" + q["dest"].replace("_", "-")
+        if _is_loop(q):
+            init_parser.add_argument(
+                flag,
+                type=_make_loop_type(q["questions"]),
+                action="append",
+                default=None,
+                metavar="JSON",
+                help=(
+                    "Conda requirement as JSON object: "
+                    '\'{"name":"pkg","version":"*","channel":"conda-forge"}\' '
+                    "(batch mode; repeatable)"
+                ),
+            )
+        else:
+            ap_kwargs: Any = {**cast(SingleWizardQuestion, q)["argparse"], "default": None}
+            init_parser.add_argument(flag, **ap_kwargs)
 
     args = parser.parse_args()
 
     if args.command == "compile":
         _compile(args)
     elif args.command == "init":
-        _init(args)
+        _init(args, init_questions)
 
 
 def _compile(args: argparse.Namespace) -> None:
@@ -245,7 +208,7 @@ def _compile(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
-def _init(args: argparse.Namespace) -> None:
+def _init(args: argparse.Namespace, questions: list[WizardQuestion]) -> None:
     """
     Execute the init command.
 
@@ -257,19 +220,14 @@ def _init(args: argparse.Namespace) -> None:
 
     Args:
         args: Parsed command-line arguments.
+        questions: Wizard questions from DefaultWizardProvider, used to derive
+            batch-mode defaults and detect partial batch flag usage.
     """
     provider = DefaultWizardProvider()
 
     # Partial batch validation: if any batch flag is provided, all required
     # ones must be present — prevents silent data loss in interactive fallback.
-    _any_batch = (
-        args.workflow_id is not None
-        or args.workflow_name is not None
-        or args.workflow_description is not None
-        or args.author_name is not None
-        or args.license_type is not None
-        or args.requirements is not None
-    )
+    _any_batch = any(getattr(args, q["dest"]) is not None for q in questions)
     _required_batch = {
         "--workflow-id": args.workflow_id,
         "--workflow-name": args.workflow_name,
@@ -293,18 +251,17 @@ def _init(args: argparse.Namespace) -> None:
     )
 
     if batch_mode:
-        provider._answers["workflow_id"] = args.workflow_id
-        provider._answers["workflow_name"] = args.workflow_name
-        provider._answers["workflow_description"] = (
-            args.workflow_description if args.workflow_description is not None else ""
-        )
-        provider._answers["author_name"] = args.author_name
-        provider._answers["license_type"] = (
-            args.license_type if args.license_type is not None else "BSD-3-Clause"
-        )
-        provider._answers["requirements"] = (
-            args.requirements if args.requirements is not None else []
-        )
+        for q in questions:
+            dest = q["dest"]
+            val = getattr(args, dest)
+            if val is not None:
+                provider._answers[dest] = val
+            elif _is_loop(q):
+                provider._answers[dest] = []
+            else:
+                provider._answers[dest] = cast(SingleWizardQuestion, q)["argparse"].get(
+                    "default", ""
+                )
     else:
         gen = provider.input_generator()
         try:
