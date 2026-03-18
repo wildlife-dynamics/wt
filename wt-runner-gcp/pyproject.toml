@@ -58,13 +58,13 @@ backend = { name = "pixi-build-python", version = "*", channels = ["conda-forge"
 noarch = true
 
 [tool.pixi.package.host-dependencies]
-python = ">=3.13,<3.16"
+python = ">=3.13,<3.14"
 setuptools = ">=64"
 setuptools-scm = ">=8"
 pip = "*"
 
 [tool.pixi.package.run-dependencies]
-python = ">=3.13,<3.16"
+python = ">=3.13,<3.14"
 wt-runner = ">=0.1.0,<1.0.0"
 ecoscope-eda-core = ">=0.2.0"
 opentelemetry-sdk = ">=1.37.0,<2"
