@@ -284,6 +284,11 @@ class TestInitCommand:
         assert "--output-dir" in captured.out
         assert "--clobber" in captured.out
         assert "--workflow-id" in captured.out
+        assert "--workflow-name" in captured.out
+        assert "--workflow-description" in captured.out
+        assert "--author-name" in captured.out
+        assert "--license-type" in captured.out
+        assert "--requirements" in captured.out
 
     def test_init_in_help_listing(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Test that 'init' appears in the top-level help."""
@@ -309,9 +314,11 @@ class TestInitCommand:
             ],
         ):
             with patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump") as mock_dump:
-                main()
+                with patch("builtins.input") as mock_input:
+                    main()
 
         mock_dump.assert_called_once()
+        mock_input.assert_not_called()
         assert mock_dump.call_args[0][0] == tmp_path / "my_workflow"
         assert "Initialized workflow project at:" in capsys.readouterr().out
 
@@ -393,24 +400,26 @@ class TestInitCommand:
         self, capsys: pytest.CaptureFixture[str], tmp_path: Path
     ) -> None:
         """Interactive mode: invalid choice is re-prompted without calling gen.send()."""
-        input_sequence = iter([
+        inputs = [
             "my_workflow",
             "My Workflow",
             "A description",
             "Author",
-            "INVALID",  # invalid license_type — triggers pre-validation error
+            "INVALID",  # invalid license_type — triggers pre-validation error, no gen.send()
             "MIT",      # valid retry
             "",         # end requirements loop
-        ])
+        ]
 
         with patch.object(sys, "argv", ["wt-compiler", "init", "--output-dir", str(tmp_path)]):
-            with patch("builtins.input", side_effect=input_sequence):
+            with patch("builtins.input", side_effect=inputs) as mock_input:
                 with patch(
                     "wt_compiler.wizard.abstract.AbstractWizardProvider.dump"
                 ) as mock_dump:
                     main()
 
         mock_dump.assert_called_once()
+        # 7 input() calls: 5 valid answers + 1 invalid (re-prompt, no gen.send) + 1 loop terminator
+        assert mock_input.call_count == len(inputs)
         assert "not a valid choice" in capsys.readouterr().err
 
     def test_init_interactive_validation_reprompt(
@@ -435,7 +444,8 @@ class TestInitCommand:
                     main()
 
         mock_dump.assert_called_once()
-        assert "Error:" in capsys.readouterr().err
+        # Error message should contain the specific validation error from workflow_id_type
+        assert "is not a valid Python identifier" in capsys.readouterr().err
 
     def test_init_existing_dir_error(
         self, capsys: pytest.CaptureFixture[str], tmp_path: Path
@@ -487,7 +497,8 @@ class TestInitCommand:
         ]):
             with patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump") as mock_dump:
                 with patch("pathlib.Path.cwd", return_value=tmp_path):
-                    main()
+                    with patch("pathlib.Path.exists", return_value=False):
+                        main()
 
         assert mock_dump.call_args[0][0] == tmp_path / "my_workflow"
 

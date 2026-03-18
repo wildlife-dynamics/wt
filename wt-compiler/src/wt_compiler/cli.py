@@ -17,13 +17,16 @@ from wt_compiler.wizard.default import non_empty_str, workflow_id_type
 # construction ever becomes expensive, and to avoid repeated construction
 # in tests that call main() multiple times.
 _wt_tmp_provider = DefaultWizardProvider()
-_wt_req_loop_type = _make_loop_type(
-    cast(
-        WizardQuestionLoop,
-        next(q for q in _wt_tmp_provider.get_questions() if q["dest"] == "requirements"),
-    )["questions"]
+_wt_req_q = next(
+    (q for q in _wt_tmp_provider.get_questions() if q["dest"] == "requirements"), None
 )
-del _wt_tmp_provider
+if _wt_req_q is None:
+    raise RuntimeError(
+        "wt_compiler.cli: DefaultWizardProvider has no 'requirements' question; "
+        "cannot build init subparser."
+    )
+_wt_req_loop_type = _make_loop_type(cast(WizardQuestionLoop, _wt_req_q)["questions"])
+del _wt_tmp_provider, _wt_req_q
 
 
 def main() -> None:
@@ -294,9 +297,13 @@ def _init(args: argparse.Namespace) -> None:
     if batch_mode:
         provider._answers["workflow_id"] = args.workflow_id
         provider._answers["workflow_name"] = args.workflow_name
-        provider._answers["workflow_description"] = args.workflow_description or ""
+        provider._answers["workflow_description"] = (
+            args.workflow_description if args.workflow_description is not None else ""
+        )
         provider._answers["author_name"] = args.author_name
-        provider._answers["license_type"] = args.license_type or "BSD-3-Clause"
+        provider._answers["license_type"] = (
+            args.license_type if args.license_type is not None else "BSD-3-Clause"
+        )
         provider._answers["requirements"] = (
             args.requirements if args.requirements is not None else []
         )
