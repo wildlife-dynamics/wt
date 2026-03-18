@@ -17,9 +17,7 @@ from wt_compiler.wizard.default import non_empty_str, workflow_id_type
 # construction ever becomes expensive, and to avoid repeated construction
 # in tests that call main() multiple times.
 _wt_tmp_provider = DefaultWizardProvider()
-_wt_req_q = next(
-    (q for q in _wt_tmp_provider.get_questions() if q["dest"] == "requirements"), None
-)
+_wt_req_q = next((q for q in _wt_tmp_provider.get_questions() if q["dest"] == "requirements"), None)
 if _wt_req_q is None:
     raise RuntimeError(
         "wt_compiler.cli: DefaultWizardProvider has no 'requirements' question; "
