@@ -83,7 +83,7 @@ jobs:
         run: |
           pixi run --manifest-path $RELEASE_DIR/pixi.toml --locked -e default docker-build
           docker run --name $RELEASE_DIR -d \
-            -v $(pwd)/{% endraw %}{{ ci_tmp_dir }}{% raw %}/$RELEASE_DIR-results:/workflow/results \
+            -v $(pwd)/.wt-tmp/$RELEASE_DIR-results:/workflow/results \
             -e PORT=4000 -p 4000:4000 $RELEASE_DIR
           sleep 5
           docker ps

@@ -49,7 +49,7 @@ class TestInteractiveMode:
             "A description",
             "Author Name",
             "MIT",
-            "",  # ci_tmp_dir
+
             "numpy",
             "*",
             "conda-forge",
@@ -74,7 +74,7 @@ class TestInteractiveMode:
             "desc",
             "Author",
             "MIT",  # license (has choices)
-            "",  # ci_tmp_dir
+
             "",  # end requirements
         ])
 
@@ -94,7 +94,7 @@ class TestInteractiveMode:
             "desc",
             "Author",
             "MIT",
-            "",  # ci_tmp_dir
+
             "",  # end requirements
         ])
 
@@ -122,7 +122,7 @@ class TestInteractiveMode:
             "desc",
             "Author",
             "MIT",
-            "",  # ci_tmp_dir
+
             "pkg1",  # req 1 name
             "*",  # req 1 version
             "conda-forge",  # req 1 channel
@@ -246,7 +246,7 @@ class TestStaticBatchMode:
         q = next(gen)
 
         # Feed simple questions from namespace
-        simple_dests = ["workflow_id", "workflow_name", "workflow_description", "author_name", "license_type", "ci_tmp_dir"]
+        simple_dests = ["workflow_id", "workflow_name", "workflow_description", "author_name", "license_type"]
         for dest in simple_dests:
             value = getattr(args, dest)
             q = gen.send(str(value) if value else "")

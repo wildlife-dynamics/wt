@@ -100,7 +100,6 @@ class TestRequirementsLoop:
             "desc",  # workflow_description
             "Author",  # author_name
             "MIT",  # license_type
-            "",  # ci_tmp_dir (default)
             # Requirement 1
             "numpy",  # name
             ">=1.0",  # version
@@ -132,7 +131,6 @@ class TestRequirementsLoop:
             "desc",  # workflow_description
             "Author",  # author_name
             "MIT",  # license_type
-            "",  # ci_tmp_dir (default)
             "",  # empty name = done immediately
         ]
         drive_wizard(provider, answers)
@@ -149,7 +147,6 @@ class TestRequirementsLoop:
             "desc",
             "Author",
             "MIT",
-            "",  # ci_tmp_dir (default)
         ]
         q = next(gen)
         for ans in answers_before_loop:
@@ -189,7 +186,6 @@ class TestLicenseDefaults:
             "desc",
             "Author",
             "",  # empty → default
-            "",  # ci_tmp_dir (default)
             "",  # end requirements loop
         ]
         drive_wizard(provider, answers)
@@ -217,9 +213,7 @@ class TestLicenseDefaults:
 class TestDump:
     """Tests for dump() template rendering."""
 
-    def _make_provider_with_answers(
-        self, ci_tmp_dir: str = "",
-    ) -> DefaultWizardProvider:
+    def _make_provider_with_answers(self) -> DefaultWizardProvider:
         """Create a provider with all answers populated."""
         provider = DefaultWizardProvider()
         answers = [
@@ -228,7 +222,6 @@ class TestDump:
             "A test workflow",
             "Test Author",
             "MIT",
-            ci_tmp_dir,  # ci_tmp_dir
             "numpy",
             ">=1.0",
             "conda-forge",
@@ -288,20 +281,13 @@ class TestDump:
         assert "MIT" in text
 
     def test_dump_gitignore_contents(self, tmp_path: Path) -> None:
-        """Has __pycache__/, .pixi/, and ci_tmp_dir."""
-        provider = self._make_provider_with_answers(ci_tmp_dir=".wt-tmp")
+        """Has __pycache__/, .pixi/, and .wt-tmp/."""
+        provider = self._make_provider_with_answers()
         provider.dump(tmp_path)
         text = (tmp_path / ".gitignore").read_text()
         assert "__pycache__/" in text
         assert ".pixi/" in text
         assert ".wt-tmp/" in text
-
-    def test_dump_gitignore_custom_ci_tmp_dir(self, tmp_path: Path) -> None:
-        """Custom ci_tmp_dir value appears in .gitignore."""
-        provider = self._make_provider_with_answers(ci_tmp_dir=".my-ci-tmp")
-        provider.dump(tmp_path)
-        text = (tmp_path / ".gitignore").read_text()
-        assert ".my-ci-tmp/" in text
 
     def test_dump_gitattributes_contents(self, tmp_path: Path) -> None:
         """Has linguist-generated=true."""
@@ -312,7 +298,7 @@ class TestDump:
 
     def test_dump_ci_yml_parse_test_cases_job(self, tmp_path: Path) -> None:
         """CI workflow contains parse-test-cases job with expected outputs."""
-        provider = self._make_provider_with_answers(ci_tmp_dir=".wt-tmp")
+        provider = self._make_provider_with_answers()
         provider.dump(tmp_path)
         text = (tmp_path / ".github/workflows/ci.yml").read_text()
         assert "parse-test-cases:" in text
@@ -322,7 +308,7 @@ class TestDump:
 
     def test_dump_ci_yml_validation_errors(self, tmp_path: Path) -> None:
         """CI workflow contains validation error messages for empty test-cases and missing params."""
-        provider = self._make_provider_with_answers(ci_tmp_dir=".wt-tmp")
+        provider = self._make_provider_with_answers()
         provider.dump(tmp_path)
         text = (tmp_path / ".github/workflows/ci.yml").read_text()
         assert "test-cases.yaml has no test cases defined" in text
@@ -330,7 +316,7 @@ class TestDump:
 
     def test_dump_ci_yml_test_job_matrix(self, tmp_path: Path) -> None:
         """CI test job uses matrix.case strategy."""
-        provider = self._make_provider_with_answers(ci_tmp_dir=".wt-tmp")
+        provider = self._make_provider_with_answers()
         provider.dump(tmp_path)
         text = (tmp_path / ".github/workflows/ci.yml").read_text()
         assert "needs: parse-test-cases" in text
@@ -340,7 +326,7 @@ class TestDump:
 
     def test_dump_ci_yml_docker_job_uses_first_case(self, tmp_path: Path) -> None:
         """CI docker job uses first_case output from parse-test-cases."""
-        provider = self._make_provider_with_answers(ci_tmp_dir=".wt-tmp")
+        provider = self._make_provider_with_answers()
         provider.dump(tmp_path)
         text = (tmp_path / ".github/workflows/ci.yml").read_text()
         assert "needs.parse-test-cases.outputs.first_case" in text

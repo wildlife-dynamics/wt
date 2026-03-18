@@ -165,16 +165,6 @@ _Q_LICENSE_TYPE: WizardQuestion = {
     "wizard": {},
 }
 
-_Q_CI_TMP_DIR: WizardQuestion = {
-    "dest": "ci_tmp_dir",
-    "argparse": {
-        "help": "Temp directory for CI docker results",
-        "type": str,
-        "default": ".wt-tmp",
-    },
-    "wizard": {},
-}
-
 _Q_REQUIREMENTS: WizardQuestion = {
     "dest": "requirements",
     "questions": [
@@ -202,7 +192,6 @@ _DEFAULT_QUESTIONS: list[WizardQuestion] = [
     _Q_WORKFLOW_DESCRIPTION,
     _Q_AUTHOR_NAME,
     _Q_LICENSE_TYPE,
-    _Q_CI_TMP_DIR,
     _Q_REQUIREMENTS,
 ]
 
@@ -220,7 +209,7 @@ class DefaultWizardProvider(AbstractWizardProvider):
         >>> qs = p.get_questions()
         >>> [q["dest"] for q in qs]  # doctest: +NORMALIZE_WHITESPACE
         ['workflow_id', 'workflow_name', 'workflow_description',
-         'author_name', 'license_type', 'ci_tmp_dir', 'requirements']
+         'author_name', 'license_type', 'requirements']
     """
 
     def get_questions(self) -> list[WizardQuestion]:
