@@ -1,0 +1,97 @@
+{% raw %}
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  parse-test-cases:
+    runs-on: ubuntu-latest
+    outputs:
+      cases: ${{ steps.parse.outputs.cases }}
+      first_case: ${{ steps.parse.outputs.first_case }}
+      release_dir: ${{ steps.parse.outputs.release_dir }}
+
+    steps:
+      - uses: actions/checkout@v6
+      - name: Parse test cases
+        id: parse
+        run: |
+          # Discover release directory
+          shopt -s nullglob
+          dirs=(*-workflow/)
+          if [ ${#dirs[@]} -eq 0 ]; then
+            echo "Error: no *-workflow directory found" >&2; exit 1
+          elif [ ${#dirs[@]} -gt 1 ]; then
+            echo "Error: multiple *-workflow directories found: ${dirs[*]}" >&2; exit 1
+          fi
+          echo "release_dir=${dirs[0]%/}" >> $GITHUB_OUTPUT
+
+          # Fail if no test cases defined
+          keys=$(yq -o=json -I=0 'keys' test-cases.yaml)
+          if [ "$keys" = "[]" ] || [ "$keys" = "null" ]; then
+            echo "::error::test-cases.yaml has no test cases defined" && exit 1
+          fi
+          # Fail if any case is missing .params
+          for case in $(yq 'keys | .[]' test-cases.yaml); do
+            params=$(yq ".[\"$case\"].params" test-cases.yaml)
+            if [ "$params" = "null" ]; then
+              echo "::error::test case '$case' is missing required 'params' field" && exit 1
+            fi
+          done
+
+          echo "cases=$keys" >> $GITHUB_OUTPUT
+          echo "first_case=$(yq 'keys | .[0]' test-cases.yaml)" >> $GITHUB_OUTPUT
+
+  test:
+    needs: parse-test-cases
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        case: ${{ fromJSON(needs.parse-test-cases.outputs.cases) }}
+
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install pixi
+        run: curl -fsSL https://pixi.sh/install.sh | bash && echo "$HOME/.pixi/bin" >> $GITHUB_PATH
+      - name: Set CI variables
+        run: |
+          echo "RELEASE_DIR=${{ needs.parse-test-cases.outputs.release_dir }}" >> $GITHUB_ENV
+      - name: Test
+        run: >-
+          pixi run --manifest-path $RELEASE_DIR/pixi.toml
+          --locked -e test
+          test-app-sequential-mock-io
+          --case ${{ matrix.case }}
+
+  docker:
+    needs: parse-test-cases
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install pixi
+        run: curl -fsSL https://pixi.sh/install.sh | bash && echo "$HOME/.pixi/bin" >> $GITHUB_PATH
+      - name: Set CI variables
+        run: |
+          echo "RELEASE_DIR=${{ needs.parse-test-cases.outputs.release_dir }}" >> $GITHUB_ENV
+          echo "CI_TEST_CASE=${{ needs.parse-test-cases.outputs.first_case }}" >> $GITHUB_ENV
+      - name: Docker build + run
+        run: |
+          pixi run --manifest-path $RELEASE_DIR/pixi.toml --locked -e default docker-build
+          docker run --name $RELEASE_DIR -d \
+            -v $(pwd)/.wt-tmp/$RELEASE_DIR-results:/workflow/results \
+            -e PORT=4000 -p 4000:4000 $RELEASE_DIR
+          sleep 5
+          docker ps
+      - name: Invoke container with curl
+        run: |
+          params=$(yq -o=json -I=0 ".[\"$CI_TEST_CASE\"].params" test-cases.yaml)
+          curl --fail-with-body \
+            -X POST "http://localhost:4000/?execution_mode=sequential&mock_io=true&results_url=/workflow/results" \
+            -H "Content-Type: application/json" \
+            -d '{"params": '"${params}"'}'
+{% endraw %}
