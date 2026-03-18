@@ -10,11 +10,11 @@ from pydantic.functional_validators import BeforeValidator
 from rattler import Channel, ChannelConfig, MatchSpec, NamelessMatchSpec, Platform
 
 LOCAL_CHANNEL = Channel(
-    "artifacts",
+    "wt-local-channel",
     ChannelConfig(channel_alias="file:///tmp/ecoscope-workflows/release/"),
 )
 CUSTOM_LOCAL_CHANNEL = Channel(
-    "ecoscope-workflows-custom/release/artifacts",
+    "custom-local-channel",
     ChannelConfig(channel_alias="file:///tmp/"),
 )
 _wt_channel_path = PurePosixPath(os.environ.get("WT_CONDA_CHANNEL") or "/tmp/wt-conda-channel")

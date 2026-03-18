@@ -15,6 +15,7 @@ from wt_compiler.wizard.abstract import AbstractWizardProvider, SingleWizardQues
 from wt_compiler.wizard.default import (
     CHANNEL_CHOICES,
     DefaultWizardProvider,
+    channel_type,
     non_empty_str,
     requirement_version_type,
     workflow_id_type,
@@ -118,9 +119,10 @@ class TestRequirementsLoop:
         drive_wizard(provider, answers)
         reqs = provider.answers["requirements"]
         assert len(reqs) == 3
-        assert reqs[0] == {"name": "numpy", "version": ">=1.0", "channel": "conda-forge"}
-        assert reqs[1] == {"name": "pandas", "version": "*", "channel": "conda-forge"}
-        assert reqs[2] == {"name": "scipy", "version": ">=2.0", "channel": "conda-forge"}
+        cf = channel_type("conda-forge")
+        assert reqs[0] == {"name": "numpy", "version": ">=1.0", "channel": cf}
+        assert reqs[1] == {"name": "pandas", "version": "*", "channel": cf}
+        assert reqs[2] == {"name": "scipy", "version": ">=2.0", "channel": cf}
 
     def test_requirements_loop_empty_immediately(self) -> None:
         """Send empty on first name prompt — requirements is empty list."""
@@ -256,7 +258,7 @@ class TestDump:
         req = content["requirements"][0]
         assert req["name"] == "numpy"
         assert req["version"] == ">=1.0"
-        assert req["channel"] == "conda-forge"
+        assert req["channel"] == channel_type("conda-forge")
 
     def test_dump_test_cases_yaml_structure(self, tmp_path: Path) -> None:
         """Verify test-cases.yaml is valid commented YAML."""
