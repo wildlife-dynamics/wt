@@ -49,7 +49,6 @@ class TestInteractiveMode:
             "A description",
             "Author Name",
             "MIT",
-
             "numpy",
             "*",
             "conda-forge",
@@ -74,7 +73,6 @@ class TestInteractiveMode:
             "desc",
             "Author",
             "MIT",  # license (has choices)
-
             "",  # end requirements
         ])
 
@@ -94,7 +92,6 @@ class TestInteractiveMode:
             "desc",
             "Author",
             "MIT",
-
             "",  # end requirements
         ])
 
@@ -122,7 +119,6 @@ class TestInteractiveMode:
             "desc",
             "Author",
             "MIT",
-
             "pkg1",  # req 1 name
             "*",  # req 1 version
             "conda-forge",  # req 1 channel

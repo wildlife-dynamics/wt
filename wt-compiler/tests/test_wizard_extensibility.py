@@ -72,7 +72,7 @@ class TestOverrideGetQuestions:
             "desc",  # workflow_description
             "Author",  # author_name
             "MIT",  # license_type
-            "",  # end requirements loop (ci_tmp_dir removed)
+            "",  # end requirements loop
         ]
         drive_wizard(provider, answers)
         assert provider.answers["custom_field"] == "custom_value"
@@ -90,7 +90,7 @@ class TestOverrideGetQuestions:
             "My Workflow",
             "desc",
             "Author",
-            "",  # end requirements loop
+            "",  # end requirements
         ]
         questions = drive_wizard(provider, answers)
         dests = [q["dest"] for q in questions]
@@ -391,7 +391,6 @@ class TestCustomTemplates:
             "desc",
             "Author",
             "MIT",
-
             "",  # end requirements loop
         ]
         drive_wizard(provider, answers)
@@ -441,7 +440,6 @@ class TestCustomTemplates:
             "desc",
             "Author",
             "MIT",
-
             "",  # end requirements loop
         ]
         drive_wizard(provider, answers)
@@ -475,7 +473,6 @@ class TestCustomTemplates:
             "desc",
             "Author",
             "MIT",
-
             "",
         ]
         drive_wizard(provider, answers)
