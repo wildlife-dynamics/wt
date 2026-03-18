@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.4 — 2026-03-18
+
+- Constrain Python to `<3.14` for ecoscope-eda-core compatibility
+- Bundle ecoscope-eda-core transitive dependencies (`aiohttp`, `pydantic`, `stamina`) in `[gcp]` extras
+
 ## v0.1.3 — 2026-03-13
 
 - Remove direct git reference from `wt-runner[gcp]` extras to fix PyPI publishing ([#71](https://github.com/wildlife-dynamics/wt/pull/71))
