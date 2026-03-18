@@ -1,0 +1,113 @@
+/* Light mode — Off White + Dark Teal */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #163a3c;
+  --md-primary-fg-color--light: #2a6b6b;
+  --md-primary-fg-color--dark: #0e2a2c;
+  --md-accent-fg-color: #1a8a5e;
+  --md-typeset-a-color: #1a8a5e;
+  --md-default-fg-color: #163a3c;
+  --md-default-fg-color--light: #2a6b6b;
+  --md-default-bg-color: #f5ece0;
+  --md-default-bg-color--light: #faf6f0;
+}
+
+[data-md-color-scheme="default"] .md-banner a {
+  color: #1a8a5e;
+}
+
+/* Dark mode — Dark Teal + Off White/Green */
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #163a3c;
+  --md-primary-fg-color--light: #2a6b6b;
+  --md-primary-fg-color--dark: #0e2a2c;
+  --md-accent-fg-color: #4ecb8d;
+  --md-default-fg-color: #f5ece0;
+  --md-default-fg-color--light: #ddd4c8;
+  --md-default-bg-color: #0e2a2c;
+  --md-default-bg-color--light: #163a3c;
+}
+
+/* ── RJSF form widget ─────────────────────────────── */
+
+.rjsf-widget {
+  margin: 1em 0;
+  padding: 1em 1.2em;
+  border: 1px solid var(--md-default-fg-color--light);
+  border-radius: 6px;
+  background: var(--md-default-bg-color--light);
+}
+
+.rjsf-widget fieldset {
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.rjsf-widget legend {
+  font-weight: 600;
+  font-size: 1.05em;
+  color: var(--md-default-fg-color);
+  margin-bottom: 0.5em;
+}
+
+.rjsf-widget label {
+  display: block;
+  font-size: 0.85em;
+  font-weight: 500;
+  color: var(--md-default-fg-color--light);
+  margin-top: 0.6em;
+  margin-bottom: 0.2em;
+}
+
+.rjsf-widget input[type="text"],
+.rjsf-widget input[type="number"],
+.rjsf-widget select,
+.rjsf-widget textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.4em 0.6em;
+  font-size: 0.9em;
+  border: 1px solid var(--md-default-fg-color--light);
+  border-radius: 4px;
+  background: var(--md-default-bg-color);
+  color: var(--md-default-fg-color);
+}
+
+.rjsf-widget input:focus,
+.rjsf-widget select:focus,
+.rjsf-widget textarea:focus {
+  outline: 2px solid var(--md-accent-fg-color);
+  outline-offset: -1px;
+}
+
+.rjsf-widget .field-description {
+  font-size: 0.8em;
+  color: var(--md-default-fg-color--light);
+  margin-top: 0.15em;
+}
+
+.rjsf-widget .text-danger {
+  color: #e53935;
+  font-size: 0.8em;
+}
+
+.rjsf-output {
+  margin-top: 0.8em;
+}
+
+.rjsf-output summary {
+  cursor: pointer;
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--md-default-fg-color--light);
+}
+
+.rjsf-output pre {
+  margin: 0.4em 0 0;
+  padding: 0.8em;
+  font-size: 0.82em;
+  border-radius: 4px;
+  background: var(--md-code-bg-color, var(--md-default-bg-color));
+  color: var(--md-default-fg-color);
+  overflow-x: auto;
+}

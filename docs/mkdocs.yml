@@ -1,0 +1,50 @@
+site_name: Workflow Toolkit (wt)
+repo_url: https://github.com/wildlife-dynamics/wt
+repo_name: wildlife-dynamics/wt
+docs_dir: content
+theme:
+  name: material
+  custom_dir: overrides
+  icon:
+    logo: octicons/book-24
+  palette:
+    - scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - announce.dismiss
+    - navigation.sections
+    - content.code.copy
+extra_css:
+  - stylesheets/extra.css
+plugins:
+  - search
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.snippets:
+      base_path:
+        - content
+nav:
+  - Home: index.md
+  - Concepts: concepts.md
+  - Getting Started: getting-started.md
+  - How-To Guides: tutorials.md
+  - Reference:
+    - "spec.yaml": reference/spec-yaml.md
+    - wt-contracts: reference/wt-contracts.md
+    - wt-registry: reference/wt-registry.md
+    - wt-task: reference/wt-task.md
+    - wt-compiler: reference/wt-compiler.md
+    - wt-invokers: reference/wt-invokers.md
+    - wt-runner: reference/wt-runner.md
+  - Architecture: architecture.md
+  - Contributing: contributing.md
+  - Changelog: changelog.md
