@@ -56,6 +56,28 @@ class WizardKwargs(TypedDict, total=False):
 
     error: str
     condition: Callable[[MappingProxyType[str, Any]], bool]
+    loop_context: LoopContext
+
+
+class LoopContext(TypedDict):
+    """Metadata injected by the generator when yielding the first sub-question
+    of a loop iteration.
+
+    Renderers may inspect this to present loop-aware UX (e.g. "Add a …?" /
+    "Add another …?" confirm prompts). Absent on non-loop questions and on
+    sub-questions after the first within a loop iteration.
+
+    Nested loops reset correctly by construction: ``_process_question()``
+    creates a fresh ``iteration = 0`` for each recursive call, so an inner
+    loop's counter resets when a new outer-loop iteration begins.
+    """
+
+    dest: str
+    """The parent ``WizardQuestionLoop``'s ``dest`` (e.g. ``"requirements"``)."""
+
+    iteration: int
+    """Zero-indexed iteration counter. ``0`` on first entry, increments each
+    time the loop body completes and the first sub-question is re-yielded."""
 
 
 class SingleWizardQuestion(TypedDict):
@@ -260,15 +282,37 @@ class AbstractWizardProvider(ABC):
             # WizardQuestionLoop
             results: list[dict[str, Any]] = []
             first_q = cast(SingleWizardQuestion, question["questions"][0])
-            answer = yield first_q
+            iteration = 0
+            first_q_with_ctx = cast(
+                SingleWizardQuestion,
+                {
+                    **first_q,
+                    "wizard": {
+                        **first_q.get("wizard", {}),
+                        "loop_context": LoopContext(dest=question["dest"], iteration=iteration),
+                    },
+                },
+            )
+            answer = yield first_q_with_ctx
             while answer:  # empty/None on first question = done
-                coerced = yield from self._validate_answer(first_q, answer)
+                coerced = yield from self._validate_answer(first_q_with_ctx, answer)
                 entry = {first_q["dest"]: coerced}
                 for sub_q in question["questions"][1:]:
                     sub_value = yield from self._process_question(sub_q)  # recursive
                     entry[sub_q["dest"]] = sub_value
                 results.append(entry)
-                answer = yield first_q  # re-yield first question for next iteration
+                iteration += 1
+                first_q_with_ctx = cast(
+                    SingleWizardQuestion,
+                    {
+                        **first_q,
+                        "wizard": {
+                            **first_q.get("wizard", {}),
+                            "loop_context": LoopContext(dest=question["dest"], iteration=iteration),
+                        },
+                    },
+                )
+                answer = yield first_q_with_ctx  # re-yield first question for next iteration
             return results
         else:
             # SingleWizardQuestion

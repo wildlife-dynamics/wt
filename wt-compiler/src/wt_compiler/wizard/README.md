@@ -91,3 +91,41 @@ class MyProvider(DefaultWizardProvider):
 - **Interactive**: a CLI loop iterates the generator, prompts via `input()`, sends answers via `.send()`
 - **Batch/static**: each question's `argparse` dict defines CLI flags like `--workflow-id VALUE`
 - Both modes use the same question definitions
+
+## Rich Interactive Renderers
+
+The generator protocol is designed to support renderers richer than a plain `input()` loop.
+When `input_generator()` is inside a `WizardQuestionLoop`, it injects `loop_context` into
+the `wizard` dict of the first sub-question yield for each iteration:
+
+```python
+question["wizard"].get("loop_context")
+# None on non-loop questions and on sub-questions after the first
+# {"dest": "requirements", "iteration": 0}  on first entry
+# {"dest": "requirements", "iteration": 1}  after one item collected
+```
+
+### Using loop_context in a renderer
+
+When `loop_context` is present, show a confirm prompt **before** rendering the question:
+
+- `iteration == 0` → "Add a {dest}?" (suggest `default=True`)
+- `iteration > 0` → "Add another {dest}?" (suggest `default=False`)
+
+If the user declines, send `""` to the generator — this is the loop termination signal
+(the `while answer:` guard exits the loop). The generator then yields the next top-level
+question or raises `StopIteration`.
+
+Sub-questions after the first within an iteration (e.g. `version`, `channel` in the
+requirements loop) do **not** carry `loop_context` — render them unconditionally.
+
+### Nested loops
+
+`loop_context.iteration` resets to `0` for each new outer-loop iteration.
+`_process_question()` creates a fresh local `iteration = 0` on each recursive call,
+so renderers do not need to track outer-loop state to get correct inner-loop iteration counts.
+
+### Backward compatibility
+
+`loop_context` is an optional field (`WizardKwargs` is `total=False`). Existing `input()`
+renderers that don't check for it are unaffected — the `""` termination signal still works.

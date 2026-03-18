@@ -152,6 +152,87 @@ class TestGeneratorMechanics:
         assert provider.answers["optional_field"] == "fallback"
 
 
+class TestLoopContext:
+    """Tests that _process_question() injects loop_context correctly."""
+
+    def test_loop_context_present_on_first_sub_question(self) -> None:
+        """First sub-question of a loop iteration carries loop_context."""
+        provider = DefaultWizardProvider()
+        gen = provider.input_generator()
+        # Drive past all non-loop questions with valid answers
+        question = next(gen)
+        for ans in ["my_wf", "My Workflow", "", "Author", "MIT"]:
+            question = gen.send(ans)
+        # question is now the first sub-question of the requirements loop
+        ctx = question.get("wizard", {}).get("loop_context")
+        assert ctx is not None
+        assert ctx["dest"] == "requirements"
+        assert ctx["iteration"] == 0
+
+    def test_loop_context_absent_on_non_loop_questions(self) -> None:
+        """Non-loop questions (workflow_id etc.) do not carry loop_context."""
+        provider = DefaultWizardProvider()
+        gen = provider.input_generator()
+        question = next(gen)
+        assert question.get("wizard", {}).get("loop_context") is None
+
+    def test_loop_context_iteration_increments(self) -> None:
+        """loop_context.iteration is 0 on first entry and 1 after one item collected."""
+        provider = DefaultWizardProvider()
+        gen = provider.input_generator()
+        question = next(gen)
+        for ans in ["my_wf", "My Workflow", "", "Author", "MIT"]:
+            question = gen.send(ans)
+        assert question["wizard"]["loop_context"]["iteration"] == 0
+        # Collect one requirement
+        question = gen.send("numpy")       # name → yields version
+        question = gen.send("*")           # version → yields channel
+        question = gen.send("conda-forge") # channel → loops back to name
+        assert question["wizard"]["loop_context"]["iteration"] == 1
+
+    def test_loop_context_absent_on_subsequent_sub_questions(self) -> None:
+        """Sub-questions after the first (version, channel) do not carry loop_context."""
+        provider = DefaultWizardProvider()
+        gen = provider.input_generator()
+        question = next(gen)
+        for ans in ["my_wf", "My Workflow", "", "Author", "MIT"]:
+            question = gen.send(ans)
+        # Enter the loop by sending a name answer; next yield is version
+        question = gen.send("numpy")
+        assert question.get("wizard", {}).get("loop_context") is None
+
+    def test_loop_context_preserved_on_validation_error_reyield(self) -> None:
+        """loop_context survives _validate_answer() re-yield on validation failure."""
+        from wt_compiler.wizard.default import non_empty_str
+
+        class LoopProvider(AbstractWizardProvider):
+            def get_questions(self) -> list[WizardQuestion]:
+                return [
+                    {
+                        "dest": "items",
+                        "questions": [
+                            {
+                                "dest": "value",
+                                "argparse": {"help": "Value", "type": non_empty_str},
+                                "wizard": {},
+                            }
+                        ],
+                    }
+                ]
+
+        p = LoopProvider()
+        g = p.input_generator()
+        q = next(g)
+        # Confirm loop_context present at iteration 0
+        assert q["wizard"]["loop_context"]["iteration"] == 0
+        # Whitespace-only is truthy (enters loop body) but fails non_empty_str validation
+        # → _validate_answer re-yields with error; loop_context must survive the spread
+        q2 = g.send("  ")
+        assert q2["wizard"].get("error") is not None
+        assert q2["wizard"].get("loop_context") is not None
+        assert q2["wizard"]["loop_context"]["iteration"] == 0
+
+
 class TestDumpNoTemplates:
     """Tests for dump() error behavior when no templates are available."""
 
