@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "wt-runner-gcp"
 dynamic = ["version"]
 description = "Metapackage bundling wt-runner with GCP dependencies (Pub/Sub, tracing, Cloud Batch)"
-requires-python = ">=3.13,<3.16"
+requires-python = ">=3.13,<3.14"
 license = { text = "BSD-3-Clause" }
 classifiers = [
     "License :: OSI Approved :: BSD License",
@@ -16,9 +16,29 @@ dependencies = [
     "ecoscope-eda-core @ git+https://github.com/wildlife-dynamics/ecoscope-eda-core.git",
     "opentelemetry-sdk>=1.37.0,<2",
     "opentelemetry-exporter-gcp-trace>=1.9.0,<2",
-    "gcloud-aio-pubsub>=6.1.0,<7",
     "wt-invokers-gcp>=0.1.0,<1.0.0",
+    # bundling ecoscope-eda-core dependencies, this can be removed following
+    # fix for https://github.com/wildlife-dynamics/ecoscope-eda-core/issues/14
+    "aiohttp>=3.11.18,<4",
+    "pydantic>=2.0.0",
+    "gcloud-aio-pubsub>=6.1.0,<7",
+    "stamina>=25.1.0,<26",
 ]
+
+[tool.uv.sources]
+wt-runner = { path = "../wt-runner", editable = true }
+wt-contracts = { path = "../wt-contracts", editable = true }
+wt-invokers = { path = "../wt-invokers", editable = true }
+wt-invokers-gcp = { path = "../wt-invokers-gcp", editable = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "httpx>=0.24.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -35,7 +55,7 @@ git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--mat
 
 [tool.pixi.package]
 name = "wt-runner-gcp"
-version = "0.1.3"
+version = "0.1.4"
 
 [tool.pixi.package.build]
 backend = { name = "pixi-build-python", version = "*", channels = ["conda-forge", "https://prefix.dev/pixi-build-backends"] }
@@ -44,16 +64,21 @@ backend = { name = "pixi-build-python", version = "*", channels = ["conda-forge"
 noarch = true
 
 [tool.pixi.package.host-dependencies]
-python = ">=3.13,<3.16"
+python = ">=3.13,<3.14"
 setuptools = ">=64"
 setuptools-scm = ">=8"
 pip = "*"
 
 [tool.pixi.package.run-dependencies]
-python = ">=3.13,<3.16"
+python = ">=3.13,<3.14"
 wt-runner = ">=0.1.0,<1.0.0"
 ecoscope-eda-core = ">=0.2.0"
 opentelemetry-sdk = ">=1.37.0,<2"
 opentelemetry-exporter-gcp-trace = ">=1.9.0,<2"
-gcloud-aio-pubsub = ">=6.1.0,<7"
 wt-invokers-gcp = ">=0.1.0,<1.0.0"
+# bundling ecoscope-eda-core dependencies, this can be removed following
+# fix for https://github.com/wildlife-dynamics/ecoscope-eda-core/issues/14
+aiohttp = ">=3.11.18,<4"
+pydantic = ">=2.0.0"
+gcloud-aio-pubsub = ">=6.1.0,<7"
+stamina = ">=25.1.0,<26"
