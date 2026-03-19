@@ -1,5 +1,6 @@
 """Tests for CLI functionality."""
 
+import argparse
 import sys
 import types
 from pathlib import Path
@@ -7,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from wt_compiler.cli import main
+from wt_compiler.cli import _finalize_init, main
 from wt_compiler.wizard.abstract import AbstractWizardProvider
 
 # ---------------------------------------------------------------------------
@@ -1080,6 +1081,22 @@ class TestListProvidersCommand:
                 main()
         assert "─" * 54 in capsys.readouterr().out
 
+    def test_list_providers_registry_error(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Malformed registry raises ValueError → exit 1 with error on stderr."""
+        mock_providers = make_mock_providers(
+            get_registered_providers=MagicMock(
+                side_effect=ValueError("Malformed providers.json")
+            )
+        )
+        with patch.dict(sys.modules, {"wt_compiler.providers": mock_providers}):
+            with patch.object(sys, "argv", ["wt-compiler", "list-providers"]):
+                with pytest.raises(SystemExit) as exc_info:
+                    main()
+        assert exc_info.value.code == 1
+        assert "registry" in capsys.readouterr().err.lower()
+
 
 # ---------------------------------------------------------------------------
 # TestInitCommandWithProvider
@@ -1233,3 +1250,44 @@ class TestInitCommandWithProvider:
                             main()
 
         mock_dump.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# TestFinalizeInit
+# ---------------------------------------------------------------------------
+
+
+class TestFinalizeInit:
+    """Tests for _finalize_init() path-traversal guards (P1)."""
+
+    def _args(self, tmp_path: Path, clobber: bool = False) -> argparse.Namespace:
+        return argparse.Namespace(output_dir=tmp_path, clobber=clobber)
+
+    def test_rejects_path_traversal_workflow_id(self, tmp_path: Path) -> None:
+        """workflow_id containing path separators raises ValueError."""
+        provider = MagicMock()
+        provider.answers = {"workflow_id": "../etc"}
+        with pytest.raises(ValueError, match="path separator"):
+            _finalize_init(provider, self._args(tmp_path))
+
+    def test_rejects_nested_workflow_id(self, tmp_path: Path) -> None:
+        """workflow_id with nested path components raises ValueError."""
+        provider = MagicMock()
+        provider.answers = {"workflow_id": "foo/bar"}
+        with pytest.raises(ValueError, match="path separator"):
+            _finalize_init(provider, self._args(tmp_path))
+
+    def test_rejects_absolute_workflow_id(self, tmp_path: Path) -> None:
+        """Absolute workflow_id raises ValueError, preventing output_dir bypass."""
+        provider = MagicMock()
+        provider.answers = {"workflow_id": "/tmp/attack"}
+        with pytest.raises(ValueError, match="path separator"):
+            _finalize_init(provider, self._args(tmp_path))
+
+    def test_accepts_simple_workflow_id(self, tmp_path: Path) -> None:
+        """A plain name with no separators is accepted."""
+        provider = MagicMock()
+        provider.answers = {"workflow_id": "my_workflow"}
+        provider.dump = MagicMock()
+        _finalize_init(provider, self._args(tmp_path))
+        provider.dump.assert_called_once_with(tmp_path / "my_workflow")

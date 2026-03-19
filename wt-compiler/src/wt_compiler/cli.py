@@ -1,5 +1,7 @@
 """Command-line interface for wt-compiler."""
 
+from __future__ import annotations
+
 import argparse
 import asyncio
 import resource
@@ -461,6 +463,12 @@ def _finalize_init(provider: AbstractWizardProvider, args: argparse.Namespace) -
         raise ValueError(
             "Provider answers must include 'workflow_id' to determine the output directory name."
         )
+    workdir_path = Path(workdir_name)
+    if workdir_path.is_absolute() or workdir_path.name != workdir_name:
+        raise ValueError(
+            f"'workflow_id' must be a simple directory name with no path separators, "
+            f"got {workdir_name!r}."
+        )
     workdir = output_dir / workdir_name
     if workdir.exists() and not args.clobber:
         raise FileExistsError(f"Output directory already exists: {workdir}")
@@ -585,7 +593,11 @@ def _list_providers() -> None:
     """
     import wt_compiler.providers as _providers
 
-    providers = _providers.get_registered_providers()
+    try:
+        providers = _providers.get_registered_providers()
+    except (ValueError, PermissionError) as e:
+        print(f"Error reading provider registry: {e}", file=sys.stderr)
+        sys.exit(1)
     if not providers:
         print("No providers registered. Use 'wt-compiler register-provider <package>' to add one.")
         return

@@ -17,14 +17,19 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from importlib.metadata import distribution, entry_points
 from pathlib import Path
 from typing import cast
 
 from wt_compiler.wizard.abstract import AbstractWizardProvider
+
+# PEP 508 / PyPA distribution name: letters, digits, hyphens, underscores, dots.
+_SAFE_PKG_NAME_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$")
 
 
 def _config_dir() -> Path:
@@ -109,9 +114,20 @@ def save_registry(entries: list[dict[str, str]]) -> None:
     registry_path = get_registry_path()
     registry_path.parent.mkdir(parents=True, exist_ok=True)
     data: dict[str, list[dict[str, str]]] = {"providers": entries}
-    with registry_path.open("w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-        f.write("\n")
+    tmp_fd, tmp_path = tempfile.mkstemp(
+        dir=registry_path.parent, prefix="providers-", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+        os.replace(tmp_path, registry_path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def _detect_installer(pkg_name: str) -> list[str]:
@@ -128,10 +144,10 @@ def _detect_installer(pkg_name: str) -> list[str]:
 
     Examples:
         >>> _detect_installer("my-pkg")  # doctest: +SKIP
-        ['uv', 'pip', 'install', 'my-pkg']
+        ['uv', 'pip', 'install', '--python', '/path/to/python', 'my-pkg']
     """
     if shutil.which("uv") is not None:
-        return ["uv", "pip", "install", pkg_name]
+        return ["uv", "pip", "install", "--python", sys.executable, pkg_name]
     if os.environ.get("CONDA_PREFIX") and shutil.which("conda") is not None:
         return ["conda", "install", "-y", pkg_name]
     return [sys.executable, "-m", "pip", "install", pkg_name]
@@ -154,6 +170,7 @@ def install_and_register(pkg_name: str) -> list[str]:
         already registered.
 
     Raises:
+        ValueError: If ``pkg_name`` fails the safe-name validation check.
         subprocess.CalledProcessError: If the package installation fails.
         importlib.metadata.PackageNotFoundError: If the package is not found
             after installation.
@@ -164,6 +181,11 @@ def install_and_register(pkg_name: str) -> list[str]:
         >>> install_and_register("my-wt-pkg")  # doctest: +SKIP
         ['my-provider']
     """
+    if not _SAFE_PKG_NAME_RE.match(pkg_name):
+        raise ValueError(
+            f"Invalid package name: {pkg_name!r}. "
+            "Package names must contain only letters, digits, hyphens, underscores, and dots."
+        )
     subprocess.run(_detect_installer(pkg_name), check=True)
     dist = distribution(pkg_name)
     dist_name = dist.metadata["Name"]
@@ -219,8 +241,8 @@ def load_provider_class(name: str) -> type[AbstractWizardProvider]:
         The loaded provider class (a subclass of ``AbstractWizardProvider``).
 
     Raises:
-        ValueError: If the provider is not registered, or is registered but
-            its package is not currently installed.
+        ValueError: If the provider is not registered, its package is not
+            currently installed, or the entry point fails to load.
         TypeError: If the loaded entry point is not a subclass of
             ``AbstractWizardProvider``.
 
@@ -234,6 +256,7 @@ def load_provider_class(name: str) -> type[AbstractWizardProvider]:
         raise ValueError(
             f"Provider {name!r} is not registered. Registered: {registered_names or ['(none)']}"
         )
+    stored_pkg = next(e["package"] for e in registry if e["name"] == name)
     all_eps = list(entry_points(group="wt_compiler.wizard_providers"))
     matching = [ep for ep in all_eps if ep.name == name]
     if not matching:
@@ -241,7 +264,19 @@ def load_provider_class(name: str) -> type[AbstractWizardProvider]:
             f"Provider {name!r} is registered but its package is not installed. "
             f"Re-run: wt-compiler register-provider <package>"
         )
-    cls = matching[0].load()
+    # Prefer the EP from the registered package; fall back to first if dist info unavailable.
+    ep_to_use = next(
+        (
+            ep
+            for ep in matching
+            if ep.dist is not None and ep.dist.metadata.get("Name") == stored_pkg
+        ),
+        matching[0],
+    )
+    try:
+        cls = ep_to_use.load()
+    except Exception as e:
+        raise ValueError(f"Failed to load provider {name!r}: {e}") from e
     if not (isinstance(cls, type) and issubclass(cls, AbstractWizardProvider)):
         raise TypeError(
             f"Entry point {name!r} loaded {cls!r}, which is not a subclass of "
