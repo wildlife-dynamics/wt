@@ -126,47 +126,125 @@ def requirement_version_type(value: str) -> str:
     return value
 
 
-def pip_source_type(value: str) -> str:
-    """Validate a pip installable source: absolute path, URL, or git+ URL.
-
-    Accepts:
-    - Absolute filesystem paths (e.g. ``/home/user/mypackage``)
-    - HTTP/HTTPS URLs (e.g. ``https://example.com/pkg.whl``)
-    - Git URLs with ``git+`` prefix (e.g. ``git+https://github.com/org/pkg.git``)
+def _absolute_path_type(value: str) -> str:
+    """Validate an absolute filesystem path.
 
     Args:
-        value: The source string to validate.
+        value: The path string to validate.
 
     Returns:
-        The validated source string (stripped of surrounding whitespace).
+        The validated path string (stripped of surrounding whitespace).
 
     Raises:
-        argparse.ArgumentTypeError: If the source is not a recognized format.
+        argparse.ArgumentTypeError: If the path is empty or not absolute.
 
     Examples:
-        >>> pip_source_type("/home/user/mypackage")
+        >>> _absolute_path_type("/home/user/mypackage")
         '/home/user/mypackage'
-        >>> pip_source_type("https://example.com/pkg.whl")
-        'https://example.com/pkg.whl'
-        >>> pip_source_type("git+https://github.com/org/pkg.git")
-        'git+https://github.com/org/pkg.git'
+        >>> _absolute_path_type("relative/path")
+        Traceback (most recent call last):
+            ...
+        argparse.ArgumentTypeError: 'relative/path' is not an absolute filesystem path.
     """
     stripped = value.strip()
     if not stripped:
-        raise argparse.ArgumentTypeError("Pip source cannot be empty.")
-    if os.path.isabs(stripped):
-        return stripped
+        raise argparse.ArgumentTypeError("Path cannot be empty.")
+    if not os.path.isabs(stripped):
+        raise argparse.ArgumentTypeError(f"'{stripped}' is not an absolute filesystem path.")
+    return stripped
+
+
+def _http_url_type(value: str) -> str:
+    """Validate an HTTP or HTTPS URL.
+
+    Args:
+        value: The URL string to validate.
+
+    Returns:
+        The validated URL string (stripped of surrounding whitespace).
+
+    Raises:
+        argparse.ArgumentTypeError: If the URL is empty or not http/https.
+
+    Examples:
+        >>> _http_url_type("https://example.com/pkg.whl")
+        'https://example.com/pkg.whl'
+        >>> _http_url_type("ftp://example.com/pkg")
+        Traceback (most recent call last):
+            ...
+        argparse.ArgumentTypeError: 'ftp://example.com/pkg' is not a valid http/https URL.
+    """
+    stripped = value.strip()
+    if not stripped:
+        raise argparse.ArgumentTypeError("URL cannot be empty.")
     parsed = urlparse(stripped)
-    if parsed.scheme in ("http", "https", "git+https", "git+http", "git+ssh"):
-        return stripped
-    raise argparse.ArgumentTypeError(
-        f"Invalid pip source '{stripped}': must be an absolute filesystem path or a URL "
-        "(http/https/git+https://...)."
-    )
+    if parsed.scheme not in ("http", "https"):
+        raise argparse.ArgumentTypeError(f"'{stripped}' is not a valid http/https URL.")
+    return stripped
+
+
+def _git_url_type(value: str) -> str:
+    """Validate a git repository URL (without ``git+`` prefix).
+
+    Accepts ``http``, ``https``, ``git``, and ``ssh`` schemes.
+
+    Args:
+        value: The git URL string to validate.
+
+    Returns:
+        The validated URL string (stripped of surrounding whitespace).
+
+    Raises:
+        argparse.ArgumentTypeError: If the URL is empty or has an unsupported scheme.
+
+    Examples:
+        >>> _git_url_type("https://github.com/org/pkg.git")
+        'https://github.com/org/pkg.git'
+        >>> _git_url_type("git+https://github.com/org/pkg.git")
+        Traceback (most recent call last):
+            ...
+        argparse.ArgumentTypeError: 'git+https://github.com/org/pkg.git' is not a valid git URL \
+(expected http/https/git/ssh scheme).
+    """
+    stripped = value.strip()
+    if not stripped:
+        raise argparse.ArgumentTypeError("Git URL cannot be empty.")
+    parsed = urlparse(stripped)
+    if parsed.scheme not in ("http", "https", "git", "ssh"):
+        raise argparse.ArgumentTypeError(
+            f"'{stripped}' is not a valid git URL (expected http/https/git/ssh scheme)."
+        )
+    return stripped
 
 
 CHANNEL_CHOICES: list[str] = [_serialize_channel(c) for c in CHANNELS]
 """Channel choices list built from ``requirements.CHANNELS``."""
+
+# --- Condition callables ----------------------------------------------------
+
+_is_conda = lambda entry: entry.get("req_type", "conda") == "conda"  # noqa: E731
+_is_pip = lambda entry: entry.get("req_type", "conda") == "pip"  # noqa: E731
+
+
+def _is_pip_path(entry: Any) -> bool:
+    """Return True when the current entry is a pip path requirement."""
+    return bool(entry.get("req_type") == "pip" and entry.get("pip_source_type") == "path")
+
+
+def _is_pip_url(entry: Any) -> bool:
+    """Return True when the current entry is a pip URL requirement."""
+    return bool(entry.get("req_type") == "pip" and entry.get("pip_source_type") == "url")
+
+
+def _is_pip_git(entry: Any) -> bool:
+    """Return True when the current entry is a pip git requirement."""
+    return bool(entry.get("req_type") == "pip" and entry.get("pip_source_type") == "git")
+
+
+def _is_pip_git_with_ref(entry: Any) -> bool:
+    """Return True when the current entry is a pip git requirement with a ref."""
+    return bool(_is_pip_git(entry) and entry.get("git_ref_type", "none") != "none")
+
 
 # --- Default question definitions --------------------------------------------
 
@@ -208,18 +286,25 @@ _Q_LICENSE_TYPE: WizardQuestion = {
     "wizard": {},
 }
 
+
 def _requirements_batch_type(value: str) -> dict[str, Any]:
     """Parse and validate a requirement JSON object for batch mode.
 
     Infers ``req_type`` from the keys present if not explicitly supplied:
-    a dict containing a ``source`` key is treated as ``"pip"``; otherwise
-    ``"conda"`` is assumed.
+    a dict containing a ``path``, ``url``, or ``git`` key is treated as
+    ``"pip"``; otherwise ``"conda"`` is assumed.
+
+    For pip requirements, ``pip_source_type`` is inferred from whichever of
+    ``path``/``url``/``git`` is present.  Git references may be supplied as
+    ``rev``/``branch``/``tag`` keys (normalized to ``git_ref_type`` +
+    ``git_ref_value``) or directly as ``git_ref_type`` + ``git_ref_value``.
 
     Args:
         value: JSON string representing a single requirement.
 
     Returns:
-        Validated dict with ``req_type`` set and type-checked fields.
+        Validated dict with ``req_type``, ``pip_source_type`` (for pip), and
+        type-checked fields.
 
     Raises:
         argparse.ArgumentTypeError: On JSON parse failure or invalid fields.
@@ -234,11 +319,11 @@ def _requirements_batch_type(value: str) -> dict[str, Any]:
         >>> d["req_type"]
         'conda'
 
-        Pip (inferred from ``source``):
+        Pip path (inferred from ``path``):
 
-        >>> d = _requirements_batch_type('{"name":"mypkg","source":"/home/user/mypkg"}')
-        >>> d["req_type"]
-        'pip'
+        >>> d = _requirements_batch_type('{"name":"mypkg","path":"/home/user/mypkg"}')
+        >>> d["req_type"], d["pip_source_type"]
+        ('pip', 'path')
     """
     try:
         d: dict[str, Any] = json.loads(value)
@@ -252,11 +337,10 @@ def _requirements_batch_type(value: str) -> dict[str, Any]:
     except argparse.ArgumentTypeError as e:
         raise argparse.ArgumentTypeError(f"Invalid name: {e}") from e
 
-    req_type = d.get("req_type", "pip" if "source" in d else "conda")
+    _pip_source_keys = frozenset(("path", "url", "git"))
+    req_type = d.get("req_type", "pip" if _pip_source_keys & d.keys() else "conda")
     if req_type not in ("conda", "pip"):
-        raise argparse.ArgumentTypeError(
-            f"Invalid req_type '{req_type}': must be 'conda' or 'pip'"
-        )
+        raise argparse.ArgumentTypeError(f"Invalid req_type '{req_type}': must be 'conda' or 'pip'")
     d["req_type"] = req_type
 
     if req_type == "conda":
@@ -271,16 +355,69 @@ def _requirements_batch_type(value: str) -> dict[str, Any]:
             )
         d["channel"] = channel
     else:
-        try:
-            d["source"] = pip_source_type(str(d.get("source", "")))
-        except argparse.ArgumentTypeError as e:
-            raise argparse.ArgumentTypeError(f"Invalid source: {e}") from e
+        # Determine pip_source_type
+        pip_st = d.get("pip_source_type")
+        if pip_st is None:
+            if "path" in d:
+                pip_st = "path"
+            elif "url" in d:
+                pip_st = "url"
+            elif "git" in d:
+                pip_st = "git"
+            else:
+                raise argparse.ArgumentTypeError(
+                    "pip requirement must include one of: 'path', 'url', or 'git'"
+                )
+        if pip_st not in ("path", "url", "git"):
+            raise argparse.ArgumentTypeError(
+                f"Invalid pip_source_type '{pip_st}': must be 'path', 'url', or 'git'"
+            )
+        d["pip_source_type"] = pip_st
+
+        if pip_st == "path":
+            try:
+                d["path"] = _absolute_path_type(str(d.get("path", "")))
+            except argparse.ArgumentTypeError as e:
+                raise argparse.ArgumentTypeError(f"Invalid path: {e}") from e
+            editable = d.get("editable", False)
+            d["editable"] = "true" if editable in (True, "true") else "false"
+        elif pip_st == "url":
+            try:
+                d["url"] = _http_url_type(str(d.get("url", "")))
+            except argparse.ArgumentTypeError as e:
+                raise argparse.ArgumentTypeError(f"Invalid url: {e}") from e
+        else:  # git
+            try:
+                d["git"] = _git_url_type(str(d.get("git", "")))
+            except argparse.ArgumentTypeError as e:
+                raise argparse.ArgumentTypeError(f"Invalid git URL: {e}") from e
+            # Normalize git ref: accept rev/branch/tag keys or git_ref_type+git_ref_value
+            if "git_ref_type" not in d:
+                for ref_type in ("rev", "branch", "tag"):
+                    if ref_type in d:
+                        d["git_ref_type"] = ref_type
+                        d["git_ref_value"] = non_empty_str(str(d.pop(ref_type)))
+                        break
+                else:
+                    d["git_ref_type"] = "none"
+            git_ref_type = d["git_ref_type"]
+            if git_ref_type not in ("none", "rev", "branch", "tag"):
+                raise argparse.ArgumentTypeError(
+                    f"Invalid git_ref_type '{git_ref_type}': must be 'none', 'rev', 'branch', "
+                    "or 'tag'"
+                )
+            if git_ref_type != "none":
+                if "git_ref_value" not in d:
+                    raise argparse.ArgumentTypeError(
+                        f"git_ref_value is required when git_ref_type is '{git_ref_type}'"
+                    )
+                try:
+                    d["git_ref_value"] = non_empty_str(str(d["git_ref_value"]))
+                except argparse.ArgumentTypeError as e:
+                    raise argparse.ArgumentTypeError(f"Invalid git_ref_value: {e}") from e
 
     return d
 
-
-_is_conda = lambda entry: entry.get("req_type", "conda") == "conda"  # noqa: E731
-_is_pip = lambda entry: entry.get("req_type", "conda") == "pip"  # noqa: E731
 
 _Q_REQUIREMENTS_LOOP_QUESTIONS: list[WizardQuestion] = [
     {
@@ -297,6 +434,7 @@ _Q_REQUIREMENTS_LOOP_QUESTIONS: list[WizardQuestion] = [
         },
         "wizard": {},
     },
+    # --- conda-specific ---
     {
         "dest": "version",
         "argparse": {"help": "Version spec", "type": requirement_version_type, "default": "*"},
@@ -307,23 +445,83 @@ _Q_REQUIREMENTS_LOOP_QUESTIONS: list[WizardQuestion] = [
         "argparse": {"help": "Channel", "choices": CHANNEL_CHOICES, "default": "conda-forge"},
         "wizard": {"condition": _is_conda},
     },
+    # --- pip: source type discriminator ---
     {
-        "dest": "source",
+        "dest": "pip_source_type",
         "argparse": {
-            "help": "Pip source: absolute path, http/https URL, or git+https:// URL",
-            "type": pip_source_type,
+            "help": "Pip source type",
+            "choices": ["path", "url", "git"],
+            "default": "path",
         },
         "wizard": {"condition": _is_pip},
     },
+    # --- pip path ---
+    {
+        "dest": "path",
+        "argparse": {
+            "help": "Absolute filesystem path to package",
+            "type": _absolute_path_type,
+        },
+        "wizard": {"condition": _is_pip_path},
+    },
+    {
+        "dest": "editable",
+        "argparse": {
+            "help": "Install in editable mode",
+            "choices": ["false", "true"],
+            "default": "false",
+        },
+        "wizard": {"condition": _is_pip_path},
+    },
+    # --- pip url ---
+    {
+        "dest": "url",
+        "argparse": {
+            "help": "HTTP/HTTPS URL to package wheel or sdist",
+            "type": _http_url_type,
+        },
+        "wizard": {"condition": _is_pip_url},
+    },
+    # --- pip git ---
+    {
+        "dest": "git",
+        "argparse": {
+            "help": "Git repository URL (e.g. https://github.com/org/pkg.git)",
+            "type": _git_url_type,
+        },
+        "wizard": {"condition": _is_pip_git},
+    },
+    {
+        "dest": "git_ref_type",
+        "argparse": {
+            "help": "Git reference type",
+            "choices": ["none", "rev", "branch", "tag"],
+            "default": "none",
+        },
+        "wizard": {"condition": _is_pip_git},
+    },
+    {
+        "dest": "git_ref_value",
+        "argparse": {
+            "help": "Git reference value (commit hash, branch name, or tag)",
+            "type": non_empty_str,
+        },
+        "wizard": {"condition": _is_pip_git_with_ref},
+    },
 ]
+
 _Q_REQUIREMENTS: WizardQuestion = {
     "dest": "requirements",
     "argparse": {
         "action": "append",
         "default": None,
         "help": (
-            "Requirement as JSON: conda: {'name':'pkg','version':'*','channel':'conda-forge'} "
-            "or pip: {'name':'pkg','source':'/path/or/url'} (batch mode; repeatable)"
+            'Requirement as JSON. Conda: {"name":"pkg","version":"*",'
+            '"channel":"conda-forge"}. '
+            'Pip path: {"name":"pkg","path":"/abs/path"}. '
+            'Pip URL: {"name":"pkg","url":"https://..."}. '
+            'Pip git: {"name":"pkg","git":"https://github.com/org/pkg.git",'
+            '"branch":"main"}. (batch mode; repeatable)'
         ),
         "type": _requirements_batch_type,
     },

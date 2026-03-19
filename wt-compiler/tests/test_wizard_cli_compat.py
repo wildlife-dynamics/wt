@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from typing import cast
 from unittest.mock import patch
 
 import pytest
@@ -15,7 +16,7 @@ from wt_compiler.wizard.abstract import (
     WizardQuestion,
     _make_loop_type,
 )
-from wt_compiler.wizard.default import DefaultWizardProvider
+from wt_compiler.wizard.default import DefaultWizardProvider, _requirements_batch_type
 
 
 def interactive_loop(provider: AbstractWizardProvider) -> None:
@@ -50,6 +51,7 @@ class TestInteractiveMode:
             "Author Name",
             "MIT",
             "numpy",
+            "conda",       # req_type
             "*",
             "conda-forge",
             "",  # end requirements
@@ -61,7 +63,7 @@ class TestInteractiveMode:
         assert provider.answers["workflow_id"] == "my_workflow"
         assert provider.answers["workflow_name"] == "My Workflow"
         assert provider.answers["requirements"] == [
-            {"name": "numpy", "version": "*", "channel": "conda-forge"}
+            {"name": "numpy", "req_type": "conda", "version": "*", "channel": "conda-forge"}
         ]
 
     def test_interactive_loop_displays_choices(self, capsys: object) -> None:
@@ -96,7 +98,6 @@ class TestInteractiveMode:
         ])
 
         printed: list[str] = []
-        original_print = print
 
         def capture_print(*args: object, **kwargs: object) -> None:
             printed.append(" ".join(str(a) for a in args))
@@ -119,11 +120,13 @@ class TestInteractiveMode:
             "desc",
             "Author",
             "MIT",
-            "pkg1",  # req 1 name
-            "*",  # req 1 version
+            "pkg1",         # req 1 name
+            "conda",        # req 1 req_type
+            "*",            # req 1 version
             "conda-forge",  # req 1 channel
-            "pkg2",  # req 2 name
-            "*",  # req 2 version
+            "pkg2",         # req 2 name
+            "conda",        # req 2 req_type
+            "*",            # req 2 version
             "conda-forge",  # req 2 channel
             "",  # end requirements
         ])
@@ -144,14 +147,10 @@ class TestStaticBatchMode:
         for q in provider.get_questions():
             dest = q["dest"]
             if "questions" in q:
-                # WizardQuestionLoop — auto-derive argparse
-                loop_type = _make_loop_type(q["questions"])
+                # requirements question has its own argparse dict with custom type
                 parser.add_argument(
                     f"--{dest.replace('_', '-')}",
-                    type=loop_type,
-                    action="append",
-                    default=[],
-                    help=f"JSON: {', '.join(sq['dest'] for sq in q['questions'])}",
+                    **cast(SingleWizardQuestion, q)["argparse"],
                 )
             else:
                 parser.add_argument(
@@ -165,13 +164,10 @@ class TestStaticBatchMode:
         for q in provider.get_questions():
             dest = q["dest"]
             if "questions" in q:
-                loop_type = _make_loop_type(q["questions"])
+                # Use the custom argparse dict (includes _requirements_batch_type)
                 parser.add_argument(
                     f"--{dest.replace('_', '-')}",
-                    type=loop_type,
-                    action="append",
-                    default=[],
-                    help=f"JSON: {', '.join(sq['dest'] for sq in q['questions'])}",
+                    **cast(SingleWizardQuestion, q)["argparse"],
                 )
             else:
                 parser.add_argument(
@@ -214,13 +210,9 @@ class TestStaticBatchMode:
         for q in provider_argparse.get_questions():
             dest = q["dest"]
             if "questions" in q:
-                loop_type = _make_loop_type(q["questions"])
                 parser.add_argument(
                     f"--{dest.replace('_', '-')}",
-                    type=loop_type,
-                    action="append",
-                    default=[],
-                    help=f"JSON",
+                    **cast(SingleWizardQuestion, q)["argparse"],
                 )
             else:
                 parser.add_argument(
@@ -242,7 +234,9 @@ class TestStaticBatchMode:
         q = next(gen)
 
         # Feed simple questions from namespace
-        simple_dests = ["workflow_id", "workflow_name", "workflow_description", "author_name", "license_type"]
+        simple_dests = [
+            "workflow_id", "workflow_name", "workflow_description", "author_name", "license_type"
+        ]
         for dest in simple_dests:
             value = getattr(args, dest)
             q = gen.send(str(value) if value else "")
@@ -250,54 +244,80 @@ class TestStaticBatchMode:
         # Feed loop question: for each parsed requirement dict, send sub-fields
         assert q["dest"] == "name"  # first sub-question of requirements loop
         for req_dict in args.requirements:
-            q = gen.send(req_dict["name"])
-            q = gen.send(req_dict["version"])
-            q = gen.send(req_dict["channel"])
+            q = gen.send(req_dict["name"])             # name
+            assert q["dest"] == "req_type"
+            q = gen.send(req_dict["req_type"])         # req_type
+            assert q["dest"] == "version"
+            q = gen.send(req_dict["version"])          # version
+            assert q["dest"] == "channel"
+            q = gen.send(req_dict["channel"])          # channel
 
         # End the loop
         try:
             gen.send("")  # empty name = end loop
-            # If there are more questions, that's fine
         except StopIteration:
             pass
 
         assert provider.answers["workflow_id"] == "my_wf"
         assert provider.answers["requirements"] == [
-            {"name": "numpy", "version": "*", "channel": "conda-forge"}
+            {"name": "numpy", "req_type": "conda", "version": "*", "channel": "conda-forge"}
         ]
 
-    def test_loop_question_argparse_json_append(self) -> None:
-        """Verify auto-derived argparse for WizardQuestionLoop: action=append, JSON type."""
+    def test_loop_question_argparse_type_callable(self) -> None:
+        """Verify requirements loop question uses _requirements_batch_type."""
         provider = DefaultWizardProvider()
         loop_q = next(
             q for q in provider.get_questions() if q["dest"] == "requirements"
         )
         assert "questions" in loop_q
 
-        loop_type = _make_loop_type(loop_q["questions"])
+        batch_type = cast(SingleWizardQuestion, loop_q)["argparse"].get("type")
+        assert batch_type is _requirements_batch_type
 
-        # Valid JSON
-        result = loop_type('{"name": "numpy", "version": "*", "channel": "conda-forge"}')
+        # Valid conda JSON
+        result = batch_type('{"name": "numpy", "version": "*", "channel": "conda-forge"}')
         assert result["name"] == "numpy"
-        assert result["version"] == "*"
-        assert result["channel"] == "conda-forge"
+        assert result["req_type"] == "conda"
+
+        # Valid pip path JSON
+        result = batch_type('{"name": "mypkg", "path": "/home/user/mypkg"}')
+        assert result["req_type"] == "pip"
+        assert result["pip_source_type"] == "path"
 
         # Invalid JSON
         with pytest.raises(argparse.ArgumentTypeError, match="Invalid JSON"):
+            batch_type("not json")
+
+        # Invalid version
+        with pytest.raises(argparse.ArgumentTypeError, match="version"):
+            batch_type('{"name": "pkg", "version": ">>>invalid<<<", "channel": "conda-forge"}')
+
+    def test_make_loop_type_still_works_for_simple_providers(self) -> None:
+        """_make_loop_type is still valid for providers with simple sub-questions."""
+
+        class SimpleProvider(AbstractWizardProvider):
+            def get_questions(self) -> list[WizardQuestion]:
+                return [
+                    {
+                        "dest": "items",
+                        "questions": [
+                            {
+                                "dest": "value",
+                                "argparse": {"help": "Value", "type": str},
+                                "wizard": {},
+                            }
+                        ],
+                    }
+                ]
+
+        q = SimpleProvider().get_questions()[0]
+        loop_type = _make_loop_type(q["questions"])
+
+        result = loop_type('{"value": "hello"}')
+        assert result["value"] == "hello"
+
+        with pytest.raises(argparse.ArgumentTypeError, match="Invalid JSON"):
             loop_type("not json")
 
-        # JSON root is not an object (e.g., array)
         with pytest.raises(argparse.ArgumentTypeError, match="Expected a JSON object"):
-            loop_type('[{"name": "numpy"}]')
-
-        # JSON root is a scalar
-        with pytest.raises(argparse.ArgumentTypeError, match="Expected a JSON object"):
-            loop_type('"numpy"')
-
-        # Missing required field
-        with pytest.raises(argparse.ArgumentTypeError, match="Missing required field"):
-            loop_type('{"version": "*"}')
-
-        # Invalid sub-field value (version)
-        with pytest.raises(argparse.ArgumentTypeError, match="Invalid version"):
-            loop_type('{"name": "pkg", "version": ">>>invalid<<<", "channel": "conda-forge"}')
+            loop_type('[{"value": "x"}]')

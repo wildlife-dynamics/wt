@@ -5,12 +5,22 @@ requirements:
 {% if req.req_type == 'conda' %}
     version: "{{ req.version }}"
     channel: "{{ req.channel }}"
-{% elif req.source[0] == '/' %}
-    path: "{{ req.source }}"
-{% elif req.source[:4] == 'git+' %}
-    git: "{{ req.source[4:] }}"
-{% else %}
-    url: "{{ req.source }}"
+{% elif req.pip_source_type == 'path' %}
+    path: "{{ req.path }}"
+{% if req.editable == 'true' %}
+    editable: true
+{% endif %}
+{% elif req.pip_source_type == 'url' %}
+    url: "{{ req.url }}"
+{% elif req.pip_source_type == 'git' %}
+    git: "{{ req.git }}"
+{% if req.git_ref_type == 'rev' %}
+    rev: "{{ req.git_ref_value }}"
+{% elif req.git_ref_type == 'branch' %}
+    branch: "{{ req.git_ref_value }}"
+{% elif req.git_ref_type == 'tag' %}
+    tag: "{{ req.git_ref_value }}"
+{% endif %}
 {% endif %}
 {% endfor %}
 {% if not requirements %}

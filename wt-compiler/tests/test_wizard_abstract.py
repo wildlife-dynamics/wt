@@ -50,6 +50,7 @@ class TestGeneratorMechanics:
             "Author Name",  # author_name
             "MIT",  # license_type
             "numpy",  # requirements[0].name
+            "conda",  # requirements[0].req_type
             "*",  # requirements[0].version
             "conda-forge",  # requirements[0].channel
             "",  # end requirements loop
@@ -77,6 +78,7 @@ class TestGeneratorMechanics:
             "Author Name",  # author_name
             "MIT",  # license_type
             "numpy",  # requirements[0].name
+            "conda",  # requirements[0].req_type
             "*",  # requirements[0].version
             "conda-forge",  # requirements[0].channel
             "",  # end requirements loop
@@ -89,7 +91,7 @@ class TestGeneratorMechanics:
         assert provider.answers["author_name"] == "Author Name"
         assert provider.answers["license_type"] == "MIT"
         assert provider.answers["requirements"] == [
-            {"name": "numpy", "version": "*", "channel": "conda-forge"}
+            {"name": "numpy", "req_type": "conda", "version": "*", "channel": "conda-forge"}
         ]
 
     def test_invalid_answer_reyields_with_error(self) -> None:
@@ -184,8 +186,9 @@ class TestLoopContext:
         for ans in ["my_wf", "My Workflow", "", "Author", "MIT"]:
             question = gen.send(ans)
         assert question["wizard"]["loop_context"]["iteration"] == 0
-        # Collect one requirement
-        question = gen.send("numpy")       # name → yields version
+        # Collect one requirement (conda)
+        question = gen.send("numpy")       # name → yields req_type
+        question = gen.send("conda")       # req_type → yields version
         question = gen.send("*")           # version → yields channel
         question = gen.send("conda-forge") # channel → loops back to name
         assert question["wizard"]["loop_context"]["iteration"] == 1

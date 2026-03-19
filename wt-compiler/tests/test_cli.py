@@ -482,10 +482,10 @@ class TestInitCommand:
         self, capsys: pytest.CaptureFixture[str], tmp_path: Path
     ) -> None:
         """Interactive mode: questionary drives wizard, dump() called with correct workdir."""
-        # questionary.confirm for loop: first True (add one req), second False (stop)
+        # questionary.confirm for loop: first True (add one conda req), second False (stop)
         confirm_mock = MagicMock()
         confirm_mock.return_value.ask.side_effect = [True, False]
-        # questionary.text: workflow_id, workflow_name, description, author_name, then loop: name, version
+        # questionary.text: workflow_id, workflow_name, description, author_name, name, version
         text_mock = MagicMock()
         text_mock.return_value.ask.side_effect = [
             "my_workflow", "My Workflow", "", "Author",
@@ -528,9 +528,9 @@ class TestInitCommand:
                         with patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump"):
                             main()
 
-        # questionary.select called for license_type, req_type, and channel (all have choices)
+        # questionary.select called for license_type, req_type (conda), channel
         assert select_mock.call_count == 3
-        # questionary.text called for free-text fields: workflow_id, workflow_name, description,
+        # questionary.text called for: workflow_id, workflow_name, description,
         # author_name, name, version
         assert text_mock.call_count == 6
 
@@ -727,8 +727,8 @@ class TestInitCommand:
 
         assert exc_info.value.code == 2
 
-    def test_init_batch_pip_requirement(self, tmp_path: Path) -> None:
-        """--requirements with pip source stored with req_type='pip' in answers."""
+    def test_init_batch_pip_path_requirement(self, tmp_path: Path) -> None:
+        """--requirements with pip path stored correctly in answers."""
         from wt_compiler.wizard import DefaultWizardProvider
 
         captured_provider: list[DefaultWizardProvider] = []
@@ -742,7 +742,7 @@ class TestInitCommand:
             "--workflow-id", "my_wf",
             "--workflow-name", "My Workflow",
             "--author-name", "Author",
-            "--requirements", '{"name":"mypackage","source":"/home/user/mypackage"}',
+            "--requirements", '{"name":"mypackage","path":"/home/user/mypackage"}',
             "--output-dir", str(tmp_path),
         ]):
             with patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump", capture_dump):
@@ -750,17 +750,72 @@ class TestInitCommand:
 
         reqs = captured_provider[0].answers["requirements"]
         assert len(reqs) == 1
-        assert reqs[0] == {"name": "mypackage", "req_type": "pip", "source": "/home/user/mypackage"}
+        assert reqs[0] == {
+            "name": "mypackage",
+            "req_type": "pip",
+            "pip_source_type": "path",
+            "path": "/home/user/mypackage",
+            "editable": "false",
+        }
 
-    def test_init_batch_invalid_pip_source(self, capsys: pytest.CaptureFixture[str]) -> None:
-        """--requirements with invalid pip source is rejected by argparse (exit 2)."""
+    def test_init_batch_pip_git_requirement(self, tmp_path: Path) -> None:
+        """--requirements with pip git+branch stored correctly in answers."""
+        from wt_compiler.wizard import DefaultWizardProvider
+
+        captured_provider: list[DefaultWizardProvider] = []
+
+        def capture_dump(self: DefaultWizardProvider, workdir: Path) -> None:
+            captured_provider.append(self)
+
+        with patch.object(sys, "argv", [
+            "wt-compiler", "init",
+            "--no-interactive",
+            "--workflow-id", "my_wf",
+            "--workflow-name", "My Workflow",
+            "--author-name", "Author",
+            "--requirements", (
+                '{"name":"mypkg","git":"https://github.com/org/pkg.git","branch":"main"}'
+            ),
+            "--output-dir", str(tmp_path),
+        ]):
+            with patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump", capture_dump):
+                main()
+
+        reqs = captured_provider[0].answers["requirements"]
+        assert len(reqs) == 1
+        assert reqs[0] == {
+            "name": "mypkg",
+            "req_type": "pip",
+            "pip_source_type": "git",
+            "git": "https://github.com/org/pkg.git",
+            "git_ref_type": "branch",
+            "git_ref_value": "main",
+        }
+
+    def test_init_batch_invalid_pip_path(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """--requirements with relative path is rejected by argparse (exit 2)."""
         with patch.object(sys, "argv", [
             "wt-compiler", "init",
             "--no-interactive",
             "--workflow-id", "my_workflow",
             "--workflow-name", "My Workflow",
             "--author-name", "Author",
-            "--requirements", '{"name":"mypkg","source":"relative/path"}',
+            "--requirements", '{"name":"mypkg","path":"relative/path"}',
+        ]):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+
+        assert exc_info.value.code == 2
+
+    def test_init_batch_invalid_pip_url(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """--requirements with invalid pip URL is rejected by argparse (exit 2)."""
+        with patch.object(sys, "argv", [
+            "wt-compiler", "init",
+            "--no-interactive",
+            "--workflow-id", "my_workflow",
+            "--workflow-name", "My Workflow",
+            "--author-name", "Author",
+            "--requirements", '{"name":"mypkg","url":"ftp://example.com/pkg"}',
         ]):
             with pytest.raises(SystemExit) as exc_info:
                 main()
