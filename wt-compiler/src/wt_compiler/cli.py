@@ -7,7 +7,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, cast
+from typing import Any, TypeGuard, cast
 
 import questionary
 
@@ -17,8 +17,13 @@ from wt_compiler.wizard.abstract import (
     LoopContext,
     SingleWizardQuestion,
     WizardQuestion,
-    _is_loop,
+    WizardQuestionLoop,
 )
+
+
+def _is_loop(q: WizardQuestion) -> TypeGuard[WizardQuestionLoop]:
+    """Runtime type guard: ``True`` if *q* is a ``WizardQuestionLoop``."""
+    return "questions" in q
 
 
 def _make_questionary_validator(
