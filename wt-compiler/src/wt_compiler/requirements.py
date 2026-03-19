@@ -43,6 +43,7 @@ CHANNELS: list[Channel] = [
 ]
 PLATFORMS: list[Platform] = [
     Platform("linux-64"),
+    Platform("linux-aarch64"),
     Platform("osx-arm64"),
     Platform("win-64"),
     Platform("osx-64"),
