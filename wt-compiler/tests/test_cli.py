@@ -727,8 +727,8 @@ class TestInitCommand:
 
         assert exc_info.value.code == 2
 
-    def test_init_batch_pip_path_requirement(self, tmp_path: Path) -> None:
-        """--requirements with pip path stored correctly in answers."""
+    def test_init_batch_local_path_requirement(self, tmp_path: Path) -> None:
+        """--requirements with local path stored correctly in answers."""
         from wt_compiler.wizard import DefaultWizardProvider
 
         captured_provider: list[DefaultWizardProvider] = []
@@ -752,14 +752,13 @@ class TestInitCommand:
         assert len(reqs) == 1
         assert reqs[0] == {
             "name": "mypackage",
-            "req_type": "pip",
-            "pip_source_type": "path",
+            "req_type": "local path",
             "path": "/home/user/mypackage",
             "editable": "false",
         }
 
-    def test_init_batch_pip_git_requirement(self, tmp_path: Path) -> None:
-        """--requirements with pip git+branch stored correctly in answers."""
+    def test_init_batch_git_requirement(self, tmp_path: Path) -> None:
+        """--requirements with git+branch stored correctly in answers."""
         from wt_compiler.wizard import DefaultWizardProvider
 
         captured_provider: list[DefaultWizardProvider] = []
@@ -785,14 +784,13 @@ class TestInitCommand:
         assert len(reqs) == 1
         assert reqs[0] == {
             "name": "mypkg",
-            "req_type": "pip",
-            "pip_source_type": "git",
+            "req_type": "git",
             "git": "https://github.com/org/pkg.git",
             "git_ref_type": "branch",
             "git_ref_value": "main",
         }
 
-    def test_init_batch_invalid_pip_path(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_init_batch_invalid_path(self, capsys: pytest.CaptureFixture[str]) -> None:
         """--requirements with relative path is rejected by argparse (exit 2)."""
         with patch.object(sys, "argv", [
             "wt-compiler", "init",
@@ -807,8 +805,8 @@ class TestInitCommand:
 
         assert exc_info.value.code == 2
 
-    def test_init_batch_invalid_pip_url(self, capsys: pytest.CaptureFixture[str]) -> None:
-        """--requirements with invalid pip URL is rejected by argparse (exit 2)."""
+    def test_init_batch_invalid_url(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """--requirements with invalid URL is rejected by argparse (exit 2)."""
         with patch.object(sys, "argv", [
             "wt-compiler", "init",
             "--no-interactive",

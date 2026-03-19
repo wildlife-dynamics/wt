@@ -66,6 +66,30 @@ class TestInteractiveMode:
             {"name": "numpy", "req_type": "conda", "version": "*", "channel": "conda-forge"}
         ]
 
+    def test_interactive_loop_local_path_requirement(self) -> None:
+        """Interactive loop handles local path requirement correctly."""
+        provider = DefaultWizardProvider()
+        input_sequence = iter([
+            "my_workflow",
+            "My Workflow",
+            "",
+            "Author",
+            "MIT",
+            "mypkg",
+            "local path",       # req_type
+            "/home/user/mypkg", # path
+            "false",            # editable
+            "",  # end requirements
+        ])
+
+        with patch("builtins.input", side_effect=input_sequence):
+            interactive_loop(provider)
+
+        reqs = provider.answers["requirements"]
+        assert len(reqs) == 1
+        assert reqs[0]["req_type"] == "local path"
+        assert reqs[0]["path"] == "/home/user/mypkg"
+
     def test_interactive_loop_displays_choices(self, capsys: object) -> None:
         """For select-type questions with choices, verify choices are displayed."""
         provider = DefaultWizardProvider()
@@ -121,11 +145,11 @@ class TestInteractiveMode:
             "Author",
             "MIT",
             "pkg1",         # req 1 name
-            "conda",        # req 1 req_type
+            "conda",        # req 1 req_type → conda
             "*",            # req 1 version
             "conda-forge",  # req 1 channel
             "pkg2",         # req 2 name
-            "conda",        # req 2 req_type
+            "conda",        # req 2 req_type → conda
             "*",            # req 2 version
             "conda-forge",  # req 2 channel
             "",  # end requirements
@@ -279,10 +303,10 @@ class TestStaticBatchMode:
         assert result["name"] == "numpy"
         assert result["req_type"] == "conda"
 
-        # Valid pip path JSON
+        # Valid local path JSON
         result = batch_type('{"name": "mypkg", "path": "/home/user/mypkg"}')
-        assert result["req_type"] == "pip"
-        assert result["pip_source_type"] == "path"
+        assert result["req_type"] == "local path"
+        assert "pip_source_type" not in result
 
         # Invalid JSON
         with pytest.raises(argparse.ArgumentTypeError, match="Invalid JSON"):

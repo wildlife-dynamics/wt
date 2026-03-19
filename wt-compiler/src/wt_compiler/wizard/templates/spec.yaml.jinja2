@@ -5,14 +5,14 @@ requirements:
 {% if req.req_type == 'conda' %}
     version: "{{ req.version }}"
     channel: "{{ req.channel }}"
-{% elif req.pip_source_type == 'path' %}
+{% elif req.req_type == 'local path' %}
     path: "{{ req.path }}"
 {% if req.editable == 'true' %}
     editable: true
 {% endif %}
-{% elif req.pip_source_type == 'url' %}
+{% elif req.req_type == 'url' %}
     url: "{{ req.url }}"
-{% elif req.pip_source_type == 'git' %}
+{% elif req.req_type == 'git' %}
     git: "{{ req.git }}"
 {% if req.git_ref_type == 'rev' %}
     rev: "{{ req.git_ref_value }}"

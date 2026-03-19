@@ -220,30 +220,20 @@ def _git_url_type(value: str) -> str:
 CHANNEL_CHOICES: list[str] = [_serialize_channel(c) for c in CHANNELS]
 """Channel choices list built from ``requirements.CHANNELS``."""
 
+REQ_TYPE_CHOICES: list[str] = ["conda", "local path", "url", "git"]
+"""Allowed ``req_type`` values for the requirements loop."""
+
 # --- Condition callables ----------------------------------------------------
 
 _is_conda = lambda entry: entry.get("req_type", "conda") == "conda"  # noqa: E731
-_is_pip = lambda entry: entry.get("req_type", "conda") == "pip"  # noqa: E731
-
-
-def _is_pip_path(entry: Any) -> bool:
-    """Return True when the current entry is a pip path requirement."""
-    return bool(entry.get("req_type") == "pip" and entry.get("pip_source_type") == "path")
-
-
-def _is_pip_url(entry: Any) -> bool:
-    """Return True when the current entry is a pip URL requirement."""
-    return bool(entry.get("req_type") == "pip" and entry.get("pip_source_type") == "url")
-
-
-def _is_pip_git(entry: Any) -> bool:
-    """Return True when the current entry is a pip git requirement."""
-    return bool(entry.get("req_type") == "pip" and entry.get("pip_source_type") == "git")
+_is_pip_path = lambda entry: entry.get("req_type") == "local path"  # noqa: E731
+_is_pip_url = lambda entry: entry.get("req_type") == "url"  # noqa: E731
+_is_pip_git = lambda entry: entry.get("req_type") == "git"  # noqa: E731
 
 
 def _is_pip_git_with_ref(entry: Any) -> bool:
-    """Return True when the current entry is a pip git requirement with a ref."""
-    return bool(_is_pip_git(entry) and entry.get("git_ref_type", "none") != "none")
+    """Return True when the current entry is a git requirement with a ref."""
+    return bool(entry.get("req_type") == "git" and entry.get("git_ref_type", "none") != "none")
 
 
 # --- Default question definitions --------------------------------------------
@@ -291,20 +281,18 @@ def _requirements_batch_type(value: str) -> dict[str, Any]:
     """Parse and validate a requirement JSON object for batch mode.
 
     Infers ``req_type`` from the keys present if not explicitly supplied:
-    a dict containing a ``path``, ``url``, or ``git`` key is treated as
-    ``"pip"``; otherwise ``"conda"`` is assumed.
+    a dict with a ``path`` key → ``"local path"``; ``url`` key → ``"url"``;
+    ``git`` key → ``"git"``; otherwise ``"conda"`` is assumed.
 
-    For pip requirements, ``pip_source_type`` is inferred from whichever of
-    ``path``/``url``/``git`` is present.  Git references may be supplied as
-    ``rev``/``branch``/``tag`` keys (normalized to ``git_ref_type`` +
-    ``git_ref_value``) or directly as ``git_ref_type`` + ``git_ref_value``.
+    Git references may be supplied as ``rev``/``branch``/``tag`` keys
+    (normalized to ``git_ref_type`` + ``git_ref_value``) or directly as
+    ``git_ref_type`` + ``git_ref_value``.
 
     Args:
         value: JSON string representing a single requirement.
 
     Returns:
-        Validated dict with ``req_type``, ``pip_source_type`` (for pip), and
-        type-checked fields.
+        Validated dict with ``req_type`` set and type-checked fields.
 
     Raises:
         argparse.ArgumentTypeError: On JSON parse failure or invalid fields.
@@ -319,11 +307,11 @@ def _requirements_batch_type(value: str) -> dict[str, Any]:
         >>> d["req_type"]
         'conda'
 
-        Pip path (inferred from ``path``):
+        Local path (inferred from ``path``):
 
         >>> d = _requirements_batch_type('{"name":"mypkg","path":"/home/user/mypkg"}')
-        >>> d["req_type"], d["pip_source_type"]
-        ('pip', 'path')
+        >>> d["req_type"]
+        'local path'
     """
     try:
         d: dict[str, Any] = json.loads(value)
@@ -337,11 +325,22 @@ def _requirements_batch_type(value: str) -> dict[str, Any]:
     except argparse.ArgumentTypeError as e:
         raise argparse.ArgumentTypeError(f"Invalid name: {e}") from e
 
-    _pip_source_keys = frozenset(("path", "url", "git"))
-    req_type = d.get("req_type", "pip" if _pip_source_keys & d.keys() else "conda")
-    if req_type not in ("conda", "pip"):
-        raise argparse.ArgumentTypeError(f"Invalid req_type '{req_type}': must be 'conda' or 'pip'")
-    d["req_type"] = req_type
+    # Infer req_type from key presence when not explicitly supplied
+    if "req_type" not in d:
+        if "path" in d:
+            d["req_type"] = "local path"
+        elif "url" in d:
+            d["req_type"] = "url"
+        elif "git" in d:
+            d["req_type"] = "git"
+        else:
+            d["req_type"] = "conda"
+
+    req_type = d["req_type"]
+    if req_type not in REQ_TYPE_CHOICES:
+        raise argparse.ArgumentTypeError(
+            f"Invalid req_type '{req_type}': must be one of {REQ_TYPE_CHOICES}"
+        )
 
     if req_type == "conda":
         try:
@@ -354,67 +353,46 @@ def _requirements_batch_type(value: str) -> dict[str, Any]:
                 f"Invalid channel '{channel}': must be one of {CHANNEL_CHOICES}"
             )
         d["channel"] = channel
-    else:
-        # Determine pip_source_type
-        pip_st = d.get("pip_source_type")
-        if pip_st is None:
-            if "path" in d:
-                pip_st = "path"
-            elif "url" in d:
-                pip_st = "url"
-            elif "git" in d:
-                pip_st = "git"
+    elif req_type == "local path":
+        try:
+            d["path"] = _absolute_path_type(str(d.get("path", "")))
+        except argparse.ArgumentTypeError as e:
+            raise argparse.ArgumentTypeError(f"Invalid path: {e}") from e
+        editable = d.get("editable", False)
+        d["editable"] = "true" if editable in (True, "true") else "false"
+    elif req_type == "url":
+        try:
+            d["url"] = _http_url_type(str(d.get("url", "")))
+        except argparse.ArgumentTypeError as e:
+            raise argparse.ArgumentTypeError(f"Invalid url: {e}") from e
+    else:  # git
+        try:
+            d["git"] = _git_url_type(str(d.get("git", "")))
+        except argparse.ArgumentTypeError as e:
+            raise argparse.ArgumentTypeError(f"Invalid git URL: {e}") from e
+        # Normalize git ref: accept rev/branch/tag keys or git_ref_type+git_ref_value
+        if "git_ref_type" not in d:
+            for ref_type in ("rev", "branch", "tag"):
+                if ref_type in d:
+                    d["git_ref_type"] = ref_type
+                    d["git_ref_value"] = non_empty_str(str(d.pop(ref_type)))
+                    break
             else:
-                raise argparse.ArgumentTypeError(
-                    "pip requirement must include one of: 'path', 'url', or 'git'"
-                )
-        if pip_st not in ("path", "url", "git"):
+                d["git_ref_type"] = "none"
+        git_ref_type = d["git_ref_type"]
+        if git_ref_type not in ("none", "rev", "branch", "tag"):
             raise argparse.ArgumentTypeError(
-                f"Invalid pip_source_type '{pip_st}': must be 'path', 'url', or 'git'"
+                f"Invalid git_ref_type '{git_ref_type}': must be 'none', 'rev', 'branch', or 'tag'"
             )
-        d["pip_source_type"] = pip_st
-
-        if pip_st == "path":
-            try:
-                d["path"] = _absolute_path_type(str(d.get("path", "")))
-            except argparse.ArgumentTypeError as e:
-                raise argparse.ArgumentTypeError(f"Invalid path: {e}") from e
-            editable = d.get("editable", False)
-            d["editable"] = "true" if editable in (True, "true") else "false"
-        elif pip_st == "url":
-            try:
-                d["url"] = _http_url_type(str(d.get("url", "")))
-            except argparse.ArgumentTypeError as e:
-                raise argparse.ArgumentTypeError(f"Invalid url: {e}") from e
-        else:  # git
-            try:
-                d["git"] = _git_url_type(str(d.get("git", "")))
-            except argparse.ArgumentTypeError as e:
-                raise argparse.ArgumentTypeError(f"Invalid git URL: {e}") from e
-            # Normalize git ref: accept rev/branch/tag keys or git_ref_type+git_ref_value
-            if "git_ref_type" not in d:
-                for ref_type in ("rev", "branch", "tag"):
-                    if ref_type in d:
-                        d["git_ref_type"] = ref_type
-                        d["git_ref_value"] = non_empty_str(str(d.pop(ref_type)))
-                        break
-                else:
-                    d["git_ref_type"] = "none"
-            git_ref_type = d["git_ref_type"]
-            if git_ref_type not in ("none", "rev", "branch", "tag"):
+        if git_ref_type != "none":
+            if "git_ref_value" not in d:
                 raise argparse.ArgumentTypeError(
-                    f"Invalid git_ref_type '{git_ref_type}': must be 'none', 'rev', 'branch', "
-                    "or 'tag'"
+                    f"git_ref_value is required when git_ref_type is '{git_ref_type}'"
                 )
-            if git_ref_type != "none":
-                if "git_ref_value" not in d:
-                    raise argparse.ArgumentTypeError(
-                        f"git_ref_value is required when git_ref_type is '{git_ref_type}'"
-                    )
-                try:
-                    d["git_ref_value"] = non_empty_str(str(d["git_ref_value"]))
-                except argparse.ArgumentTypeError as e:
-                    raise argparse.ArgumentTypeError(f"Invalid git_ref_value: {e}") from e
+            try:
+                d["git_ref_value"] = non_empty_str(str(d["git_ref_value"]))
+            except argparse.ArgumentTypeError as e:
+                raise argparse.ArgumentTypeError(f"Invalid git_ref_value: {e}") from e
 
     return d
 
@@ -429,7 +407,7 @@ _Q_REQUIREMENTS_LOOP_QUESTIONS: list[WizardQuestion] = [
         "dest": "req_type",
         "argparse": {
             "help": "Requirement type",
-            "choices": ["conda", "pip"],
+            "choices": REQ_TYPE_CHOICES,
             "default": "conda",
         },
         "wizard": {},
@@ -445,17 +423,7 @@ _Q_REQUIREMENTS_LOOP_QUESTIONS: list[WizardQuestion] = [
         "argparse": {"help": "Channel", "choices": CHANNEL_CHOICES, "default": "conda-forge"},
         "wizard": {"condition": _is_conda},
     },
-    # --- pip: source type discriminator ---
-    {
-        "dest": "pip_source_type",
-        "argparse": {
-            "help": "Pip source type",
-            "choices": ["path", "url", "git"],
-            "default": "path",
-        },
-        "wizard": {"condition": _is_pip},
-    },
-    # --- pip path ---
+    # --- local path ---
     {
         "dest": "path",
         "argparse": {
@@ -473,7 +441,7 @@ _Q_REQUIREMENTS_LOOP_QUESTIONS: list[WizardQuestion] = [
         },
         "wizard": {"condition": _is_pip_path},
     },
-    # --- pip url ---
+    # --- url ---
     {
         "dest": "url",
         "argparse": {
@@ -482,7 +450,7 @@ _Q_REQUIREMENTS_LOOP_QUESTIONS: list[WizardQuestion] = [
         },
         "wizard": {"condition": _is_pip_url},
     },
-    # --- pip git ---
+    # --- git ---
     {
         "dest": "git",
         "argparse": {
