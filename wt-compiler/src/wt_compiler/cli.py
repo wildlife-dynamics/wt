@@ -14,6 +14,7 @@ import questionary
 from wt_compiler.compiler import compile_workflow_from_yaml
 from wt_compiler.wizard import DefaultWizardProvider
 from wt_compiler.wizard.abstract import (
+    AbstractWizardProvider,
     LoopContext,
     SingleWizardQuestion,
     WizardQuestion,
@@ -53,18 +54,18 @@ def _make_questionary_validator(
 
 
 def _batch_init(
-    provider: DefaultWizardProvider,
+    provider: AbstractWizardProvider,
     args: argparse.Namespace,
     questions: list[WizardQuestion],
 ) -> None:
-    """Drive DefaultWizardProvider in batch mode from pre-parsed CLI flags.
+    """Drive the wizard provider in batch mode from pre-parsed CLI flags.
 
     Validates that all required fields (those with no default in the question
     definition) are present, builds a flat answer sequence from ``args``, then
     drives the generator to completion.
 
     Args:
-        provider: A fresh ``DefaultWizardProvider`` instance.
+        provider: A wizard provider instance (``AbstractWizardProvider``).
         args: Parsed CLI namespace; wizard flag values are read from here.
         questions: Ordered question list used to build the answer sequence.
 
@@ -124,8 +125,8 @@ def _batch_init(
         sys.exit(1)
 
 
-def _interactive_init(provider: DefaultWizardProvider) -> None:
-    """Drive DefaultWizardProvider interactively using questionary prompts.
+def _interactive_init(provider: AbstractWizardProvider) -> None:
+    """Drive the wizard provider interactively using questionary prompts.
 
     Replaces the raw ``input()`` loop with rich terminal widgets:
     - ``questionary.text()`` for free-text fields, with inline validation
@@ -140,8 +141,8 @@ def _interactive_init(provider: DefaultWizardProvider) -> None:
     If the user declines, ``""`` is sent to the generator to end the loop.
 
     Args:
-        provider: A fresh ``DefaultWizardProvider`` instance. Answers are
-            stored on ``provider._answers`` by the generator.
+        provider: A wizard provider instance (``AbstractWizardProvider``).
+            Answers are stored on ``provider._answers`` by the generator.
 
     Raises:
         SystemExit: On questionary cancellation (Ctrl+C) or unexpected
@@ -279,7 +280,8 @@ def main() -> None:
     )
 
     # init subcommand
-    init_questions = DefaultWizardProvider().get_questions()
+    wizard = DefaultWizardProvider()
+    init_questions = wizard.get_questions()
 
     init_parser = subparsers.add_parser(
         "init",
@@ -320,7 +322,7 @@ def main() -> None:
     if args.command == "compile":
         _compile(args)
     elif args.command == "init":
-        _init(args, init_questions)
+        _init(args, wizard)
 
 
 def _compile(args: argparse.Namespace) -> None:
@@ -391,7 +393,7 @@ def _compile(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
-def _init(args: argparse.Namespace, questions: list[WizardQuestion]) -> None:
+def _init(args: argparse.Namespace, provider: AbstractWizardProvider) -> None:
     """
     Execute the init command.
 
@@ -400,12 +402,10 @@ def _init(args: argparse.Namespace, questions: list[WizardQuestion]) -> None:
 
     Args:
         args: Parsed command-line arguments.
-        questions: Wizard questions passed through to ``_batch_init``.
+        provider: Wizard provider instance to drive.
     """
-    provider = DefaultWizardProvider()
-
     if args.no_interactive:
-        _batch_init(provider, args, questions)
+        _batch_init(provider, args, provider.get_questions())
     else:
         _interactive_init(provider)
 
