@@ -480,15 +480,10 @@ class DagCompiler(BaseModel):
         runner_pypi_deps: dict[str, str | dict[str, Any]] = {}
 
         if self.wt_pypi_deps is None:
-            # Conda mode: wt-runner/wt-task come from conda channel
+            # Conda mode: wt-runner comes from conda channel
             runner_conda_deps[runner_pkg] = NamelessMatchSpec.from_match_spec(
                 MatchSpec(f"{runner_channel}::{runner_pkg} >=0.1.4,<1.0.0")
             )
-            if self.variant:
-                task_pkg = f"wt-task-{self.variant}"
-                runner_conda_deps[task_pkg] = NamelessMatchSpec.from_match_spec(
-                    MatchSpec(f"{runner_channel}::{task_pkg} >=0.1.2,<1.0.0")
-                )
         else:
             # PyPI mode: wt-runner goes in runner feature pypi-deps,
             # wt-task goes in top-level pypi-deps
