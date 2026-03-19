@@ -320,10 +320,42 @@ def main() -> None:
             "Requires --workflow-id, --workflow-name, and --author-name."
         ),
     )
+    init_parser.add_argument(
+        "provider_name",
+        nargs="?",
+        default=None,
+        metavar="PROVIDER",
+        help=(
+            "Name of a registered wizard provider. "
+            "Omit to use the built-in DefaultWizardProvider. "
+            "Custom providers must include a 'workflow_id' answer to name the output directory."
+        ),
+    )
     for q in init_questions:
         flag = "--" + q["dest"].replace("_", "-")
         ap_kwargs: Any = {**cast(SingleWizardQuestion, q)["argparse"]}
         init_parser.add_argument(flag, **ap_kwargs)
+
+    reg_parser = subparsers.add_parser(
+        "register-provider",
+        help="Install and register a wizard provider package",
+        description=(
+            "Install a Python package and register all wt_compiler.wizard_providers "
+            "entry points it exposes. The package must be available on PyPI or in your "
+            "conda channels. Note: all registered providers must expose a 'workflow_id' "
+            "answer key for the init command to derive the output directory name."
+        ),
+    )
+    reg_parser.add_argument(
+        "package",
+        metavar="PACKAGE",
+        help="Package name to install and register (e.g. my-wt-provider)",
+    )
+    subparsers.add_parser(
+        "list-providers",
+        help="List all registered wizard providers",
+        description="Show all wizard providers registered via 'wt-compiler register-provider'.",
+    )
 
     args = parser.parse_args()
 
@@ -331,6 +363,12 @@ def main() -> None:
         _compile(args)
     elif args.command == "init":
         _init(args, wizard)
+    elif args.command == "register-provider":
+        _register_provider(args)
+    elif args.command == "list-providers":
+        _list_providers()
+    else:
+        raise AssertionError(f"Unhandled command: {args.command!r}")
 
 
 def _compile(args: argparse.Namespace) -> None:
@@ -401,37 +439,157 @@ def _compile(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
-def _init(args: argparse.Namespace, provider: AbstractWizardProvider) -> None:
-    """
-    Execute the init command.
+def _finalize_init(provider: AbstractWizardProvider, args: argparse.Namespace) -> None:
+    """Finalize the init command by writing project artifacts to disk.
 
-    Scaffolds a new workflow project directory. Dispatches to ``_batch_init``
-    when ``--no-interactive`` is passed, otherwise to ``_interactive_init``.
+    Derives the output directory from provider answers and CLI flags,
+    validates the ``workflow_id`` answer, and delegates to
+    ``provider.dump()``.
+
+    Args:
+        provider: Completed wizard provider with ``workflow_id`` in answers.
+        args: Parsed CLI arguments (``output_dir``, ``clobber``).
+
+    Raises:
+        ValueError: If ``workflow_id`` is missing or empty in provider answers.
+        FileExistsError: If the output directory exists and ``--clobber`` is not set.
+        RuntimeError: If ``provider.dump()`` fails (e.g., no templates found).
+    """
+    output_dir = args.output_dir if args.output_dir is not None else Path.cwd()
+    workdir_name = provider.answers.get("workflow_id")
+    if not workdir_name:
+        raise ValueError(
+            "Provider answers must include 'workflow_id' to determine the output directory name."
+        )
+    workdir = output_dir / workdir_name
+    if workdir.exists() and not args.clobber:
+        raise FileExistsError(f"Output directory already exists: {workdir}")
+    provider.dump(workdir)
+    print(f"Initialized workflow project at: {workdir}")
+
+
+def _init(args: argparse.Namespace, provider: AbstractWizardProvider) -> None:
+    """Execute the init command.
+
+    Scaffolds a new workflow project directory. If a provider name is given,
+    loads the registered provider interactively. Otherwise dispatches to
+    ``_batch_init`` when ``--no-interactive`` is passed, or
+    ``_interactive_init`` for interactive mode.
 
     Args:
         args: Parsed command-line arguments.
-        provider: Wizard provider instance to drive.
+        provider: Default wizard provider instance (used when no provider name given).
     """
+    if args.provider_name is not None:
+        import wt_compiler.providers as _providers
+
+        if args.no_interactive:
+            print(
+                "Error: --no-interactive is not supported when using a custom provider.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        try:
+            provider_cls = _providers.load_provider_class(args.provider_name)
+        except (ValueError, TypeError) as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        provider = provider_cls()
+        try:
+            _interactive_init(provider)
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        try:
+            _finalize_init(provider, args)
+        except FileExistsError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            print("Use --clobber to overwrite existing directory", file=sys.stderr)
+            sys.exit(1)
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        return
+
     if args.no_interactive:
         _batch_init(provider, args, provider.get_questions())
+        try:
+            _finalize_init(provider, args)
+        except FileExistsError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            print("Use --clobber to overwrite existing directory", file=sys.stderr)
+            sys.exit(1)
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
     else:
-        _interactive_init(provider)
+        try:
+            _interactive_init(provider)
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        try:
+            _finalize_init(provider, args)
+        except FileExistsError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            print("Use --clobber to overwrite existing directory", file=sys.stderr)
+            sys.exit(1)
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
 
-    if "workflow_id" not in provider.answers:
-        print("Error: wizard did not complete successfully", file=sys.stderr)
-        sys.exit(1)
 
-    output_dir = args.output_dir if args.output_dir is not None else Path.cwd()
-    workdir = output_dir / provider.answers["workflow_id"]
+def _register_provider(args: argparse.Namespace) -> None:
+    """Install and register a wizard provider package.
 
-    if workdir.exists() and not args.clobber:
-        print(f"Error: Output directory already exists: {workdir}", file=sys.stderr)
-        print("Use --clobber to overwrite existing directory", file=sys.stderr)
-        sys.exit(1)
+    Installs the package using the auto-detected installer, discovers all
+    ``wt_compiler.wizard_providers`` entry points, and adds new ones to the
+    providers allowlist.
+
+    Args:
+        args: Parsed CLI arguments (``package`` field).
+    """
+    import subprocess
+    from importlib.metadata import PackageNotFoundError
+
+    import wt_compiler.providers as _providers
 
     try:
-        provider.dump(workdir)
-        print(f"Initialized workflow project at: {workdir}")
-    except Exception as e:
+        new_names = _providers.install_and_register(args.package)
+    except subprocess.CalledProcessError as e:
+        print(f"Error: installation of '{args.package}' failed:\n{e}", file=sys.stderr)
+        sys.exit(1)
+    except PackageNotFoundError:
+        print(
+            f"Error: Package '{args.package}' not found after install attempt. "
+            "Check the package name.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
+    if new_names:
+        print(
+            f"Registered {len(new_names)} provider(s) from '{args.package}': {', '.join(new_names)}"
+        )
+    else:
+        print(f"All providers from '{args.package}' were already registered.")
+
+
+def _list_providers() -> None:
+    """List all registered wizard providers.
+
+    Prints a formatted table of registered provider names and their package
+    sources, or a message if no providers are registered.
+    """
+    import wt_compiler.providers as _providers
+
+    providers = _providers.get_registered_providers()
+    if not providers:
+        print("No providers registered. Use 'wt-compiler register-provider <package>' to add one.")
+        return
+    print(f"{'NAME':<30}{'PACKAGE'}")
+    print("─" * 54)
+    for entry in providers:
+        print(f"{entry['name']:<30}{entry['package']}")
