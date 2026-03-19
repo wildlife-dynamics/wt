@@ -98,6 +98,9 @@ The `wt-compiler init` interactive mode uses [questionary](https://github.com/tm
 to provide arrow-key select prompts, inline validation, and loop confirm prompts.
 
 The generator protocol is designed to support renderers richer than a plain `input()` loop.
+
+### Using loop_context in a renderer
+
 When `input_generator()` is inside a `WizardQuestionLoop`, it injects `loop_context` into
 the `wizard` dict of the first sub-question yield for each iteration:
 
@@ -107,8 +110,6 @@ question["wizard"].get("loop_context")
 # {"dest": "requirements", "iteration": 0}  on first entry
 # {"dest": "requirements", "iteration": 1}  after one item collected
 ```
-
-### Using loop_context in a renderer
 
 When `loop_context` is present, show a confirm prompt **before** rendering the question:
 
