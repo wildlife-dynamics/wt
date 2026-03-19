@@ -280,8 +280,20 @@ class AbstractWizardProvider(ABC):
         """
         if _is_loop(question):
             # WizardQuestionLoop
+            if not question["questions"]:
+                return []
             results: list[dict[str, Any]] = []
             first_q = cast(SingleWizardQuestion, question["questions"][0])
+            # Protocol invariant: the first sub-question is the loop-termination
+            # sentinel (empty answer = stop the loop).  It must never carry a
+            # condition; use the WizardQuestionLoop's own ``condition`` key to
+            # gate the entire loop instead.
+            if first_q.get("wizard", {}).get("condition") is not None:
+                raise ValueError(
+                    f"WizardQuestionLoop '{question['dest']}': first sub-question "
+                    f"'{first_q['dest']}' must not have a condition. "
+                    "Use the loop's own 'condition' key to gate the entire loop."
+                )
             iteration = 0
             first_q_with_ctx = cast(
                 SingleWizardQuestion,
@@ -298,11 +310,13 @@ class AbstractWizardProvider(ABC):
                 coerced = yield from self._validate_answer(first_q_with_ctx, answer)
                 entry = {first_q["dest"]: coerced}
                 for sub_q in question["questions"][1:]:
-                    if not _is_loop(sub_q):
+                    if _is_loop(sub_q):
+                        cond = sub_q.get("condition")
+                    else:
                         sq = cast(SingleWizardQuestion, sub_q)
                         cond = sq.get("wizard", {}).get("condition")
-                        if cond and not cond(MappingProxyType(entry)):
-                            continue  # skip field; leave it absent from entry
+                    if cond and not cond(MappingProxyType(entry)):
+                        continue  # skip field; leave it absent from entry
                     sub_value = yield from self._process_question(sub_q)  # recursive
                     entry[sub_q["dest"]] = sub_value
                 results.append(entry)

@@ -116,7 +116,15 @@ def _batch_init(
             error = question.get("wizard", {}).get("error")
             if error:
                 print(f"Error: {error}", file=sys.stderr)
-            answer = next(answer_iter)
+                sys.exit(1)
+            try:
+                answer = next(answer_iter)
+            except StopIteration:
+                print(
+                    "Error: --no-interactive answer sequence exhausted before wizard completed.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
             question = gen.send(answer)
     except StopIteration:
         pass
@@ -137,7 +145,7 @@ def _interactive_init(provider: AbstractWizardProvider) -> None:
     ``_process_question()``. When ``loop_context`` is present on a yielded
     question, a confirm prompt is shown before the question itself:
     - ``iteration == 0``: "Add a {dest}?" (default True)
-    - ``iteration > 0``: "Add another {dest}?" (default False)
+    - ``iteration > 0``: "Add another {dest}?" (default True)
     If the user declines, ``""`` is sent to the generator to end the loop.
 
     Args:
@@ -166,7 +174,7 @@ def _interactive_init(provider: AbstractWizardProvider) -> None:
                 confirm_msg = (
                     f"Add a {loop_ctx['dest']}?" if is_first else f"Add another {loop_ctx['dest']}?"
                 )
-                confirmed = questionary.confirm(confirm_msg, default=is_first).ask()
+                confirmed = questionary.confirm(confirm_msg, default=True).ask()
                 if confirmed is None:
                     # Ctrl+C
                     sys.exit(1)

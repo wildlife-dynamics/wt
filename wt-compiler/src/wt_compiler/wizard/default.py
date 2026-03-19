@@ -24,6 +24,7 @@ import copy
 import json
 import keyword
 import os
+from types import MappingProxyType
 from typing import Any
 from urllib.parse import urlparse
 
@@ -229,15 +230,65 @@ REQ_TYPE_CHOICES: list[str] = ["conda", "local path", "url", "git"]
 
 # --- Condition callables ----------------------------------------------------
 
-_is_conda = lambda entry: entry.get("req_type", "conda") == "conda"  # noqa: E731
-_is_pip_path = lambda entry: entry.get("req_type") == "local path"  # noqa: E731
-_is_pip_url = lambda entry: entry.get("req_type") == "url"  # noqa: E731
-_is_pip_git = lambda entry: entry.get("req_type") == "git"  # noqa: E731
+
+def _is_conda(entry: MappingProxyType[str, Any]) -> bool:
+    """Return True when the current entry uses a conda requirement type.
+
+    Args:
+        entry: Partial answer dict for the current loop iteration.
+
+    Returns:
+        True if ``req_type`` is ``"conda"`` or absent (the default).
+    """
+    return bool(entry.get("req_type", "conda") == "conda")
 
 
-def _is_pip_git_with_ref(entry: Any) -> bool:
-    """Return True when the current entry is a git requirement with a ref."""
-    return bool(entry.get("req_type") == "git" and entry.get("git_ref_type", "none") != "none")
+def _is_pip_path(entry: MappingProxyType[str, Any]) -> bool:
+    """Return True when the current entry uses a local filesystem path.
+
+    Args:
+        entry: Partial answer dict for the current loop iteration.
+
+    Returns:
+        True if ``req_type`` is ``"local path"``.
+    """
+    return entry.get("req_type") == "local path"
+
+
+def _is_pip_url(entry: MappingProxyType[str, Any]) -> bool:
+    """Return True when the current entry uses an HTTP/HTTPS URL.
+
+    Args:
+        entry: Partial answer dict for the current loop iteration.
+
+    Returns:
+        True if ``req_type`` is ``"url"``.
+    """
+    return entry.get("req_type") == "url"
+
+
+def _is_pip_git(entry: MappingProxyType[str, Any]) -> bool:
+    """Return True when the current entry uses a git repository URL.
+
+    Args:
+        entry: Partial answer dict for the current loop iteration.
+
+    Returns:
+        True if ``req_type`` is ``"git"``.
+    """
+    return entry.get("req_type") == "git"
+
+
+def _is_pip_git_with_ref(entry: MappingProxyType[str, Any]) -> bool:
+    """Return True when the current entry is a git requirement with a ref specified.
+
+    Args:
+        entry: Partial answer dict for the current loop iteration.
+
+    Returns:
+        True if ``req_type`` is ``"git"`` and ``git_ref_type`` is not ``"none"``.
+    """
+    return entry.get("req_type") == "git" and entry.get("git_ref_type", "none") != "none"
 
 
 # --- Default question definitions --------------------------------------------
@@ -324,8 +375,11 @@ def _requirements_batch_type(value: str) -> dict[str, Any]:
     if not isinstance(d, dict):
         raise argparse.ArgumentTypeError(f"Expected a JSON object (got {type(d).__name__})")
 
+    name = d.get("name")
+    if name is None:
+        raise argparse.ArgumentTypeError("Invalid name: name is required")
     try:
-        d["name"] = non_empty_str(str(d.get("name", "")))
+        d["name"] = non_empty_str(str(name))
     except argparse.ArgumentTypeError as e:
         raise argparse.ArgumentTypeError(f"Invalid name: {e}") from e
 
@@ -362,8 +416,8 @@ def _requirements_batch_type(value: str) -> dict[str, Any]:
             d["path"] = _absolute_path_type(str(d.get("path", "")))
         except argparse.ArgumentTypeError as e:
             raise argparse.ArgumentTypeError(f"Invalid path: {e}") from e
-        editable = d.get("editable", False)
-        d["editable"] = "true" if editable in (True, "true") else "false"
+        editable = d.get("editable", "false")
+        d["editable"] = "true" if str(editable).lower() == "true" else "false"
     elif req_type == "url":
         try:
             d["url"] = _http_url_type(str(d.get("url", "")))
