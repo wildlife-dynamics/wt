@@ -41,6 +41,42 @@ uv add wt-compiler
 
 ## Usage
 
+### Scaffold a new workflow project
+
+```bash
+# Interactive mode (default) — arrow-key prompts for all fields
+wt-compiler init
+
+# Write into a specific parent directory
+wt-compiler init --output-dir /path/to/projects
+
+# Overwrite an existing directory
+wt-compiler init --clobber
+
+# Batch mode — supply all required fields as flags (CI / scripting)
+wt-compiler init --no-interactive \
+    --workflow-id my_workflow \
+    --workflow-name "My Workflow" \
+    --author-name "Jane Smith"
+
+# Batch mode with a conda requirement
+wt-compiler init --no-interactive \
+    --workflow-id my_workflow \
+    --workflow-name "My Workflow" \
+    --author-name "Jane Smith" \
+    --requirements '{"name":"numpy","version":">=1.0","channel":"conda-forge"}'
+
+# --requirements is repeatable for multiple packages
+wt-compiler init --no-interactive ... \
+    --requirements '{"name":"numpy","version":">=1.0"}' \
+    --requirements '{"name":"mypkg","path":"/abs/path/to/mypkg"}'
+```
+
+`init` scaffolds a new project directory at `<output-dir>/<workflow-id>/` containing a
+`spec.yaml`, CI configuration, and packaging boilerplate. See
+[`src/wt_compiler/wizard/README.md`](src/wt_compiler/wizard/README.md) for details on
+customising the wizard or adding custom templates.
+
 ### Basic Compilation
 
 ```python
