@@ -46,6 +46,72 @@ def _make_questionary_validator(
     return validator
 
 
+def _batch_init(
+    provider: DefaultWizardProvider,
+    args: argparse.Namespace,
+    questions: list[WizardQuestion],
+) -> None:
+    """Drive DefaultWizardProvider in batch mode from pre-parsed CLI flags.
+
+    Validates that all required fields (those with no default in the question
+    definition) are present, builds a flat answer sequence from ``args``, then
+    drives the generator to completion.
+
+    Args:
+        provider: A fresh ``DefaultWizardProvider`` instance.
+        args: Parsed CLI namespace; wizard flag values are read from here.
+        questions: Ordered question list used to build the answer sequence.
+
+    Raises:
+        SystemExit: If required flags are missing or the generator raises.
+    """
+    missing = [
+        f"--{q['dest'].replace('_', '-')}"
+        for q in questions
+        if not _is_loop(q)
+        and "default" not in cast(SingleWizardQuestion, q)["argparse"]
+        and getattr(args, q["dest"]) is None
+    ]
+    if missing:
+        print(f"Error: --no-interactive requires: {', '.join(missing)}", file=sys.stderr)
+        sys.exit(1)
+
+    # Build flat answer sequence in generator-expected order.
+    # Single questions → one string; loop questions → one string per sub-field
+    # per item, then "" to signal loop end.
+    seq: list[str] = []
+    for q in questions:
+        if _is_loop(q):
+            for item in getattr(args, q["dest"]) or []:
+                for sub_q in q["questions"]:
+                    sq = cast(SingleWizardQuestion, sub_q)
+                    v = item.get(sq["dest"])
+                    seq.append(
+                        str(v) if v is not None else str(sq["argparse"].get("default") or "")
+                    )
+            seq.append("")  # signal loop end
+        else:
+            sq = cast(SingleWizardQuestion, q)
+            v = getattr(args, q["dest"])
+            seq.append(str(v) if v is not None else str(sq["argparse"].get("default") or ""))
+
+    answer_iter = iter(seq)
+    gen = provider.input_generator()
+    try:
+        question = next(gen)
+        while True:
+            error = question.get("wizard", {}).get("error")
+            if error:
+                print(f"Error: {error}", file=sys.stderr)
+            answer = next(answer_iter)
+            question = gen.send(answer)
+    except StopIteration:
+        pass
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 def _interactive_init(provider: DefaultWizardProvider) -> None:
     """Drive DefaultWizardProvider interactively using questionary prompts.
 
@@ -317,73 +383,17 @@ def _init(args: argparse.Namespace, questions: list[WizardQuestion]) -> None:
     """
     Execute the init command.
 
-    Scaffolds a new workflow project directory by driving DefaultWizardProvider
-    either interactively (questionary prompts) or in batch mode (CLI flags).
-    Batch mode activates when --no-interactive is passed; required fields
-    (those with no default in the question definition) must be provided.
+    Scaffolds a new workflow project directory. Dispatches to ``_batch_init``
+    when ``--no-interactive`` is passed, otherwise to ``_interactive_init``.
 
     Args:
         args: Parsed command-line arguments.
-        questions: Wizard questions from DefaultWizardProvider, used to derive
-            required batch-mode fields and build the answer sequence.
+        questions: Wizard questions passed through to ``_batch_init``.
     """
     provider = DefaultWizardProvider()
 
-    batch_mode: bool = args.no_interactive
-
-    if batch_mode:
-        # Derive required fields from questions: single questions with no default.
-        _missing = [
-            f"--{q['dest'].replace('_', '-')}"
-            for q in questions
-            if not _is_loop(q)
-            and "default" not in cast(SingleWizardQuestion, q)["argparse"]
-            and getattr(args, q["dest"]) is None
-        ]
-        if _missing:
-            print(
-                f"Error: --no-interactive requires: {', '.join(_missing)}",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-
-    # Pre-build answers in generator-expected order for batch mode.
-    # Single questions → one string answer; loop questions → one string per
-    # sub-field per item, then "" to signal loop end.
-    # In interactive mode _seq stays empty and _answer_iter is never consumed.
-    _seq: list[str] = []
-    if batch_mode:
-        for q in questions:
-            if _is_loop(q):
-                for item in getattr(args, q["dest"]) or []:
-                    for sub_q in q["questions"]:
-                        sq = cast(SingleWizardQuestion, sub_q)
-                        v = item.get(sq["dest"])
-                        _seq.append(
-                            str(v) if v is not None else str(sq["argparse"].get("default") or "")
-                        )
-                _seq.append("")  # signal loop end
-            else:
-                sq = cast(SingleWizardQuestion, q)
-                v = getattr(args, q["dest"])
-                _seq.append(str(v) if v is not None else str(sq["argparse"].get("default") or ""))
-    _answer_iter = iter(_seq)
-
-    if batch_mode:
-        gen = provider.input_generator()
-        try:
-            question = next(gen)
-            while True:
-                error = question.get("wizard", {}).get("error")
-                if error:
-                    print(f"Error: {error}", file=sys.stderr)
-                answer = next(_answer_iter)
-                question = gen.send(answer)
-        except StopIteration:
-            pass
-        except Exception as e:
-            print(f"Error: {e}", file=sys.stderr)
-            sys.exit(1)
+    if args.no_interactive:
+        _batch_init(provider, args, questions)
     else:
         _interactive_init(provider)
 
