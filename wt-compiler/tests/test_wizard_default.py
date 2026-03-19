@@ -14,7 +14,12 @@ from conftest import drive_wizard
 from wt_compiler.wizard.abstract import AbstractWizardProvider, SingleWizardQuestion
 from wt_compiler.wizard.default import (
     CHANNEL_CHOICES,
+    REQ_TYPE_CHOICES,
     DefaultWizardProvider,
+    _absolute_path_type,
+    _git_url_type,
+    _http_url_type,
+    _requirements_batch_type,
     non_empty_str,
     requirement_version_type,
     workflow_id_type,
@@ -92,7 +97,7 @@ class TestRequirementsLoop:
     """Tests for the requirements WizardQuestionLoop."""
 
     def test_requirements_loop_multiple(self) -> None:
-        """Drive 3 requirements iterations, then end loop."""
+        """Drive 3 conda requirements iterations, then end loop."""
         provider = DefaultWizardProvider()
         answers = [
             "my_workflow",  # workflow_id
@@ -100,27 +105,36 @@ class TestRequirementsLoop:
             "desc",  # workflow_description
             "Author",  # author_name
             "MIT",  # license_type
-            # Requirement 1
+            # Requirement 1 (conda)
             "numpy",  # name
+            "conda",  # req_type
             ">=1.0",  # version
             "conda-forge",  # channel
-            # Requirement 2
+            # Requirement 2 (conda)
             "pandas",  # name
+            "conda",  # req_type
             "*",  # version
             "conda-forge",  # channel
-            # Requirement 3
+            # Requirement 3 (conda)
             "scipy",  # name
+            "conda",  # req_type
             ">=2.0",  # version
             "conda-forge",  # channel
             # End loop
-            "",  # empty name = done
+            "",
         ]
         drive_wizard(provider, answers)
         reqs = provider.answers["requirements"]
         assert len(reqs) == 3
-        assert reqs[0] == {"name": "numpy", "version": ">=1.0", "channel": "conda-forge"}
-        assert reqs[1] == {"name": "pandas", "version": "*", "channel": "conda-forge"}
-        assert reqs[2] == {"name": "scipy", "version": ">=2.0", "channel": "conda-forge"}
+        assert reqs[0] == {
+            "name": "numpy", "req_type": "conda", "version": ">=1.0", "channel": "conda-forge"
+        }
+        assert reqs[1] == {
+            "name": "pandas", "req_type": "conda", "version": "*", "channel": "conda-forge"
+        }
+        assert reqs[2] == {
+            "name": "scipy", "req_type": "conda", "version": ">=2.0", "channel": "conda-forge"
+        }
 
     def test_requirements_loop_empty_immediately(self) -> None:
         """Send empty on first name prompt — requirements is empty list."""
@@ -141,23 +155,19 @@ class TestRequirementsLoop:
         provider = DefaultWizardProvider()
         gen = provider.input_generator()
         # Skip to requirements loop
-        answers_before_loop = [
-            "my_workflow",
-            "My Workflow",
-            "desc",
-            "Author",
-            "MIT",
-        ]
         q = next(gen)
-        for ans in answers_before_loop:
+        for ans in ["my_workflow", "My Workflow", "desc", "Author", "MIT"]:
             q = gen.send(ans)
 
-        # First requirement name
+        # First sub-question: name
         assert q["dest"] == "name"
         q = gen.send("numpy")
-        # Version question
+        # Second sub-question: req_type
+        assert q["dest"] == "req_type"
+        q = gen.send("conda")
+        # Third: version (shown because req_type == "conda")
         assert q["dest"] == "version"
-        # Send invalid version
+        # Send invalid version — re-yield with error
         q = gen.send(">>>invalid<<<")
         assert q["dest"] == "version"
         assert "error" in q["wizard"]
@@ -172,6 +182,382 @@ class TestRequirementsLoop:
         assert all(isinstance(c, str) and c for c in CHANNEL_CHOICES)
         # Well-known channels should always be present
         assert "conda-forge" in CHANNEL_CHOICES
+
+    def test_req_type_choices(self) -> None:
+        """Verify req_type choices match REQ_TYPE_CHOICES."""
+        assert REQ_TYPE_CHOICES == ["conda", "local path", "url", "git"]
+
+    def test_local_path_requirement_in_loop(self) -> None:
+        """Drive one local path requirement then stop — conda fields skipped."""
+        provider = DefaultWizardProvider()
+        answers = [
+            "my_workflow",
+            "My Workflow",
+            "desc",
+            "Author",
+            "MIT",
+            "mypackage",             # name
+            "local path",            # req_type → skips version + channel, shows path
+            "/home/user/mypackage",  # path
+            "false",                 # editable
+            "",                      # end loop
+        ]
+        drive_wizard(provider, answers)
+        reqs = provider.answers["requirements"]
+        assert len(reqs) == 1
+        assert reqs[0] == {
+            "name": "mypackage",
+            "req_type": "local path",
+            "path": "/home/user/mypackage",
+            "editable": "false",
+        }
+
+    def test_url_requirement_in_loop(self) -> None:
+        """Drive one URL requirement — other pip fields skipped."""
+        provider = DefaultWizardProvider()
+        answers = [
+            "my_workflow",
+            "My Workflow",
+            "desc",
+            "Author",
+            "MIT",
+            "mypackage",                     # name
+            "url",                           # req_type
+            "https://example.com/pkg.whl",   # url
+            "",                              # end loop
+        ]
+        drive_wizard(provider, answers)
+        reqs = provider.answers["requirements"]
+        assert len(reqs) == 1
+        assert reqs[0] == {
+            "name": "mypackage",
+            "req_type": "url",
+            "url": "https://example.com/pkg.whl",
+        }
+
+    def test_git_requirement_no_ref(self) -> None:
+        """Drive one git requirement without a ref."""
+        provider = DefaultWizardProvider()
+        answers = [
+            "my_workflow",
+            "My Workflow",
+            "desc",
+            "Author",
+            "MIT",
+            "mypkg",                                   # name
+            "git",                                     # req_type
+            "https://github.com/org/pkg.git",          # git
+            "none",                                    # git_ref_type
+            "",                                        # end loop
+        ]
+        drive_wizard(provider, answers)
+        reqs = provider.answers["requirements"]
+        assert len(reqs) == 1
+        assert reqs[0] == {
+            "name": "mypkg",
+            "req_type": "git",
+            "git": "https://github.com/org/pkg.git",
+            "git_ref_type": "none",
+        }
+
+    def test_git_requirement_with_branch(self) -> None:
+        """Drive one git requirement with a branch ref."""
+        provider = DefaultWizardProvider()
+        answers = [
+            "my_workflow",
+            "My Workflow",
+            "desc",
+            "Author",
+            "MIT",
+            "mypkg",                                   # name
+            "git",                                     # req_type
+            "https://github.com/org/pkg.git",          # git
+            "branch",                                  # git_ref_type
+            "main",                                    # git_ref_value
+            "",                                        # end loop
+        ]
+        drive_wizard(provider, answers)
+        reqs = provider.answers["requirements"]
+        assert len(reqs) == 1
+        assert reqs[0] == {
+            "name": "mypkg",
+            "req_type": "git",
+            "git": "https://github.com/org/pkg.git",
+            "git_ref_type": "branch",
+            "git_ref_value": "main",
+        }
+
+    def test_local_path_editable(self) -> None:
+        """Drive one local path requirement with editable=true."""
+        provider = DefaultWizardProvider()
+        answers = [
+            "my_workflow",
+            "My Workflow",
+            "desc",
+            "Author",
+            "MIT",
+            "mypkg",              # name
+            "local path",         # req_type
+            "/home/user/mypkg",   # path
+            "true",               # editable
+            "",                   # end loop
+        ]
+        drive_wizard(provider, answers)
+        reqs = provider.answers["requirements"]
+        assert reqs[0]["editable"] == "true"
+
+    def test_mixed_conda_and_url_requirements(self) -> None:
+        """Drive one conda then one URL requirement in the same loop."""
+        provider = DefaultWizardProvider()
+        answers = [
+            "my_workflow",
+            "My Workflow",
+            "desc",
+            "Author",
+            "MIT",
+            "numpy",        # name
+            "conda",        # req_type
+            ">=1.0",        # version
+            "conda-forge",  # channel
+            "mypackage",    # name
+            "url",          # req_type
+            "https://example.com/pkg.whl",  # url
+            "",             # end loop
+        ]
+        drive_wizard(provider, answers)
+        reqs = provider.answers["requirements"]
+        assert len(reqs) == 2
+        assert reqs[0] == {
+            "name": "numpy", "req_type": "conda", "version": ">=1.0", "channel": "conda-forge"
+        }
+        assert reqs[1] == {
+            "name": "mypackage",
+            "req_type": "url",
+            "url": "https://example.com/pkg.whl",
+        }
+
+    def test_conda_fields_skipped_for_local_path(self) -> None:
+        """version + channel not yielded for local path requirement."""
+        provider = DefaultWizardProvider()
+        gen = provider.input_generator()
+        q = next(gen)
+        for ans in ["my_workflow", "My Workflow", "desc", "Author", "MIT"]:
+            q = gen.send(ans)
+        assert q["dest"] == "name"
+        q = gen.send("mypkg")
+        assert q["dest"] == "req_type"
+        q = gen.send("local path")
+        # version + channel skipped — path shown directly
+        assert q["dest"] == "path"
+
+    def test_conda_fields_skipped_for_url(self) -> None:
+        """version + channel not yielded for URL requirement."""
+        provider = DefaultWizardProvider()
+        gen = provider.input_generator()
+        q = next(gen)
+        for ans in ["my_workflow", "My Workflow", "desc", "Author", "MIT"]:
+            q = gen.send(ans)
+        q = gen.send("mypkg")
+        assert q["dest"] == "req_type"
+        q = gen.send("url")
+        assert q["dest"] == "url"
+
+    def test_non_git_fields_skipped_for_conda(self) -> None:
+        """path/url/git sub-questions not yielded for conda requirement."""
+        provider = DefaultWizardProvider()
+        gen = provider.input_generator()
+        q = next(gen)
+        for ans in ["my_workflow", "My Workflow", "desc", "Author", "MIT"]:
+            q = gen.send(ans)
+        q = gen.send("numpy")
+        assert q["dest"] == "req_type"
+        q = gen.send("conda")
+        assert q["dest"] == "version"
+        q = gen.send(">=1.0")
+        assert q["dest"] == "channel"
+        q = gen.send("conda-forge")
+        # Next should be name again (loop repeats)
+        assert q["dest"] == "name"
+
+    def test_git_ref_value_skipped_when_ref_type_none(self) -> None:
+        """git_ref_value not yielded when git_ref_type is 'none'."""
+        provider = DefaultWizardProvider()
+        gen = provider.input_generator()
+        q = next(gen)
+        for ans in ["my_workflow", "My Workflow", "desc", "Author", "MIT"]:
+            q = gen.send(ans)
+        q = gen.send("mypkg")           # name
+        assert q["dest"] == "req_type"
+        q = gen.send("git")
+        assert q["dest"] == "git"
+        q = gen.send("https://github.com/org/pkg.git")
+        assert q["dest"] == "git_ref_type"
+        q = gen.send("none")
+        # git_ref_value skipped — next is name (loop repeats)
+        assert q["dest"] == "name"
+
+    def test_path_editable_skipped_when_url(self) -> None:
+        """path + editable not yielded for a URL requirement."""
+        provider = DefaultWizardProvider()
+        gen = provider.input_generator()
+        q = next(gen)
+        for ans in ["my_workflow", "My Workflow", "desc", "Author", "MIT"]:
+            q = gen.send(ans)
+        q = gen.send("mypkg")           # name
+        assert q["dest"] == "req_type"
+        q = gen.send("url")
+        # path + editable skipped — url shown directly
+        assert q["dest"] == "url"
+
+
+class TestPipValidators:
+    """Tests for pip-related validation callables."""
+
+    def test_absolute_path_accepted(self) -> None:
+        assert _absolute_path_type("/home/user/mypkg") == "/home/user/mypkg"
+
+    def test_relative_path_raises(self) -> None:
+        with pytest.raises(argparse.ArgumentTypeError, match="not an absolute"):
+            _absolute_path_type("relative/path")
+
+    def test_absolute_path_empty_raises(self) -> None:
+        with pytest.raises(argparse.ArgumentTypeError, match="cannot be empty"):
+            _absolute_path_type("")
+
+    def test_http_url_accepted(self) -> None:
+        assert _http_url_type("https://example.com/pkg.whl") == "https://example.com/pkg.whl"
+
+    def test_http_url_http_accepted(self) -> None:
+        assert _http_url_type("http://example.com/pkg.whl") == "http://example.com/pkg.whl"
+
+    def test_http_url_ftp_raises(self) -> None:
+        with pytest.raises(argparse.ArgumentTypeError, match="not a valid http/https"):
+            _http_url_type("ftp://example.com/pkg")
+
+    def test_http_url_empty_raises(self) -> None:
+        with pytest.raises(argparse.ArgumentTypeError, match="cannot be empty"):
+            _http_url_type("")
+
+    def test_git_url_https_accepted(self) -> None:
+        assert _git_url_type("https://github.com/org/pkg.git") == "https://github.com/org/pkg.git"
+
+    def test_git_url_git_plus_raises(self) -> None:
+        """git+ prefix is not valid — plain URL is required."""
+        with pytest.raises(argparse.ArgumentTypeError, match="not a valid git URL"):
+            _git_url_type("git+https://github.com/org/pkg.git")
+
+    def test_git_url_empty_raises(self) -> None:
+        with pytest.raises(argparse.ArgumentTypeError, match="cannot be empty"):
+            _git_url_type("")
+
+
+class TestRequirementsBatchType:
+    """Tests for _requirements_batch_type validation callable."""
+
+    def test_conda_inferred_from_channel(self) -> None:
+        d = _requirements_batch_type('{"name":"numpy","version":">=1.0","channel":"conda-forge"}')
+        assert d["req_type"] == "conda"
+        assert d["name"] == "numpy"
+        assert d["version"] == ">=1.0"
+        assert d["channel"] == "conda-forge"
+
+    def test_local_path_inferred_from_path_key(self) -> None:
+        d = _requirements_batch_type('{"name":"mypkg","path":"/home/user/mypkg"}')
+        assert d["req_type"] == "local path"
+        assert d["path"] == "/home/user/mypkg"
+        assert d["editable"] == "false"
+        assert "pip_source_type" not in d
+
+    def test_url_inferred_from_url_key(self) -> None:
+        d = _requirements_batch_type('{"name":"mypkg","url":"https://example.com/pkg.whl"}')
+        assert d["req_type"] == "url"
+        assert d["url"] == "https://example.com/pkg.whl"
+
+    def test_git_inferred_from_git_key(self) -> None:
+        d = _requirements_batch_type(
+            '{"name":"mypkg","git":"https://github.com/org/pkg.git"}'
+        )
+        assert d["req_type"] == "git"
+        assert d["git"] == "https://github.com/org/pkg.git"
+        assert d["git_ref_type"] == "none"
+
+    def test_git_branch_normalized(self) -> None:
+        d = _requirements_batch_type(
+            '{"name":"mypkg","git":"https://github.com/org/pkg.git","branch":"main"}'
+        )
+        assert d["git_ref_type"] == "branch"
+        assert d["git_ref_value"] == "main"
+        assert "branch" not in d  # original key removed
+
+    def test_git_tag_normalized(self) -> None:
+        d = _requirements_batch_type(
+            '{"name":"mypkg","git":"https://github.com/org/pkg.git","tag":"v1.0.0"}'
+        )
+        assert d["git_ref_type"] == "tag"
+        assert d["git_ref_value"] == "v1.0.0"
+
+    def test_git_rev_normalized(self) -> None:
+        d = _requirements_batch_type(
+            '{"name":"mypkg","git":"https://github.com/org/pkg.git","rev":"abc123"}'
+        )
+        assert d["git_ref_type"] == "rev"
+        assert d["git_ref_value"] == "abc123"
+
+    def test_local_path_editable_true(self) -> None:
+        d = _requirements_batch_type('{"name":"mypkg","path":"/abs/path","editable":true}')
+        assert d["editable"] == "true"
+
+    def test_local_path_editable_false(self) -> None:
+        d = _requirements_batch_type('{"name":"mypkg","path":"/abs/path","editable":false}')
+        assert d["editable"] == "false"
+
+    def test_explicit_req_type_conda(self) -> None:
+        d = _requirements_batch_type(
+            '{"name":"numpy","req_type":"conda","version":"*","channel":"conda-forge"}'
+        )
+        assert d["req_type"] == "conda"
+
+    def test_explicit_req_type_local_path(self) -> None:
+        d = _requirements_batch_type(
+            '{"name":"mypkg","req_type":"local path","path":"/abs/path"}'
+        )
+        assert d["req_type"] == "local path"
+
+    def test_invalid_json_raises(self) -> None:
+        with pytest.raises(argparse.ArgumentTypeError, match="Invalid JSON"):
+            _requirements_batch_type("not-json")
+
+    def test_invalid_version_raises(self) -> None:
+        with pytest.raises(argparse.ArgumentTypeError, match="version"):
+            _requirements_batch_type(
+                '{"name":"numpy","version":">>>bad<<<","channel":"conda-forge"}'
+            )
+
+    def test_invalid_channel_raises(self) -> None:
+        with pytest.raises(argparse.ArgumentTypeError, match="channel"):
+            _requirements_batch_type(
+                '{"name":"numpy","version":"*","channel":"not-a-channel"}'
+            )
+
+    def test_invalid_path_raises(self) -> None:
+        with pytest.raises(argparse.ArgumentTypeError, match="path"):
+            _requirements_batch_type('{"name":"mypkg","path":"relative/path"}')
+
+    def test_invalid_url_raises(self) -> None:
+        with pytest.raises(argparse.ArgumentTypeError, match="url"):
+            _requirements_batch_type('{"name":"mypkg","url":"ftp://example.com/pkg"}')
+
+    def test_invalid_git_url_raises(self) -> None:
+        with pytest.raises(argparse.ArgumentTypeError, match="git"):
+            _requirements_batch_type('{"name":"mypkg","git":"not-a-url"}')
+
+    def test_invalid_req_type_raises(self) -> None:
+        with pytest.raises(argparse.ArgumentTypeError, match="req_type"):
+            _requirements_batch_type('{"name":"mypkg","req_type":"pip"}')
+
+    def test_empty_name_raises(self) -> None:
+        with pytest.raises(argparse.ArgumentTypeError, match="name"):
+            _requirements_batch_type('{"name":"","version":"*","channel":"conda-forge"}')
 
 
 class TestLicenseDefaults:
@@ -222,10 +608,11 @@ class TestDump:
             "A test workflow",
             "Test Author",
             "MIT",
-            "numpy",
-            ">=1.0",
-            "conda-forge",
-            "",  # end requirements
+            "numpy",   # name
+            "conda",   # req_type
+            ">=1.0",   # version
+            "conda-forge",  # channel
+            "",  # end requirements loop
         ]
         drive_wizard(provider, answers)
         return provider
@@ -259,6 +646,77 @@ class TestDump:
         assert req["name"] == "numpy"
         assert req["version"] == ">=1.0"
         assert req["channel"] == "conda-forge"
+
+    def test_dump_spec_yaml_local_path(self, tmp_path: Path) -> None:
+        """spec.yaml renders local path requirement correctly."""
+        provider = DefaultWizardProvider()
+        answers = [
+            "my_workflow", "My Workflow", "", "Author", "MIT",
+            "mypkg", "local path", "/home/user/mypkg", "false", "",
+        ]
+        drive_wizard(provider, answers)
+        provider.dump(tmp_path)
+        content = yaml.safe_load((tmp_path / "spec.yaml").read_text())
+        req = content["requirements"][0]
+        assert req["name"] == "mypkg"
+        assert req["path"] == "/home/user/mypkg"
+        assert "editable" not in req
+
+    def test_dump_spec_yaml_local_path_editable(self, tmp_path: Path) -> None:
+        """spec.yaml renders local path+editable requirement correctly."""
+        provider = DefaultWizardProvider()
+        answers = [
+            "my_workflow", "My Workflow", "", "Author", "MIT",
+            "mypkg", "local path", "/home/user/mypkg", "true", "",
+        ]
+        drive_wizard(provider, answers)
+        provider.dump(tmp_path)
+        content = yaml.safe_load((tmp_path / "spec.yaml").read_text())
+        req = content["requirements"][0]
+        assert req["editable"] is True
+
+    def test_dump_spec_yaml_url(self, tmp_path: Path) -> None:
+        """spec.yaml renders URL requirement correctly."""
+        provider = DefaultWizardProvider()
+        answers = [
+            "my_workflow", "My Workflow", "", "Author", "MIT",
+            "mypkg", "url", "https://example.com/pkg.whl", "",
+        ]
+        drive_wizard(provider, answers)
+        provider.dump(tmp_path)
+        content = yaml.safe_load((tmp_path / "spec.yaml").read_text())
+        req = content["requirements"][0]
+        assert req["url"] == "https://example.com/pkg.whl"
+
+    def test_dump_spec_yaml_git_with_branch(self, tmp_path: Path) -> None:
+        """spec.yaml renders git+branch requirement correctly."""
+        provider = DefaultWizardProvider()
+        answers = [
+            "my_workflow", "My Workflow", "", "Author", "MIT",
+            "mypkg", "git", "https://github.com/org/pkg.git", "branch", "main", "",
+        ]
+        drive_wizard(provider, answers)
+        provider.dump(tmp_path)
+        content = yaml.safe_load((tmp_path / "spec.yaml").read_text())
+        req = content["requirements"][0]
+        assert req["git"] == "https://github.com/org/pkg.git"
+        assert req["branch"] == "main"
+
+    def test_dump_spec_yaml_git_no_ref(self, tmp_path: Path) -> None:
+        """spec.yaml renders git (no ref) requirement correctly."""
+        provider = DefaultWizardProvider()
+        answers = [
+            "my_workflow", "My Workflow", "", "Author", "MIT",
+            "mypkg", "git", "https://github.com/org/pkg.git", "none", "",
+        ]
+        drive_wizard(provider, answers)
+        provider.dump(tmp_path)
+        content = yaml.safe_load((tmp_path / "spec.yaml").read_text())
+        req = content["requirements"][0]
+        assert req["git"] == "https://github.com/org/pkg.git"
+        assert "branch" not in req
+        assert "tag" not in req
+        assert "rev" not in req
 
     def test_dump_test_cases_yaml_structure(self, tmp_path: Path) -> None:
         """Verify test-cases.yaml is valid commented YAML."""

@@ -7,6 +7,7 @@ reference implementation, and all supporting TypedDict types.
 from wt_compiler.wizard.abstract import (
     AbstractWizardProvider,
     ArgparseKwargs,
+    LoopContext,
     SingleWizardQuestion,
     WizardKwargs,
     WizardQuestion,
@@ -19,6 +20,7 @@ __all__ = [
     "AbstractWizardProvider",
     "ArgparseKwargs",
     "DefaultWizardProvider",
+    "LoopContext",
     "SingleWizardQuestion",
     "WizardKwargs",
     "WizardQuestion",

@@ -56,6 +56,28 @@ class WizardKwargs(TypedDict, total=False):
 
     error: str
     condition: Callable[[MappingProxyType[str, Any]], bool]
+    loop_context: LoopContext
+
+
+class LoopContext(TypedDict):
+    """Metadata injected by the generator when yielding the first sub-question
+    of a loop iteration.
+
+    Renderers may inspect this to present loop-aware UX (e.g. "Add a …?" /
+    "Add another …?" confirm prompts). Absent on non-loop questions and on
+    sub-questions after the first within a loop iteration.
+
+    Nested loops reset correctly by construction: ``_process_question()``
+    creates a fresh ``iteration = 0`` for each recursive call, so an inner
+    loop's counter resets when a new outer-loop iteration begins.
+    """
+
+    dest: str
+    """The parent ``WizardQuestionLoop``'s ``dest`` (e.g. ``"requirements"``)."""
+
+    iteration: int
+    """Zero-indexed iteration counter. ``0`` on first entry, increments each
+    time the loop body completes and the first sub-question is re-yielded."""
 
 
 class SingleWizardQuestion(TypedDict):
@@ -81,6 +103,7 @@ class WizardQuestionLoop(TypedDict, total=False):
     """
 
     dest: str  # pyright: ignore[reportGeneralTypeIssues]  # Required
+    argparse: ArgparseKwargs
     questions: list[WizardQuestion]  # pyright: ignore[reportGeneralTypeIssues]  # Required
     condition: Callable[[MappingProxyType[str, Any]], bool]
 
@@ -122,13 +145,14 @@ def with_condition(
     result: list[WizardQuestion] = []
     for q in questions:
         if _is_loop(q):
-            result.append(cast(WizardQuestion, {**q, "condition": condition}))
+            result.append(WizardQuestionLoop(**q, condition=condition))
         else:
             wiz = cast(SingleWizardQuestion, q)
             result.append(
-                cast(
-                    WizardQuestion,
-                    {**wiz, "wizard": {**wiz.get("wizard", {}), "condition": condition}},
+                SingleWizardQuestion(
+                    dest=wiz["dest"],
+                    argparse=wiz["argparse"],
+                    wizard=WizardKwargs(**wiz.get("wizard", {}), condition=condition),
                 )
             )
     return result
@@ -257,17 +281,54 @@ class AbstractWizardProvider(ABC):
         """
         if _is_loop(question):
             # WizardQuestionLoop
+            if not question["questions"]:
+                return []
             results: list[dict[str, Any]] = []
             first_q = cast(SingleWizardQuestion, question["questions"][0])
-            answer = yield first_q
+            # Protocol invariant: the first sub-question is the loop-termination
+            # sentinel (empty answer = stop the loop).  It must never carry a
+            # condition; use the WizardQuestionLoop's own ``condition`` key to
+            # gate the entire loop instead.
+            if first_q.get("wizard", {}).get("condition") is not None:
+                raise ValueError(
+                    f"WizardQuestionLoop '{question['dest']}': first sub-question "
+                    f"'{first_q['dest']}' must not have a condition. "
+                    "Use the loop's own 'condition' key to gate the entire loop."
+                )
+            iteration = 0
+            first_q_with_ctx = SingleWizardQuestion(
+                dest=first_q["dest"],
+                argparse=first_q["argparse"],
+                wizard=WizardKwargs(
+                    **first_q.get("wizard", {}),
+                    loop_context=LoopContext(dest=question["dest"], iteration=iteration),
+                ),
+            )
+            answer = yield first_q_with_ctx
             while answer:  # empty/None on first question = done
-                coerced = yield from self._validate_answer(first_q, answer)
+                coerced = yield from self._validate_answer(first_q_with_ctx, answer)
                 entry = {first_q["dest"]: coerced}
                 for sub_q in question["questions"][1:]:
+                    if _is_loop(sub_q):
+                        cond = sub_q.get("condition")
+                    else:
+                        sq = cast(SingleWizardQuestion, sub_q)
+                        cond = sq.get("wizard", {}).get("condition")
+                    if cond and not cond(MappingProxyType(entry)):
+                        continue  # skip field; leave it absent from entry
                     sub_value = yield from self._process_question(sub_q)  # recursive
                     entry[sub_q["dest"]] = sub_value
                 results.append(entry)
-                answer = yield first_q  # re-yield first question for next iteration
+                iteration += 1
+                first_q_with_ctx = SingleWizardQuestion(
+                    dest=first_q["dest"],
+                    argparse=first_q["argparse"],
+                    wizard=WizardKwargs(
+                        **first_q.get("wizard", {}),
+                        loop_context=LoopContext(dest=question["dest"], iteration=iteration),
+                    ),
+                )
+                answer = yield first_q_with_ctx  # re-yield first question for next iteration
             return results
         else:
             # SingleWizardQuestion
@@ -361,6 +422,8 @@ class AbstractWizardProvider(ABC):
         env = jinja2.Environment(
             loader=jinja2.ChoiceLoader(loaders),
             keep_trailing_newline=True,
+            trim_blocks=True,
+            lstrip_blocks=True,
             undefined=jinja2.StrictUndefined,
         )
 
