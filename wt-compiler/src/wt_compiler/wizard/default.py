@@ -32,7 +32,11 @@ from rattler import NamelessMatchSpec
 from wt_compiler.requirements import CHANNELS, _serialize_channel
 from wt_compiler.wizard.abstract import (
     AbstractWizardProvider,
+    ArgparseKwargs,
+    SingleWizardQuestion,
+    WizardKwargs,
     WizardQuestion,
+    WizardQuestionLoop,
 )
 
 # --- Validation callables ---------------------------------------------------
@@ -238,43 +242,43 @@ def _is_pip_git_with_ref(entry: Any) -> bool:
 
 # --- Default question definitions --------------------------------------------
 
-_Q_WORKFLOW_ID: WizardQuestion = {
-    "dest": "workflow_id",
-    "argparse": {
-        "help": "Workflow ID (valid Python identifier, ≤64 chars)",
-        "type": workflow_id_type,
-    },
-    "wizard": {},
-}
+_Q_WORKFLOW_ID = SingleWizardQuestion(
+    dest="workflow_id",
+    argparse=ArgparseKwargs(
+        help="Workflow ID (valid Python identifier, ≤64 chars)",
+        type=workflow_id_type,
+    ),
+    wizard=WizardKwargs(),
+)
 
-_Q_WORKFLOW_NAME: WizardQuestion = {
-    "dest": "workflow_name",
-    "argparse": {"help": "Workflow name (human-readable)", "type": non_empty_str},
-    "wizard": {},
-}
+_Q_WORKFLOW_NAME = SingleWizardQuestion(
+    dest="workflow_name",
+    argparse=ArgparseKwargs(help="Workflow name (human-readable)", type=non_empty_str),
+    wizard=WizardKwargs(),
+)
 
-_Q_WORKFLOW_DESCRIPTION: WizardQuestion = {
-    "dest": "workflow_description",
-    "argparse": {"help": "Workflow description (optional)", "type": str, "default": ""},
-    "wizard": {},
-}
+_Q_WORKFLOW_DESCRIPTION = SingleWizardQuestion(
+    dest="workflow_description",
+    argparse=ArgparseKwargs(help="Workflow description (optional)", type=str, default=""),
+    wizard=WizardKwargs(),
+)
 
-_Q_AUTHOR_NAME: WizardQuestion = {
-    "dest": "author_name",
-    "argparse": {"help": "Author name", "type": non_empty_str},
-    "wizard": {},
-}
+_Q_AUTHOR_NAME = SingleWizardQuestion(
+    dest="author_name",
+    argparse=ArgparseKwargs(help="Author name", type=non_empty_str),
+    wizard=WizardKwargs(),
+)
 
-_Q_LICENSE_TYPE: WizardQuestion = {
-    "dest": "license_type",
-    "argparse": {
-        "help": "License type",
-        "type": str,
-        "choices": ["BSD-3-Clause", "MIT", "Apache-2.0"],
-        "default": "BSD-3-Clause",
-    },
-    "wizard": {},
-}
+_Q_LICENSE_TYPE = SingleWizardQuestion(
+    dest="license_type",
+    argparse=ArgparseKwargs(
+        help="License type",
+        type=str,
+        choices=["BSD-3-Clause", "MIT", "Apache-2.0"],
+        default="BSD-3-Clause",
+    ),
+    wizard=WizardKwargs(),
+)
 
 
 def _requirements_batch_type(value: str) -> dict[str, Any]:
@@ -398,92 +402,92 @@ def _requirements_batch_type(value: str) -> dict[str, Any]:
 
 
 _Q_REQUIREMENTS_LOOP_QUESTIONS: list[WizardQuestion] = [
-    {
-        "dest": "name",
-        "argparse": {"help": "Package name", "type": non_empty_str},
-        "wizard": {},
-    },
-    {
-        "dest": "req_type",
-        "argparse": {
-            "help": "Requirement type",
-            "choices": REQ_TYPE_CHOICES,
-            "default": "conda",
-        },
-        "wizard": {},
-    },
+    SingleWizardQuestion(
+        dest="name",
+        argparse=ArgparseKwargs(help="Package name", type=non_empty_str),
+        wizard=WizardKwargs(),
+    ),
+    SingleWizardQuestion(
+        dest="req_type",
+        argparse=ArgparseKwargs(
+            help="Requirement type",
+            choices=REQ_TYPE_CHOICES,
+            default="conda",
+        ),
+        wizard=WizardKwargs(),
+    ),
     # --- conda-specific ---
-    {
-        "dest": "version",
-        "argparse": {"help": "Version spec", "type": requirement_version_type, "default": "*"},
-        "wizard": {"condition": _is_conda},
-    },
-    {
-        "dest": "channel",
-        "argparse": {"help": "Channel", "choices": CHANNEL_CHOICES, "default": "conda-forge"},
-        "wizard": {"condition": _is_conda},
-    },
+    SingleWizardQuestion(
+        dest="version",
+        argparse=ArgparseKwargs(help="Version spec", type=requirement_version_type, default="*"),
+        wizard=WizardKwargs(condition=_is_conda),
+    ),
+    SingleWizardQuestion(
+        dest="channel",
+        argparse=ArgparseKwargs(help="Channel", choices=CHANNEL_CHOICES, default="conda-forge"),
+        wizard=WizardKwargs(condition=_is_conda),
+    ),
     # --- local path ---
-    {
-        "dest": "path",
-        "argparse": {
-            "help": "Absolute filesystem path to package",
-            "type": _absolute_path_type,
-        },
-        "wizard": {"condition": _is_pip_path},
-    },
-    {
-        "dest": "editable",
-        "argparse": {
-            "help": "Install in editable mode",
-            "choices": ["false", "true"],
-            "default": "false",
-        },
-        "wizard": {"condition": _is_pip_path},
-    },
+    SingleWizardQuestion(
+        dest="path",
+        argparse=ArgparseKwargs(
+            help="Absolute filesystem path to package",
+            type=_absolute_path_type,
+        ),
+        wizard=WizardKwargs(condition=_is_pip_path),
+    ),
+    SingleWizardQuestion(
+        dest="editable",
+        argparse=ArgparseKwargs(
+            help="Install in editable mode",
+            choices=["false", "true"],
+            default="false",
+        ),
+        wizard=WizardKwargs(condition=_is_pip_path),
+    ),
     # --- url ---
-    {
-        "dest": "url",
-        "argparse": {
-            "help": "HTTP/HTTPS URL to package wheel or sdist",
-            "type": _http_url_type,
-        },
-        "wizard": {"condition": _is_pip_url},
-    },
+    SingleWizardQuestion(
+        dest="url",
+        argparse=ArgparseKwargs(
+            help="HTTP/HTTPS URL to package wheel or sdist",
+            type=_http_url_type,
+        ),
+        wizard=WizardKwargs(condition=_is_pip_url),
+    ),
     # --- git ---
-    {
-        "dest": "git",
-        "argparse": {
-            "help": "Git repository URL (e.g. https://github.com/org/pkg.git)",
-            "type": _git_url_type,
-        },
-        "wizard": {"condition": _is_pip_git},
-    },
-    {
-        "dest": "git_ref_type",
-        "argparse": {
-            "help": "Git reference type",
-            "choices": ["none", "rev", "branch", "tag"],
-            "default": "none",
-        },
-        "wizard": {"condition": _is_pip_git},
-    },
-    {
-        "dest": "git_ref_value",
-        "argparse": {
-            "help": "Git reference value (commit hash, branch name, or tag)",
-            "type": non_empty_str,
-        },
-        "wizard": {"condition": _is_pip_git_with_ref},
-    },
+    SingleWizardQuestion(
+        dest="git",
+        argparse=ArgparseKwargs(
+            help="Git repository URL (e.g. https://github.com/org/pkg.git)",
+            type=_git_url_type,
+        ),
+        wizard=WizardKwargs(condition=_is_pip_git),
+    ),
+    SingleWizardQuestion(
+        dest="git_ref_type",
+        argparse=ArgparseKwargs(
+            help="Git reference type",
+            choices=["none", "rev", "branch", "tag"],
+            default="none",
+        ),
+        wizard=WizardKwargs(condition=_is_pip_git),
+    ),
+    SingleWizardQuestion(
+        dest="git_ref_value",
+        argparse=ArgparseKwargs(
+            help="Git reference value (commit hash, branch name, or tag)",
+            type=non_empty_str,
+        ),
+        wizard=WizardKwargs(condition=_is_pip_git_with_ref),
+    ),
 ]
 
-_Q_REQUIREMENTS: WizardQuestion = {
-    "dest": "requirements",
-    "argparse": {
-        "action": "append",
-        "default": None,
-        "help": (
+_Q_REQUIREMENTS = WizardQuestionLoop(
+    dest="requirements",
+    argparse=ArgparseKwargs(
+        action="append",
+        default=None,
+        help=(
             'Requirement as JSON. Conda: {"name":"pkg","version":"*",'
             '"channel":"conda-forge"}. '
             'Pip path: {"name":"pkg","path":"/abs/path"}. '
@@ -491,10 +495,10 @@ _Q_REQUIREMENTS: WizardQuestion = {
             'Pip git: {"name":"pkg","git":"https://github.com/org/pkg.git",'
             '"branch":"main"}. (batch mode; repeatable)'
         ),
-        "type": _requirements_batch_type,
-    },
-    "questions": _Q_REQUIREMENTS_LOOP_QUESTIONS,
-}
+        type=_requirements_batch_type,
+    ),
+    questions=_Q_REQUIREMENTS_LOOP_QUESTIONS,
+)
 
 _DEFAULT_QUESTIONS: list[WizardQuestion] = [
     _Q_WORKFLOW_ID,
