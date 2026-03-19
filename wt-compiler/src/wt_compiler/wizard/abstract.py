@@ -425,6 +425,8 @@ class AbstractWizardProvider(ABC):
         env = jinja2.Environment(
             loader=jinja2.ChoiceLoader(loaders),
             keep_trailing_newline=True,
+            trim_blocks=True,
+            lstrip_blocks=True,
             undefined=jinja2.StrictUndefined,
         )
 

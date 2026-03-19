@@ -1,4 +1,5 @@
 id: {{ workflow_id }}
+
 requirements:
 {% for req in requirements %}
   - name: "{{ req.name }}"
@@ -26,4 +27,5 @@ requirements:
 {% if not requirements %}
   []
 {% endif %}
+
 workflow: []
