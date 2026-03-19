@@ -347,6 +347,7 @@ class TestInitCommand:
             "argv",
             [
                 "wt-compiler", "init",
+                "--no-interactive",
                 "--workflow-id", "my_workflow",
                 "--workflow-name", "My Workflow",
                 "--author-name", "Author",
@@ -373,6 +374,7 @@ class TestInitCommand:
 
         with patch.object(sys, "argv", [
             "wt-compiler", "init",
+            "--no-interactive",
             "--workflow-id", "my_wf",
             "--workflow-name", "My Workflow",
             "--workflow-description", "A desc",
@@ -401,6 +403,7 @@ class TestInitCommand:
 
         with patch.object(sys, "argv", [
             "wt-compiler", "init",
+            "--no-interactive",
             "--workflow-id", "my_wf",
             "--workflow-name", "My Workflow",
             "--author-name", "Author",
@@ -427,6 +430,7 @@ class TestInitCommand:
             "argv",
             [
                 "wt-compiler", "init",
+                "--no-interactive",
                 "--workflow-id", "my_wf",
                 "--workflow-name", "My Workflow",
                 "--author-name", "Author",
@@ -452,6 +456,7 @@ class TestInitCommand:
             "argv",
             [
                 "wt-compiler", "init",
+                "--no-interactive",
                 "--workflow-id", "my_wf",
                 "--workflow-name", "My Workflow",
                 "--workflow-description", "desc",
@@ -463,9 +468,15 @@ class TestInitCommand:
         ):
             with patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump"):
                 with patch("builtins.input") as mock_input:
-                    main()
+                    with patch("questionary.text") as mock_text:
+                        with patch("questionary.select") as mock_select:
+                            with patch("questionary.confirm") as mock_confirm:
+                                main()
 
         mock_input.assert_not_called()
+        mock_text.assert_not_called()
+        mock_select.assert_not_called()
+        mock_confirm.assert_not_called()
 
     def test_init_interactive_mode(
         self, capsys: pytest.CaptureFixture[str], tmp_path: Path
@@ -531,6 +542,7 @@ class TestInitCommand:
 
         with patch.object(sys, "argv", [
             "wt-compiler", "init",
+            "--no-interactive",
             "--workflow-id", "my_workflow",
             "--workflow-name", "My Workflow",
             "--author-name", "Author",
@@ -552,6 +564,7 @@ class TestInitCommand:
 
         with patch.object(sys, "argv", [
             "wt-compiler", "init",
+            "--no-interactive",
             "--workflow-id", "my_workflow",
             "--workflow-name", "My Workflow",
             "--author-name", "Author",
@@ -567,6 +580,7 @@ class TestInitCommand:
         """Without --output-dir, workdir is Path.cwd() / workflow_id."""
         with patch.object(sys, "argv", [
             "wt-compiler", "init",
+            "--no-interactive",
             "--workflow-id", "my_workflow",
             "--workflow-name", "My Workflow",
             "--author-name", "Author",
@@ -584,6 +598,7 @@ class TestInitCommand:
         """Generic exception from dump() exits 1 with error message on stderr."""
         with patch.object(sys, "argv", [
             "wt-compiler", "init",
+            "--no-interactive",
             "--workflow-id", "my_workflow",
             "--workflow-name", "My Workflow",
             "--author-name", "Author",
@@ -599,12 +614,13 @@ class TestInitCommand:
         assert exc_info.value.code == 1
         assert "template error" in capsys.readouterr().err
 
-    def test_init_partial_batch_flags_error(
+    def test_init_no_interactive_missing_required_flags(
         self, capsys: pytest.CaptureFixture[str], tmp_path: Path
     ) -> None:
-        """Providing some but not all required batch flags exits 1 with clear error."""
+        """--no-interactive without required flags exits 1 with clear error."""
         with patch.object(sys, "argv", [
             "wt-compiler", "init",
+            "--no-interactive",
             "--workflow-id", "my_workflow",
             # missing --workflow-name and --author-name
             "--output-dir", str(tmp_path),
@@ -614,24 +630,9 @@ class TestInitCommand:
 
         assert exc_info.value.code == 1
         captured = capsys.readouterr()
-        assert "partial batch flags" in captured.err
+        assert "--no-interactive requires" in captured.err
         assert "--workflow-name" in captured.err
         assert "--author-name" in captured.err
-
-    def test_init_optional_only_batch_flags_error(
-        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
-    ) -> None:
-        """Providing only optional batch flags without required flags exits 1."""
-        with patch.object(sys, "argv", [
-            "wt-compiler", "init",
-            "--workflow-description", "A desc",
-            "--output-dir", str(tmp_path),
-        ]):
-            with pytest.raises(SystemExit) as exc_info:
-                main()
-
-        assert exc_info.value.code == 1
-        assert "partial batch flags" in capsys.readouterr().err
 
 
 class TestModuleEntryPoint:

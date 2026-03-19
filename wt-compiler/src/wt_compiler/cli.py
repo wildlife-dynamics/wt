@@ -208,7 +208,8 @@ def main() -> None:
         help="Scaffold a new workflow project directory",
         description=(
             "Interactively scaffold a new workflow project. "
-            "Pass --workflow-id, --workflow-name, and --author-name to run non-interactively."
+            "Use --no-interactive with --workflow-id, --workflow-name, and --author-name "
+            "to run in batch mode."
         ),
     )
     init_parser.add_argument(
@@ -223,9 +224,17 @@ def main() -> None:
         action="store_true",
         help="Overwrite existing output directory if it exists",
     )
+    init_parser.add_argument(
+        "--no-interactive",
+        action="store_true",
+        help=(
+            "Run in batch mode using CLI flags. "
+            "Requires --workflow-id, --workflow-name, and --author-name."
+        ),
+    )
     for q in init_questions:
         flag = "--" + q["dest"].replace("_", "-")
-        ap_kwargs: Any = {**cast(SingleWizardQuestion, q)["argparse"], "default": None}
+        ap_kwargs: Any = {**cast(SingleWizardQuestion, q)["argparse"]}
         init_parser.add_argument(flag, **ap_kwargs)
 
     args = parser.parse_args()
@@ -309,42 +318,34 @@ def _init(args: argparse.Namespace, questions: list[WizardQuestion]) -> None:
     Execute the init command.
 
     Scaffolds a new workflow project directory by driving DefaultWizardProvider
-    either interactively (input() prompts) or in batch mode (CLI flags).
-    Batch mode activates when --workflow-id, --workflow-name, and --author-name
-    are all provided. Providing any batch flag without all three required flags
-    is an error.
+    either interactively (questionary prompts) or in batch mode (CLI flags).
+    Batch mode activates when --no-interactive is passed; required fields
+    (those with no default in the question definition) must be provided.
 
     Args:
         args: Parsed command-line arguments.
         questions: Wizard questions from DefaultWizardProvider, used to derive
-            batch-mode defaults and detect partial batch flag usage.
+            required batch-mode fields and build the answer sequence.
     """
     provider = DefaultWizardProvider()
 
-    # Partial batch validation: if any batch flag is provided, all required
-    # ones must be present — prevents silent data loss in interactive fallback.
-    _any_batch = any(getattr(args, q["dest"]) is not None for q in questions)
-    _required_batch = {
-        "--workflow-id": args.workflow_id,
-        "--workflow-name": args.workflow_name,
-        "--author-name": args.author_name,
-    }
-    if _any_batch:
-        _missing = [k for k, v in _required_batch.items() if v is None]
+    batch_mode: bool = args.no_interactive
+
+    if batch_mode:
+        # Derive required fields from questions: single questions with no default.
+        _missing = [
+            f"--{q['dest'].replace('_', '-')}"
+            for q in questions
+            if not _is_loop(q)
+            and "default" not in cast(SingleWizardQuestion, q)["argparse"]
+            and getattr(args, q["dest"]) is None
+        ]
         if _missing:
             print(
-                f"Error: partial batch flags provided. "
-                f"When using batch mode, all required flags must be present. "
-                f"Missing: {', '.join(_missing)}",
+                f"Error: --no-interactive requires: {', '.join(_missing)}",
                 file=sys.stderr,
             )
             sys.exit(1)
-
-    batch_mode = (
-        args.workflow_id is not None
-        and args.workflow_name is not None
-        and args.author_name is not None
-    )
 
     # Pre-build answers in generator-expected order for batch mode.
     # Single questions → one string answer; loop questions → one string per
