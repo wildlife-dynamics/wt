@@ -21,7 +21,11 @@ from __future__ import annotations
 import argparse
 import builtins
 import copy
+import json
 import keyword
+import os
+from typing import Any
+from urllib.parse import urlparse
 
 from rattler import NamelessMatchSpec
 
@@ -29,7 +33,6 @@ from wt_compiler.requirements import CHANNELS, _serialize_channel
 from wt_compiler.wizard.abstract import (
     AbstractWizardProvider,
     WizardQuestion,
-    _make_loop_type,
 )
 
 # --- Validation callables ---------------------------------------------------
@@ -123,6 +126,45 @@ def requirement_version_type(value: str) -> str:
     return value
 
 
+def pip_source_type(value: str) -> str:
+    """Validate a pip installable source: absolute path, URL, or git+ URL.
+
+    Accepts:
+    - Absolute filesystem paths (e.g. ``/home/user/mypackage``)
+    - HTTP/HTTPS URLs (e.g. ``https://example.com/pkg.whl``)
+    - Git URLs with ``git+`` prefix (e.g. ``git+https://github.com/org/pkg.git``)
+
+    Args:
+        value: The source string to validate.
+
+    Returns:
+        The validated source string (stripped of surrounding whitespace).
+
+    Raises:
+        argparse.ArgumentTypeError: If the source is not a recognized format.
+
+    Examples:
+        >>> pip_source_type("/home/user/mypackage")
+        '/home/user/mypackage'
+        >>> pip_source_type("https://example.com/pkg.whl")
+        'https://example.com/pkg.whl'
+        >>> pip_source_type("git+https://github.com/org/pkg.git")
+        'git+https://github.com/org/pkg.git'
+    """
+    stripped = value.strip()
+    if not stripped:
+        raise argparse.ArgumentTypeError("Pip source cannot be empty.")
+    if os.path.isabs(stripped):
+        return stripped
+    parsed = urlparse(stripped)
+    if parsed.scheme in ("http", "https", "git+https", "git+http", "git+ssh"):
+        return stripped
+    raise argparse.ArgumentTypeError(
+        f"Invalid pip source '{stripped}': must be an absolute filesystem path or a URL "
+        "(http/https/git+https://...)."
+    )
+
+
 CHANNEL_CHOICES: list[str] = [_serialize_channel(c) for c in CHANNELS]
 """Channel choices list built from ``requirements.CHANNELS``."""
 
@@ -166,6 +208,80 @@ _Q_LICENSE_TYPE: WizardQuestion = {
     "wizard": {},
 }
 
+def _requirements_batch_type(value: str) -> dict[str, Any]:
+    """Parse and validate a requirement JSON object for batch mode.
+
+    Infers ``req_type`` from the keys present if not explicitly supplied:
+    a dict containing a ``source`` key is treated as ``"pip"``; otherwise
+    ``"conda"`` is assumed.
+
+    Args:
+        value: JSON string representing a single requirement.
+
+    Returns:
+        Validated dict with ``req_type`` set and type-checked fields.
+
+    Raises:
+        argparse.ArgumentTypeError: On JSON parse failure or invalid fields.
+
+    Examples:
+        Conda (inferred):
+
+        >>> import json
+        >>> d = _requirements_batch_type(
+        ...     '{"name":"numpy","version":">=1.0","channel":"conda-forge"}'
+        ... )
+        >>> d["req_type"]
+        'conda'
+
+        Pip (inferred from ``source``):
+
+        >>> d = _requirements_batch_type('{"name":"mypkg","source":"/home/user/mypkg"}')
+        >>> d["req_type"]
+        'pip'
+    """
+    try:
+        d: dict[str, Any] = json.loads(value)
+    except json.JSONDecodeError as e:
+        raise argparse.ArgumentTypeError(f"Invalid JSON: {e}") from e
+    if not isinstance(d, dict):
+        raise argparse.ArgumentTypeError(f"Expected a JSON object (got {type(d).__name__})")
+
+    try:
+        d["name"] = non_empty_str(str(d.get("name", "")))
+    except argparse.ArgumentTypeError as e:
+        raise argparse.ArgumentTypeError(f"Invalid name: {e}") from e
+
+    req_type = d.get("req_type", "pip" if "source" in d else "conda")
+    if req_type not in ("conda", "pip"):
+        raise argparse.ArgumentTypeError(
+            f"Invalid req_type '{req_type}': must be 'conda' or 'pip'"
+        )
+    d["req_type"] = req_type
+
+    if req_type == "conda":
+        try:
+            d["version"] = requirement_version_type(str(d.get("version", "*")))
+        except argparse.ArgumentTypeError as e:
+            raise argparse.ArgumentTypeError(f"Invalid version: {e}") from e
+        channel = str(d.get("channel", "conda-forge"))
+        if channel not in CHANNEL_CHOICES:
+            raise argparse.ArgumentTypeError(
+                f"Invalid channel '{channel}': must be one of {CHANNEL_CHOICES}"
+            )
+        d["channel"] = channel
+    else:
+        try:
+            d["source"] = pip_source_type(str(d.get("source", "")))
+        except argparse.ArgumentTypeError as e:
+            raise argparse.ArgumentTypeError(f"Invalid source: {e}") from e
+
+    return d
+
+
+_is_conda = lambda entry: entry.get("req_type", "conda") == "conda"  # noqa: E731
+_is_pip = lambda entry: entry.get("req_type", "conda") == "pip"  # noqa: E731
+
 _Q_REQUIREMENTS_LOOP_QUESTIONS: list[WizardQuestion] = [
     {
         "dest": "name",
@@ -173,14 +289,31 @@ _Q_REQUIREMENTS_LOOP_QUESTIONS: list[WizardQuestion] = [
         "wizard": {},
     },
     {
+        "dest": "req_type",
+        "argparse": {
+            "help": "Requirement type",
+            "choices": ["conda", "pip"],
+            "default": "conda",
+        },
+        "wizard": {},
+    },
+    {
         "dest": "version",
         "argparse": {"help": "Version spec", "type": requirement_version_type, "default": "*"},
-        "wizard": {},
+        "wizard": {"condition": _is_conda},
     },
     {
         "dest": "channel",
         "argparse": {"help": "Channel", "choices": CHANNEL_CHOICES, "default": "conda-forge"},
-        "wizard": {},
+        "wizard": {"condition": _is_conda},
+    },
+    {
+        "dest": "source",
+        "argparse": {
+            "help": "Pip source: absolute path, http/https URL, or git+https:// URL",
+            "type": pip_source_type,
+        },
+        "wizard": {"condition": _is_pip},
     },
 ]
 _Q_REQUIREMENTS: WizardQuestion = {
@@ -188,10 +321,11 @@ _Q_REQUIREMENTS: WizardQuestion = {
     "argparse": {
         "action": "append",
         "default": None,
-        "help": "Conda requirement as JSON object: "
-        "{'name':'pkg','version':'*','channel':'conda-forge'} "
-        "(batch mode; repeatable)",
-        "type": _make_loop_type(_Q_REQUIREMENTS_LOOP_QUESTIONS),
+        "help": (
+            "Requirement as JSON: conda: {'name':'pkg','version':'*','channel':'conda-forge'} "
+            "or pip: {'name':'pkg','source':'/path/or/url'} (batch mode; repeatable)"
+        ),
+        "type": _requirements_batch_type,
     },
     "questions": _Q_REQUIREMENTS_LOOP_QUESTIONS,
 }

@@ -6,6 +6,7 @@ import resource
 import sys
 from collections.abc import Callable
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, cast
 
 import questionary
@@ -78,14 +79,20 @@ def _batch_init(
 
     # Build flat answer sequence in generator-expected order.
     # Single questions → one string; loop questions → one string per sub-field
-    # per item, then "" to signal loop end.
+    # per item (respecting wizard.condition gates), then "" to signal loop end.
     seq: list[str] = []
     for q in questions:
         if _is_loop(q):
             for item in getattr(args, q["dest"]) or []:
-                for sub_q in q["questions"]:
+                partial_entry: dict[str, Any] = {}
+                for i, sub_q in enumerate(q["questions"]):
                     sq = cast(SingleWizardQuestion, sub_q)
+                    if i > 0:  # first sub-question is the loop terminator, never conditional
+                        cond = sq.get("wizard", {}).get("condition")
+                        if cond and not cond(MappingProxyType(partial_entry)):
+                            continue  # skip to match generator's condition logic
                     v = item.get(sq["dest"])
+                    partial_entry[sq["dest"]] = v
                     seq.append(
                         str(v) if v is not None else str(sq["argparse"].get("default") or "")
                     )

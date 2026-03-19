@@ -2,8 +2,16 @@ id: {{ workflow_id }}
 requirements:
 {% for req in requirements %}
   - name: "{{ req.name }}"
+{% if req.req_type == 'conda' %}
     version: "{{ req.version }}"
     channel: "{{ req.channel }}"
+{% elif req.source[0] == '/' %}
+    path: "{{ req.source }}"
+{% elif req.source[:4] == 'git+' %}
+    git: "{{ req.source[4:] }}"
+{% else %}
+    url: "{{ req.source }}"
+{% endif %}
 {% endfor %}
 {% if not requirements %}
   []

@@ -444,8 +444,8 @@ class TestInitCommand:
 
         reqs = captured_provider[0].answers["requirements"]
         assert len(reqs) == 2
-        assert reqs[0] == {"name": "pandas", "version": ">=2.0", "channel": "conda-forge"}
-        assert reqs[1] == {"name": "numpy", "version": "*", "channel": "conda-forge"}
+        assert reqs[0] == {"name": "pandas", "req_type": "conda", "version": ">=2.0", "channel": "conda-forge"}
+        assert reqs[1] == {"name": "numpy", "req_type": "conda", "version": "*", "channel": "conda-forge"}
 
     def test_init_batch_mode_no_input_calls(
         self, capsys: pytest.CaptureFixture[str], tmp_path: Path
@@ -482,19 +482,18 @@ class TestInitCommand:
         self, capsys: pytest.CaptureFixture[str], tmp_path: Path
     ) -> None:
         """Interactive mode: questionary drives wizard, dump() called with correct workdir."""
-        # questionary.confirm for loop entry: first returns True (add one), second False (stop)
+        # questionary.confirm for loop: first True (add one req), second False (stop)
         confirm_mock = MagicMock()
         confirm_mock.return_value.ask.side_effect = [True, False]
-        # questionary.text answers: workflow_id, workflow_name, description, author_name,
-        #                           then loop: name, version
+        # questionary.text: workflow_id, workflow_name, description, author_name, then loop: name, version
         text_mock = MagicMock()
         text_mock.return_value.ask.side_effect = [
             "my_workflow", "My Workflow", "", "Author",
             "numpy", "*",
         ]
-        # questionary.select answers: license_type, then channel
+        # questionary.select: license_type, req_type (conda), channel
         select_mock = MagicMock()
-        select_mock.return_value.ask.side_effect = ["MIT", "conda-forge"]
+        select_mock.return_value.ask.side_effect = ["MIT", "conda", "conda-forge"]
 
         with patch.object(sys, "argv", ["wt-compiler", "init", "--output-dir", str(tmp_path)]):
             with patch("questionary.text", text_mock):
@@ -520,7 +519,7 @@ class TestInitCommand:
             "numpy", "*",
         ]
         select_mock = MagicMock()
-        select_mock.return_value.ask.side_effect = ["MIT", "conda-forge"]
+        select_mock.return_value.ask.side_effect = ["MIT", "conda", "conda-forge"]
 
         with patch.object(sys, "argv", ["wt-compiler", "init", "--output-dir", str(tmp_path)]):
             with patch("questionary.text", text_mock):
@@ -529,10 +528,11 @@ class TestInitCommand:
                         with patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump"):
                             main()
 
-        # questionary.select called for license_type and channel (both have choices)
-        assert select_mock.call_count == 2
-        # questionary.text called for free-text fields only
-        assert text_mock.call_count == 6  # workflow_id, workflow_name, description, author, name, version
+        # questionary.select called for license_type, req_type, and channel (all have choices)
+        assert select_mock.call_count == 3
+        # questionary.text called for free-text fields: workflow_id, workflow_name, description,
+        # author_name, name, version
+        assert text_mock.call_count == 6
 
     def test_init_existing_dir_error(
         self, capsys: pytest.CaptureFixture[str], tmp_path: Path
@@ -721,6 +721,46 @@ class TestInitCommand:
             "--author-name", "Author",
             "--requirements", '{"name":"numpy","version":"*","channel":"conda-forge"}',
             "--requirements", '{"name":"geopandas","version":">>>bad<<<","channel":"conda-forge"}',
+        ]):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+
+        assert exc_info.value.code == 2
+
+    def test_init_batch_pip_requirement(self, tmp_path: Path) -> None:
+        """--requirements with pip source stored with req_type='pip' in answers."""
+        from wt_compiler.wizard import DefaultWizardProvider
+
+        captured_provider: list[DefaultWizardProvider] = []
+
+        def capture_dump(self: DefaultWizardProvider, workdir: Path) -> None:
+            captured_provider.append(self)
+
+        with patch.object(sys, "argv", [
+            "wt-compiler", "init",
+            "--no-interactive",
+            "--workflow-id", "my_wf",
+            "--workflow-name", "My Workflow",
+            "--author-name", "Author",
+            "--requirements", '{"name":"mypackage","source":"/home/user/mypackage"}',
+            "--output-dir", str(tmp_path),
+        ]):
+            with patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump", capture_dump):
+                main()
+
+        reqs = captured_provider[0].answers["requirements"]
+        assert len(reqs) == 1
+        assert reqs[0] == {"name": "mypackage", "req_type": "pip", "source": "/home/user/mypackage"}
+
+    def test_init_batch_invalid_pip_source(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """--requirements with invalid pip source is rejected by argparse (exit 2)."""
+        with patch.object(sys, "argv", [
+            "wt-compiler", "init",
+            "--no-interactive",
+            "--workflow-id", "my_workflow",
+            "--workflow-name", "My Workflow",
+            "--author-name", "Author",
+            "--requirements", '{"name":"mypkg","source":"relative/path"}',
         ]):
             with pytest.raises(SystemExit) as exc_info:
                 main()

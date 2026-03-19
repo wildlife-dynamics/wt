@@ -16,8 +16,10 @@ from wt_compiler.wizard.default import (
     CHANNEL_CHOICES,
     DefaultWizardProvider,
     non_empty_str,
+    pip_source_type,
     requirement_version_type,
     workflow_id_type,
+    _requirements_batch_type,
 )
 
 
@@ -92,7 +94,7 @@ class TestRequirementsLoop:
     """Tests for the requirements WizardQuestionLoop."""
 
     def test_requirements_loop_multiple(self) -> None:
-        """Drive 3 requirements iterations, then end loop."""
+        """Drive 3 conda requirements iterations, then end loop."""
         provider = DefaultWizardProvider()
         answers = [
             "my_workflow",  # workflow_id
@@ -100,27 +102,30 @@ class TestRequirementsLoop:
             "desc",  # workflow_description
             "Author",  # author_name
             "MIT",  # license_type
-            # Requirement 1
+            # Requirement 1 (conda)
             "numpy",  # name
+            "conda",  # req_type
             ">=1.0",  # version
             "conda-forge",  # channel
-            # Requirement 2
+            # Requirement 2 (conda)
             "pandas",  # name
+            "conda",  # req_type
             "*",  # version
             "conda-forge",  # channel
-            # Requirement 3
+            # Requirement 3 (conda)
             "scipy",  # name
+            "conda",  # req_type
             ">=2.0",  # version
             "conda-forge",  # channel
             # End loop
-            "",  # empty name = done
+            "",
         ]
         drive_wizard(provider, answers)
         reqs = provider.answers["requirements"]
         assert len(reqs) == 3
-        assert reqs[0] == {"name": "numpy", "version": ">=1.0", "channel": "conda-forge"}
-        assert reqs[1] == {"name": "pandas", "version": "*", "channel": "conda-forge"}
-        assert reqs[2] == {"name": "scipy", "version": ">=2.0", "channel": "conda-forge"}
+        assert reqs[0] == {"name": "numpy", "req_type": "conda", "version": ">=1.0", "channel": "conda-forge"}
+        assert reqs[1] == {"name": "pandas", "req_type": "conda", "version": "*", "channel": "conda-forge"}
+        assert reqs[2] == {"name": "scipy", "req_type": "conda", "version": ">=2.0", "channel": "conda-forge"}
 
     def test_requirements_loop_empty_immediately(self) -> None:
         """Send empty on first name prompt — requirements is empty list."""
@@ -141,23 +146,19 @@ class TestRequirementsLoop:
         provider = DefaultWizardProvider()
         gen = provider.input_generator()
         # Skip to requirements loop
-        answers_before_loop = [
-            "my_workflow",
-            "My Workflow",
-            "desc",
-            "Author",
-            "MIT",
-        ]
         q = next(gen)
-        for ans in answers_before_loop:
+        for ans in ["my_workflow", "My Workflow", "desc", "Author", "MIT"]:
             q = gen.send(ans)
 
-        # First requirement name
+        # First sub-question: name
         assert q["dest"] == "name"
         q = gen.send("numpy")
-        # Version question
+        # Second sub-question: req_type
+        assert q["dest"] == "req_type"
+        q = gen.send("conda")
+        # Third: version (shown because req_type == "conda")
         assert q["dest"] == "version"
-        # Send invalid version
+        # Send invalid version — re-yield with error
         q = gen.send(">>>invalid<<<")
         assert q["dest"] == "version"
         assert "error" in q["wizard"]
@@ -172,6 +173,146 @@ class TestRequirementsLoop:
         assert all(isinstance(c, str) and c for c in CHANNEL_CHOICES)
         # Well-known channels should always be present
         assert "conda-forge" in CHANNEL_CHOICES
+
+    def test_pip_requirement_in_loop(self) -> None:
+        """Drive one pip requirement then stop — version/channel skipped."""
+        provider = DefaultWizardProvider()
+        answers = [
+            "my_workflow",
+            "My Workflow",
+            "desc",
+            "Author",
+            "MIT",
+            "mypackage",  # name
+            "pip",  # req_type → skips version + channel, shows source
+            "/home/user/mypackage",  # source
+            "",  # end loop
+        ]
+        drive_wizard(provider, answers)
+        reqs = provider.answers["requirements"]
+        assert len(reqs) == 1
+        assert reqs[0] == {"name": "mypackage", "req_type": "pip", "source": "/home/user/mypackage"}
+
+    def test_mixed_conda_and_pip_requirements(self) -> None:
+        """Drive one conda then one pip requirement in the same loop."""
+        provider = DefaultWizardProvider()
+        answers = [
+            "my_workflow",
+            "My Workflow",
+            "desc",
+            "Author",
+            "MIT",
+            "numpy",    # name
+            "conda",    # req_type
+            ">=1.0",    # version
+            "conda-forge",  # channel
+            "mypackage",  # name
+            "pip",      # req_type
+            "https://example.com/pkg.whl",  # source
+            "",  # end loop
+        ]
+        drive_wizard(provider, answers)
+        reqs = provider.answers["requirements"]
+        assert len(reqs) == 2
+        assert reqs[0] == {"name": "numpy", "req_type": "conda", "version": ">=1.0", "channel": "conda-forge"}
+        assert reqs[1] == {"name": "mypackage", "req_type": "pip", "source": "https://example.com/pkg.whl"}
+
+    def test_pip_source_skipped_when_conda(self) -> None:
+        """source sub-question is not yielded for a conda requirement."""
+        provider = DefaultWizardProvider()
+        gen = provider.input_generator()
+        q = next(gen)
+        for ans in ["my_workflow", "My Workflow", "desc", "Author", "MIT"]:
+            q = gen.send(ans)
+        assert q["dest"] == "name"
+        q = gen.send("numpy")
+        assert q["dest"] == "req_type"
+        q = gen.send("conda")
+        assert q["dest"] == "version"
+        q = gen.send(">=1.0")
+        assert q["dest"] == "channel"
+        q = gen.send("conda-forge")
+        # Next should be name again (loop repeats), not source
+        assert q["dest"] == "name"
+
+    def test_version_channel_skipped_when_pip(self) -> None:
+        """version + channel sub-questions are not yielded for a pip requirement."""
+        provider = DefaultWizardProvider()
+        gen = provider.input_generator()
+        q = next(gen)
+        for ans in ["my_workflow", "My Workflow", "desc", "Author", "MIT"]:
+            q = gen.send(ans)
+        assert q["dest"] == "name"
+        q = gen.send("mypkg")
+        assert q["dest"] == "req_type"
+        q = gen.send("pip")
+        # version + channel skipped — source is shown directly
+        assert q["dest"] == "source"
+
+
+class TestPipSourceTypeValidation:
+    """Tests for pip_source_type validation callable."""
+
+    def test_absolute_path_accepted(self) -> None:
+        assert pip_source_type("/home/user/mypkg") == "/home/user/mypkg"
+
+    def test_https_url_accepted(self) -> None:
+        assert pip_source_type("https://example.com/pkg.whl") == "https://example.com/pkg.whl"
+
+    def test_git_plus_https_accepted(self) -> None:
+        assert pip_source_type("git+https://github.com/org/pkg.git") == "git+https://github.com/org/pkg.git"
+
+    def test_empty_raises(self) -> None:
+        with pytest.raises(argparse.ArgumentTypeError, match="cannot be empty"):
+            pip_source_type("")
+
+    def test_relative_path_raises(self) -> None:
+        with pytest.raises(argparse.ArgumentTypeError):
+            pip_source_type("../relative/path")
+
+    def test_bare_name_raises(self) -> None:
+        with pytest.raises(argparse.ArgumentTypeError):
+            pip_source_type("somepkg")
+
+
+class TestRequirementsBatchType:
+    """Tests for _requirements_batch_type validation callable."""
+
+    def test_conda_inferred_from_channel(self) -> None:
+        d = _requirements_batch_type('{"name":"numpy","version":">=1.0","channel":"conda-forge"}')
+        assert d["req_type"] == "conda"
+        assert d["name"] == "numpy"
+        assert d["version"] == ">=1.0"
+        assert d["channel"] == "conda-forge"
+
+    def test_pip_inferred_from_source(self) -> None:
+        d = _requirements_batch_type('{"name":"mypkg","source":"/home/user/mypkg"}')
+        assert d["req_type"] == "pip"
+        assert d["source"] == "/home/user/mypkg"
+
+    def test_explicit_req_type_conda(self) -> None:
+        d = _requirements_batch_type('{"name":"numpy","req_type":"conda","version":"*","channel":"conda-forge"}')
+        assert d["req_type"] == "conda"
+
+    def test_invalid_json_raises(self) -> None:
+        with pytest.raises(argparse.ArgumentTypeError, match="Invalid JSON"):
+            _requirements_batch_type("not-json")
+
+    def test_invalid_version_raises(self) -> None:
+        with pytest.raises(argparse.ArgumentTypeError, match="version"):
+            _requirements_batch_type('{"name":"numpy","version":">>>bad<<<","channel":"conda-forge"}')
+
+    def test_invalid_channel_raises(self) -> None:
+        with pytest.raises(argparse.ArgumentTypeError, match="channel"):
+            _requirements_batch_type('{"name":"numpy","version":"*","channel":"not-a-channel"}')
+
+    def test_invalid_pip_source_raises(self) -> None:
+        with pytest.raises(argparse.ArgumentTypeError, match="source"):
+            _requirements_batch_type('{"name":"mypkg","source":"relative/path"}')
+
+    def test_empty_name_raises(self) -> None:
+        with pytest.raises(argparse.ArgumentTypeError, match="name"):
+            _requirements_batch_type('{"name":"","version":"*","channel":"conda-forge"}')
 
 
 class TestLicenseDefaults:
@@ -222,10 +363,11 @@ class TestDump:
             "A test workflow",
             "Test Author",
             "MIT",
-            "numpy",
-            ">=1.0",
-            "conda-forge",
-            "",  # end requirements
+            "numpy",   # name
+            "conda",   # req_type
+            ">=1.0",   # version
+            "conda-forge",  # channel
+            "",  # end requirements loop
         ]
         drive_wizard(provider, answers)
         return provider
