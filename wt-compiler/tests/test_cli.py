@@ -634,6 +634,98 @@ class TestInitCommand:
         assert "--workflow-name" in captured.err
         assert "--author-name" in captured.err
 
+    def test_init_batch_invalid_workflow_id(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """--workflow-id with invalid value is rejected by argparse (exit 2)."""
+        with patch.object(sys, "argv", [
+            "wt-compiler", "init",
+            "--no-interactive",
+            "--workflow-id", "123bad",
+            "--workflow-name", "My Workflow",
+            "--author-name", "Author",
+        ]):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+
+        assert exc_info.value.code == 2
+
+    def test_init_batch_invalid_workflow_name(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """--workflow-name with whitespace-only value is rejected by argparse (exit 2)."""
+        with patch.object(sys, "argv", [
+            "wt-compiler", "init",
+            "--no-interactive",
+            "--workflow-id", "my_workflow",
+            "--workflow-name", "   ",
+            "--author-name", "Author",
+        ]):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+
+        assert exc_info.value.code == 2
+
+    def test_init_batch_invalid_license_type(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """--license-type with value outside choices is rejected by argparse (exit 2)."""
+        with patch.object(sys, "argv", [
+            "wt-compiler", "init",
+            "--no-interactive",
+            "--workflow-id", "my_workflow",
+            "--workflow-name", "My Workflow",
+            "--author-name", "Author",
+            "--license-type", "INVALID",
+        ]):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+
+        assert exc_info.value.code == 2
+
+    def test_init_batch_invalid_requirement_name(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """--requirements with empty package name is rejected by argparse (exit 2)."""
+        with patch.object(sys, "argv", [
+            "wt-compiler", "init",
+            "--no-interactive",
+            "--workflow-id", "my_workflow",
+            "--workflow-name", "My Workflow",
+            "--author-name", "Author",
+            "--requirements", '{"name":"","version":"*","channel":"conda-forge"}',
+        ]):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+
+        assert exc_info.value.code == 2
+
+    def test_init_batch_invalid_requirement_version(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--requirements with invalid version spec is rejected by argparse (exit 2)."""
+        with patch.object(sys, "argv", [
+            "wt-compiler", "init",
+            "--no-interactive",
+            "--workflow-id", "my_workflow",
+            "--workflow-name", "My Workflow",
+            "--author-name", "Author",
+            "--requirements", '{"name":"numpy","version":">>>bad<<<","channel":"conda-forge"}',
+        ]):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+
+        assert exc_info.value.code == 2
+
+    def test_init_batch_invalid_requirement_version_multiple_requirements(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--requirements with invalid version spec is rejected by argparse (exit 2)."""
+        with patch.object(sys, "argv", [
+            "wt-compiler", "init",
+            "--no-interactive",
+            "--workflow-id", "my_workflow",
+            "--workflow-name", "My Workflow",
+            "--author-name", "Author",
+            "--requirements", '{"name":"numpy","version":"*","channel":"conda-forge"}',
+            "--requirements", '{"name":"geopandas","version":">>>bad<<<","channel":"conda-forge"}',
+        ]):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+
+        assert exc_info.value.code == 2
 
 class TestModuleEntryPoint:
     """Tests for python -m wt_compiler entry point."""
