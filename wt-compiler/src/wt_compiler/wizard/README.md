@@ -35,8 +35,9 @@ Subclass `DefaultWizardProvider` (not `AbstractWizardProvider` directly, unless 
 - `dest`: key for the collected list (e.g., `"requirements"`)
 - `questions`: list of `WizardQuestion` (sub-questions asked per iteration; recursive nesting supported)
 - `condition`: optional gate to skip the entire loop
+- `argparse`: explicit kwargs for `argparse.add_argument()` — typically `action="append"` with a JSON `type` validator that parses and validates a single item dict
 - Termination: empty/None answer on first sub-question ends the loop
-- Argparse: auto-derived `--{dest}` with `action="append"` and composite JSON type validator
+- **Constraint**: the first sub-question must never carry a `wizard.condition`. It is the loop-termination sentinel — use the loop's own `condition` key to gate the entire loop instead.
 
 ## Conditional Questions
 
@@ -44,6 +45,31 @@ Subclass `DefaultWizardProvider` (not `AbstractWizardProvider` directly, unless 
 - The generator skips questions where `condition(answers)` returns `False`
 - Order questions so dependencies come first
 - For mutually exclusive branches: use mutually exclusive conditions on each branch's questions
+
+### Conditions inside a loop body
+
+Sub-questions after the first in a `WizardQuestionLoop` can also carry conditions. The
+condition callable receives a `MappingProxyType` of the **partial entry** collected so far
+in the current iteration (not the full answers dict):
+
+```python
+WizardQuestionLoop(
+    dest="requirements",
+    questions=[
+        SingleWizardQuestion(dest="name", ...),          # no condition — loop sentinel
+        SingleWizardQuestion(dest="req_type", ...),      # no condition
+        SingleWizardQuestion(dest="version", ...,        # only asked for conda
+            wizard=WizardKwargs(condition=lambda e: e.get("req_type", "conda") == "conda")),
+        SingleWizardQuestion(dest="path", ...,           # only asked for local path
+            wizard=WizardKwargs(condition=lambda e: e.get("req_type") == "local path")),
+    ],
+    ...
+)
+```
+
+Skipped sub-questions are absent from the entry dict — templates must handle missing keys
+(e.g. with `{% if req.req_type == 'conda' %}`). Nested `WizardQuestionLoop` sub-questions
+can also carry a `condition` key at the loop level.
 
 ## Composing Question Branches
 
@@ -114,7 +140,7 @@ question["wizard"].get("loop_context")
 When `loop_context` is present, show a confirm prompt **before** rendering the question:
 
 - `iteration == 0` → "Add a {dest}?" (suggest `default=True`)
-- `iteration > 0` → "Add another {dest}?" (suggest `default=False`)
+- `iteration > 0` → "Add another {dest}?" (suggest `default=True`)
 
 If the user declines, send `""` to the generator — this is the loop termination signal
 (the `while answer:` guard exits the loop). The generator then yields the next top-level

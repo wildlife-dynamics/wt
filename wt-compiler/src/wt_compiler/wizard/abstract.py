@@ -145,13 +145,14 @@ def with_condition(
     result: list[WizardQuestion] = []
     for q in questions:
         if _is_loop(q):
-            result.append(cast(WizardQuestion, {**q, "condition": condition}))
+            result.append(WizardQuestionLoop(**q, condition=condition))
         else:
             wiz = cast(SingleWizardQuestion, q)
             result.append(
-                cast(
-                    WizardQuestion,
-                    {**wiz, "wizard": {**wiz.get("wizard", {}), "condition": condition}},
+                SingleWizardQuestion(
+                    dest=wiz["dest"],
+                    argparse=wiz["argparse"],
+                    wizard=WizardKwargs(**wiz.get("wizard", {}), condition=condition),
                 )
             )
     return result
@@ -295,15 +296,13 @@ class AbstractWizardProvider(ABC):
                     "Use the loop's own 'condition' key to gate the entire loop."
                 )
             iteration = 0
-            first_q_with_ctx = cast(
-                SingleWizardQuestion,
-                {
-                    **first_q,
-                    "wizard": {
-                        **first_q.get("wizard", {}),
-                        "loop_context": LoopContext(dest=question["dest"], iteration=iteration),
-                    },
-                },
+            first_q_with_ctx = SingleWizardQuestion(
+                dest=first_q["dest"],
+                argparse=first_q["argparse"],
+                wizard=WizardKwargs(
+                    **first_q.get("wizard", {}),
+                    loop_context=LoopContext(dest=question["dest"], iteration=iteration),
+                ),
             )
             answer = yield first_q_with_ctx
             while answer:  # empty/None on first question = done
@@ -321,15 +320,13 @@ class AbstractWizardProvider(ABC):
                     entry[sub_q["dest"]] = sub_value
                 results.append(entry)
                 iteration += 1
-                first_q_with_ctx = cast(
-                    SingleWizardQuestion,
-                    {
-                        **first_q,
-                        "wizard": {
-                            **first_q.get("wizard", {}),
-                            "loop_context": LoopContext(dest=question["dest"], iteration=iteration),
-                        },
-                    },
+                first_q_with_ctx = SingleWizardQuestion(
+                    dest=first_q["dest"],
+                    argparse=first_q["argparse"],
+                    wizard=WizardKwargs(
+                        **first_q.get("wizard", {}),
+                        loop_context=LoopContext(dest=question["dest"], iteration=iteration),
+                    ),
                 )
                 answer = yield first_q_with_ctx  # re-yield first question for next iteration
             return results
