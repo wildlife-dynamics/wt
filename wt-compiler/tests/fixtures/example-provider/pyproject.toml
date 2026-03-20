@@ -17,3 +17,26 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 wt_example_provider = ["templates/*"]
+
+# ============================================================================
+# Pixi Build Configuration (conda package building)
+# ============================================================================
+
+[tool.pixi.package]
+name = "wt-example-provider"
+version = "0.1.0"
+
+[tool.pixi.package.build]
+backend = { name = "pixi-build-python", version = "*", channels = ["conda-forge", "https://prefix.dev/pixi-build-backends"] }
+
+[tool.pixi.package.build.config]
+noarch = true
+
+[tool.pixi.package.host-dependencies]
+python = ">=3.12,<3.16"
+setuptools = ">=64"
+pip = "*"
+
+[tool.pixi.package.run-dependencies]
+python = ">=3.12,<3.16"
+wt-compiler = ">=0.1.0"
