@@ -269,22 +269,9 @@ def main() -> None:
         ):
             import wt_compiler.wizard.providers as providers_mod
 
-            try:
-                registered = providers_mod.get_registered_providers()
-            except PermissionError as e:
-                print(
-                    f"Warning: Could not read provider registry (permission denied): {e}",
-                    file=sys.stderr,
-                )
-                registered = []
-            except ValueError as e:
-                print(
-                    f"Warning: Could not read provider registry: {e}",
-                    file=sys.stderr,
-                )
-                registered = []
-            if registered:
-                choices = ["default"] + [e["name"] for e in registered]
+            available = providers_mod.get_available_providers()
+            if available:
+                choices = ["default"] + [e["name"] for e in available]
                 selected = questionary.select(
                     "Select a wizard provider:",
                     choices=choices,
@@ -432,28 +419,6 @@ def main() -> None:
         ap_kwargs: Any = {**cast(SingleWizardQuestion, q)["argparse"]}
         init_parser.add_argument(flag, **ap_kwargs)
 
-    reg_parser = subparsers.add_parser(
-        "register-provider",
-        help="Register a wizard provider package",
-        description=(
-            "Register all `wt_compiler.wizard_providers` entry points from an "
-            "already-installed package. Install the package into this environment "
-            "first (e.g. `pip install my-wt-provider`), then run this command. "
-            "Note: all registered providers must expose a 'workflow_id' "
-            "answer key for the init command to derive the output directory name."
-        ),
-    )
-    reg_parser.add_argument(
-        "package",
-        metavar="PACKAGE",
-        help="Already-installed package name to register (e.g. my-wt-provider)",
-    )
-    subparsers.add_parser(
-        "list-providers",
-        help="List all registered wizard providers",
-        description="Show all wizard providers registered via 'wt-compiler register-provider'.",
-    )
-
     args = parser.parse_args()
 
     match args.command:
@@ -461,10 +426,6 @@ def main() -> None:
             _compile(args)
         case "init":
             _init(args, wizard)
-        case "register-provider":
-            _register_provider(args.package)
-        case "list-providers":
-            _list_providers()
         case _:
             raise AssertionError(f"Unhandled command: {args.command!r}")
 
@@ -617,57 +578,3 @@ def _init(args: argparse.Namespace, provider: AbstractWizardProvider) -> None:
         except Exception as e:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
-
-
-def _register_provider(package: str) -> None:
-    """Register wizard provider entry points from an already-installed package.
-
-    Discovers all ``wt_compiler.wizard_providers`` entry points from the given
-    installed package and adds new ones to the providers allowlist.
-
-    Args:
-        package: Already-installed package name to register.
-    """
-    from importlib.metadata import PackageNotFoundError
-
-    import wt_compiler.wizard.providers as providers_mod
-
-    try:
-        new_names = providers_mod.find_and_register(package)
-    except PackageNotFoundError:
-        print(
-            f"Error: Package '{package}' is not installed in this environment. "
-            f"Install it first (e.g. `pip install {package}`), "
-            f"then re-run `wt-compiler register-provider {package}`.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
-    if new_names:
-        print(f"Registered {len(new_names)} provider(s) from '{package}': {', '.join(new_names)}")
-    else:
-        print(f"All providers from '{package}' were already registered.")
-
-
-def _list_providers() -> None:
-    """List all registered wizard providers.
-
-    Prints a formatted table of registered provider names and their package
-    sources, or a message if no providers are registered.
-    """
-    import wt_compiler.wizard.providers as providers_mod
-
-    try:
-        providers = providers_mod.get_registered_providers()
-    except (ValueError, PermissionError) as e:
-        print(f"Error reading provider registry: {e}", file=sys.stderr)
-        sys.exit(1)
-    if not providers:
-        print("No providers registered. Use 'wt-compiler register-provider <package>' to add one.")
-        return
-    print(f"{'PROVIDER NAME':<30}{'PACKAGE NAME'}")
-    print("─" * 54)
-    for entry in providers:
-        print(f"{entry['name']:<30}{entry['package']}")

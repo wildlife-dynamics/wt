@@ -27,14 +27,9 @@ def make_mock_providers(**overrides: object) -> types.ModuleType:
     Returns:
         A ``types.ModuleType`` with default mocks and any requested overrides.
     """
-    import importlib.metadata
-
     m = types.ModuleType("wt_compiler.wizard.providers")
-    m.find_and_register = MagicMock(return_value=[])  # type: ignore[attr-defined]
-    m.get_registered_providers = MagicMock(return_value=[])  # type: ignore[attr-defined]
+    m.get_available_providers = MagicMock(return_value=[])  # type: ignore[attr-defined]
     m.load_provider_class = MagicMock()  # type: ignore[attr-defined]
-    # The real PackageNotFoundError must be present so handler except clauses match.
-    m.PackageNotFoundError = importlib.metadata.PackageNotFoundError  # type: ignore[attr-defined]
     for k, v in overrides.items():
         setattr(m, k, v)
     return m
@@ -887,223 +882,6 @@ class TestModuleEntryPoint:
 
 
 # ---------------------------------------------------------------------------
-# TestRegisterProviderCommand
-# ---------------------------------------------------------------------------
-
-
-class TestRegisterProviderCommand:
-    """Tests for the register-provider subcommand."""
-
-    @pytest.fixture(autouse=True)
-    def _reset_providers_module(self) -> None:
-        """Ensure patch.dict(sys.modules, ...) works regardless of test order.
-
-        ``import wt_compiler.wizard.providers as providers_mod`` inside handler
-        functions uses ``getattr(wt_compiler.wizard, "providers")`` once the
-        submodule has been imported (Python sets the attribute on the parent
-        package). Removing the attribute before each test forces Python through
-        the import machinery,
-        which checks ``sys.modules`` — where ``patch.dict`` puts the mock.
-        Originals are restored after each test to avoid breaking test_providers.py.
-        """
-        import wt_compiler.wizard as _wizard_pkg
-
-        orig_sys = sys.modules.get("wt_compiler.wizard.providers")
-        _wizard_pkg.__dict__.pop("providers", None)
-        sys.modules.pop("wt_compiler.wizard.providers", None)
-        yield  # type: ignore[misc]
-        _wizard_pkg.__dict__.pop("providers", None)
-        if orig_sys is not None:
-            sys.modules["wt_compiler.wizard.providers"] = orig_sys
-            _wizard_pkg.__dict__["providers"] = orig_sys
-        else:
-            sys.modules.pop("wt_compiler.wizard.providers", None)
-
-    def test_register_provider_help(self, capsys: pytest.CaptureFixture[str]) -> None:
-        """register-provider --help exits 0 and mentions PACKAGE."""
-        with patch.object(sys, "argv", ["wt-compiler", "register-provider", "--help"]):
-            with pytest.raises(SystemExit) as exc_info:
-                main()
-        assert exc_info.value.code == 0
-        assert "PACKAGE" in capsys.readouterr().out
-
-    def test_register_provider_in_help_listing(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """Top-level --help lists register-provider."""
-        with patch.object(sys, "argv", ["wt-compiler", "--help"]):
-            with pytest.raises(SystemExit):
-                main()
-        assert "register-provider" in capsys.readouterr().out
-
-    def test_register_provider_success_new_providers(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """Success path: stdout reports the newly registered provider count and name."""
-        mock_providers = make_mock_providers(
-            find_and_register=MagicMock(return_value=["my-provider"])
-        )
-        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
-            with patch.object(sys, "argv", ["wt-compiler", "register-provider", "my-pkg"]):
-                main()
-        out = capsys.readouterr().out
-        assert "my-provider" in out
-        assert "1 provider(s)" in out
-
-    def test_register_provider_all_duplicates(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """When all providers are duplicates, stdout says 'already registered'."""
-        mock_providers = make_mock_providers(
-            find_and_register=MagicMock(return_value=[])
-        )
-        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
-            with patch.object(sys, "argv", ["wt-compiler", "register-provider", "my-pkg"]):
-                main()
-        assert "already registered" in capsys.readouterr().out
-
-    def test_register_provider_package_not_found(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """PackageNotFoundError → exit 1 with 'not installed' on stderr."""
-        from importlib.metadata import PackageNotFoundError as _PNF
-
-        mock_providers = make_mock_providers(
-            find_and_register=MagicMock(side_effect=_PNF("my-pkg"))
-        )
-        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
-            with patch.object(sys, "argv", ["wt-compiler", "register-provider", "my-pkg"]):
-                with pytest.raises(SystemExit) as exc_info:
-                    main()
-        assert exc_info.value.code == 1
-        assert "not installed" in capsys.readouterr().err
-
-    def test_register_provider_no_entry_points(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """ValueError from find_and_register → exit 1 with error on stderr."""
-        mock_providers = make_mock_providers(
-            find_and_register=MagicMock(side_effect=ValueError("no entry points"))
-        )
-        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
-            with patch.object(sys, "argv", ["wt-compiler", "register-provider", "my-pkg"]):
-                with pytest.raises(SystemExit) as exc_info:
-                    main()
-        assert exc_info.value.code == 1
-        assert capsys.readouterr().err  # some error message present
-
-
-# ---------------------------------------------------------------------------
-# TestListProvidersCommand
-# ---------------------------------------------------------------------------
-
-
-class TestListProvidersCommand:
-    """Tests for the list-providers subcommand."""
-
-    @pytest.fixture(autouse=True)
-    def _reset_providers_module(self) -> None:
-        """Ensure patch.dict(sys.modules, ...) works regardless of test order."""
-        import wt_compiler.wizard as _wizard_pkg
-
-        orig_sys = sys.modules.get("wt_compiler.wizard.providers")
-        _wizard_pkg.__dict__.pop("providers", None)
-        sys.modules.pop("wt_compiler.wizard.providers", None)
-        yield  # type: ignore[misc]
-        _wizard_pkg.__dict__.pop("providers", None)
-        if orig_sys is not None:
-            sys.modules["wt_compiler.wizard.providers"] = orig_sys
-            _wizard_pkg.__dict__["providers"] = orig_sys
-        else:
-            sys.modules.pop("wt_compiler.wizard.providers", None)
-
-    def test_list_providers_help(self, capsys: pytest.CaptureFixture[str]) -> None:
-        """list-providers --help exits 0."""
-        with patch.object(sys, "argv", ["wt-compiler", "list-providers", "--help"]):
-            with pytest.raises(SystemExit) as exc_info:
-                main()
-        assert exc_info.value.code == 0
-
-    def test_list_providers_in_help(self, capsys: pytest.CaptureFixture[str]) -> None:
-        """Top-level --help lists list-providers."""
-        with patch.object(sys, "argv", ["wt-compiler", "--help"]):
-            with pytest.raises(SystemExit):
-                main()
-        assert "list-providers" in capsys.readouterr().out
-
-    def test_list_providers_empty(self, capsys: pytest.CaptureFixture[str]) -> None:
-        """When no providers registered, stdout says 'No providers registered'."""
-        mock_providers = make_mock_providers(
-            get_registered_providers=MagicMock(return_value=[])
-        )
-        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
-            with patch.object(sys, "argv", ["wt-compiler", "list-providers"]):
-                main()
-        out = capsys.readouterr().out
-        assert "No providers registered" in out
-        assert "register-provider" in out
-
-    def test_list_providers_with_entries(self, capsys: pytest.CaptureFixture[str]) -> None:
-        """Formatted table shows NAME, PACKAGE headers and provider row."""
-        mock_providers = make_mock_providers(
-            get_registered_providers=MagicMock(
-                return_value=[{"name": "my-p", "package": "my-pkg"}]
-            )
-        )
-        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
-            with patch.object(sys, "argv", ["wt-compiler", "list-providers"]):
-                main()
-        out = capsys.readouterr().out
-        assert "NAME" in out
-        assert "PACKAGE" in out
-        assert "my-p" in out
-        assert "my-pkg" in out
-
-    def test_list_providers_column_alignment(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """Provider row uses 30-char left-justified NAME column."""
-        mock_providers = make_mock_providers(
-            get_registered_providers=MagicMock(
-                return_value=[{"name": "my-p", "package": "my-pkg"}]
-            )
-        )
-        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
-            with patch.object(sys, "argv", ["wt-compiler", "list-providers"]):
-                main()
-        out = capsys.readouterr().out
-        assert f"{'my-p':<30}{'my-pkg'}" in out
-
-    def test_list_providers_separator(self, capsys: pytest.CaptureFixture[str]) -> None:
-        """Table separator is U+2500 repeated 54 times."""
-        mock_providers = make_mock_providers(
-            get_registered_providers=MagicMock(
-                return_value=[{"name": "my-p", "package": "my-pkg"}]
-            )
-        )
-        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
-            with patch.object(sys, "argv", ["wt-compiler", "list-providers"]):
-                main()
-        assert "─" * 54 in capsys.readouterr().out
-
-    def test_list_providers_registry_error(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """Malformed registry raises ValueError → exit 1 with error on stderr."""
-        mock_providers = make_mock_providers(
-            get_registered_providers=MagicMock(
-                side_effect=ValueError("Malformed providers.json")
-            )
-        )
-        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
-            with patch.object(sys, "argv", ["wt-compiler", "list-providers"]):
-                with pytest.raises(SystemExit) as exc_info:
-                    main()
-        assert exc_info.value.code == 1
-        assert "registry" in capsys.readouterr().err.lower()
-
-
-# ---------------------------------------------------------------------------
 # TestInitCommandWithProvider
 # ---------------------------------------------------------------------------
 
@@ -1316,7 +1094,7 @@ class TestInitProviderSelection:
     ) -> None:
         """Shows selector when providers are registered; selected provider is loaded."""
         mock_providers = make_mock_providers(
-            get_registered_providers=MagicMock(return_value=[{"name": "my-provider", "package": "pkg"}]),
+            get_available_providers=MagicMock(return_value=[{"name": "my-provider", "package": "pkg"}]),
             load_provider_class=MagicMock(return_value=_MinimalProvider),
         )
         select_mock = MagicMock()
@@ -1346,7 +1124,7 @@ class TestInitProviderSelection:
     ) -> None:
         """Selecting 'default' does not call load_provider_class."""
         mock_providers = make_mock_providers(
-            get_registered_providers=MagicMock(return_value=[{"name": "my-provider", "package": "pkg"}]),
+            get_available_providers=MagicMock(return_value=[{"name": "my-provider", "package": "pkg"}]),
             load_provider_class=MagicMock(return_value=_MinimalProvider),
         )
         select_mock = MagicMock()
@@ -1373,7 +1151,7 @@ class TestInitProviderSelection:
     def test_ctrl_c_on_selector_exits_1(self) -> None:
         """Ctrl+C on selector (ask() returns None) exits with code 1."""
         mock_providers = make_mock_providers(
-            get_registered_providers=MagicMock(return_value=[{"name": "my-provider", "package": "pkg"}]),
+            get_available_providers=MagicMock(return_value=[{"name": "my-provider", "package": "pkg"}]),
         )
         select_mock = MagicMock()
         select_mock.return_value.ask.return_value = None
@@ -1389,7 +1167,7 @@ class TestInitProviderSelection:
     def test_no_interactive_skips_selector(self, tmp_path: Path) -> None:
         """--no-interactive skips the provider selection prompt."""
         mock_providers = make_mock_providers(
-            get_registered_providers=MagicMock(return_value=[{"name": "my-provider", "package": "pkg"}]),
+            get_available_providers=MagicMock(return_value=[{"name": "my-provider", "package": "pkg"}]),
             load_provider_class=MagicMock(return_value=_MinimalProvider),
         )
         select_mock = MagicMock()
@@ -1423,7 +1201,7 @@ class TestInitProviderSelection:
     def test_no_registered_providers_skips_selector(self, tmp_path: Path) -> None:
         """When no providers are registered, selector is not shown."""
         mock_providers = make_mock_providers(
-            get_registered_providers=MagicMock(return_value=[]),
+            get_available_providers=MagicMock(return_value=[]),
         )
         select_mock = MagicMock()
         text_mock = MagicMock()
@@ -1448,7 +1226,7 @@ class TestInitProviderSelection:
     def test_help_skips_selector(self, capsys: pytest.CaptureFixture[str]) -> None:
         """--help skips the provider selection prompt."""
         mock_providers = make_mock_providers(
-            get_registered_providers=MagicMock(return_value=[{"name": "my-provider", "package": "pkg"}]),
+            get_available_providers=MagicMock(return_value=[{"name": "my-provider", "package": "pkg"}]),
         )
         select_mock = MagicMock()
 
