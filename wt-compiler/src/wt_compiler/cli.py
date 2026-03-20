@@ -230,19 +230,21 @@ def main() -> None:
     # We need the provider name up front so its questions can be added to
     # init_parser as proper argparse flags (enabling --no-interactive batch
     # mode with any provider).
-    pre_parser = argparse.ArgumentParser(add_help=False)
-    pre_parser.add_argument("command", nargs="?", default=None)
-    pre_parser.add_argument(
+    #
+    # init_flags is a shared parent used by both the pre-parser and init_parser,
+    # so --provider and --no-interactive are declared exactly once.
+    init_flags = argparse.ArgumentParser(add_help=False)
+    init_flags.add_argument(
         "--provider",
         default=None,
         metavar="PROVIDER",
         help=(
-            "Name of a registered wizard provider. "
+            "Name of an installed wizard provider. "
             "Omit to use the built-in DefaultWizardProvider. "
             "Custom providers must include a 'workflow_id' answer to name the output directory."
         ),
     )
-    pre_parser.add_argument(
+    init_flags.add_argument(
         "--no-interactive",
         action="store_true",
         help=(
@@ -250,6 +252,8 @@ def main() -> None:
             "Required flags depend on the selected provider's questions."
         ),
     )
+    pre_parser = argparse.ArgumentParser(add_help=False, parents=[init_flags])
+    pre_parser.add_argument("command", nargs="?", default=None)
     pre_args, extras = pre_parser.parse_known_args()
     provider_name: str | None = pre_args.provider
     is_init = pre_args.command == "init"
@@ -384,27 +388,7 @@ def main() -> None:
             "Use --no-interactive with --workflow-id, --workflow-name, and --author-name "
             "to run in batch mode."
         ),
-    )
-    # Declare --provider and --no-interactive explicitly rather than via parents=[pre_parser].
-    # Using a previously-parsed parser as a parent relies on argparse copying only action
-    # definitions (not parse state), which is an undocumented implementation detail.
-    init_parser.add_argument(
-        "--provider",
-        default=None,
-        metavar="PROVIDER",
-        help=(
-            "Name of a registered wizard provider. "
-            "Omit to use the built-in DefaultWizardProvider. "
-            "Custom providers must include a 'workflow_id' answer to name the output directory."
-        ),
-    )
-    init_parser.add_argument(
-        "--no-interactive",
-        action="store_true",
-        help=(
-            "Run in batch mode using CLI flags instead of interactive prompts. "
-            "Required flags depend on the selected provider's questions."
-        ),
+        parents=[init_flags],
     )
     init_parser.add_argument(
         "--output-dir",
