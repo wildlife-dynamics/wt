@@ -231,6 +231,7 @@ def main() -> None:
     # init_parser as proper argparse flags (enabling --no-interactive batch
     # mode with any provider).
     pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument("command", nargs="?", default=None)
     pre_parser.add_argument(
         "--provider",
         default=None,
@@ -251,9 +252,7 @@ def main() -> None:
     )
     pre_args, extras = pre_parser.parse_known_args()
     provider_name: str | None = pre_args.provider
-    # Detect init subcommand by finding the first non-flag token in extras.
-    # Using `extras[0]` would break if any unknown global flag precedes the subcommand.
-    is_init = any(arg == "init" for arg in extras if not arg.startswith("-"))
+    is_init = pre_args.command == "init"
 
     wizard: AbstractWizardProvider
     if is_init:
