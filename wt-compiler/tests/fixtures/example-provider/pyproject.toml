@@ -14,3 +14,6 @@ example = "wt_example_provider:ExampleProvider"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+wt_example_provider = ["templates/*"]

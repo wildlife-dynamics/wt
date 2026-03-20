@@ -1,5 +1,9 @@
 """Example custom wizard provider — test fixture for wt-compiler.
 
+Extends ``DefaultWizardProvider`` with one additional question
+(``add_boilerplate_tasks``) and overrides ``spec.yaml.jinja2`` to inject
+example tasks into the generated spec when requested.
+
 Registered as the ``example`` entry point in the ``wt_compiler.wizard_providers``
 group (declared in the fixture package's ``pyproject.toml``).
 
@@ -10,65 +14,48 @@ Install for testing::
 Examples:
     >>> from wt_example_provider import ExampleProvider
     >>> p = ExampleProvider()
-    >>> [q["dest"] for q in p.get_questions()]
-    ['workflow_id', 'project_type']
+    >>> p.get_questions()[-1]["dest"]
+    'add_boilerplate_tasks'
 """
 
 from __future__ import annotations
 
-from wt_compiler.wizard.abstract import AbstractWizardProvider, WizardQuestion
-from wt_compiler.wizard.default import workflow_id_type
+from wt_compiler.wizard.default import DefaultWizardProvider
+from wt_compiler.wizard.abstract import WizardQuestion
 
 
-class ExampleProvider(AbstractWizardProvider):
-    """Minimal custom provider with two questions.
+class ExampleProvider(DefaultWizardProvider):
+    """DefaultWizardProvider extended with an ``add_boilerplate_tasks`` question.
 
-    Asks for a ``workflow_id`` (required by the CLI to name the output
-    directory) and a ``project_type`` chosen from a fixed list.  Intended
-    as both a test fixture and a concise reference for third-party provider
-    authors.
+    Asks all standard questions from ``DefaultWizardProvider``, then asks
+    whether to populate ``spec.yaml`` with example boilerplate tasks.
+    The bundled ``spec.yaml.jinja2`` template overrides the default one and
+    renders the tasks section conditionally.
 
     Examples:
         >>> p = ExampleProvider()
-        >>> gen = p.input_generator()
-        >>> q = next(gen)
-        >>> q["dest"]
-        'workflow_id'
-        >>> q = gen.send("my_workflow")
-        >>> q["dest"]
-        'project_type'
-        >>> try:
-        ...     gen.send("batch")
-        ... except StopIteration:
-        ...     pass
-        >>> p.answers["workflow_id"]
-        'my_workflow'
-        >>> p.answers["project_type"]
-        'batch'
+        >>> questions = p.get_questions()
+        >>> questions[-1]["dest"]
+        'add_boilerplate_tasks'
+        >>> questions[-1]["argparse"]["choices"]
+        ['yes', 'no']
     """
 
     def get_questions(self) -> list[WizardQuestion]:
-        """Return the two questions this provider asks.
+        """Return default questions plus ``add_boilerplate_tasks``.
 
         Returns:
-            A list containing a ``workflow_id`` text question and a
-            ``project_type`` select question.
+            All questions from ``DefaultWizardProvider`` followed by the
+            ``add_boilerplate_tasks`` select question.
         """
         return [
+            *super().get_questions(),
             {
-                "dest": "workflow_id",
+                "dest": "add_boilerplate_tasks",
                 "argparse": {
-                    "type": workflow_id_type,
-                    "help": "Workflow ID (valid Python identifier, ≤64 chars)",
-                },
-                "wizard": {},
-            },
-            {
-                "dest": "project_type",
-                "argparse": {
-                    "choices": ["batch", "streaming", "interactive"],
-                    "default": "batch",
-                    "help": "Project execution model",
+                    "choices": ["yes", "no"],
+                    "default": "yes",
+                    "help": "Populate spec.yaml with example boilerplate tasks",
                 },
                 "wizard": {},
             },
