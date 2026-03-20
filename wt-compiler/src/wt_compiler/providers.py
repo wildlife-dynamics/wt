@@ -259,20 +259,33 @@ def load_provider_class(name: str) -> type[AbstractWizardProvider]:
     stored_pkg = next(e["package"] for e in registry if e["name"] == name)
     all_eps = list(entry_points(group="wt_compiler.wizard_providers"))
     matching = [ep for ep in all_eps if ep.name == name]
-    if not matching:
-        raise ValueError(
-            f"Provider {name!r} is registered but its package is not installed. "
-            f"Re-run: wt-compiler register-provider <package>"
-        )
-    # Prefer the EP from the registered package; fall back to first if dist info unavailable.
+    # Only load the EP that belongs to the registered package.  If another installed
+    # package exposes an EP with the same name, refuse to load rather than silently
+    # falling back — a name collision is a security signal, not a graceful degradation.
     ep_to_use = next(
         (
             ep
             for ep in matching
             if ep.dist is not None and ep.dist.metadata.get("Name") == stored_pkg
         ),
-        matching[0],
+        None,
     )
+    conflicting = [
+        ep.dist.metadata.get("Name")
+        for ep in matching
+        if ep.dist is not None and ep.dist.metadata.get("Name") != stored_pkg
+    ]
+    if ep_to_use is None:
+        if conflicting:
+            raise ValueError(
+                f"Provider {name!r} is registered from {stored_pkg!r}, but a conflicting "
+                f"entry point with the same name was found from: {conflicting}. "
+                f"Refusing to load an unverified provider."
+            )
+        raise ValueError(
+            f"Provider {name!r} is registered but its package is not installed. "
+            f"Re-run: wt-compiler register-provider <package>"
+        )
     try:
         cls = ep_to_use.load()
     except Exception as e:

@@ -382,6 +382,8 @@ class TestLoadProviderClass:
         registry_path.write_text('{"providers": [{"name": "my-p", "package": "my-pkg"}]}')
         mock_ep = MagicMock()
         mock_ep.name = "my-p"
+        mock_ep.dist = MagicMock()
+        mock_ep.dist.metadata = {"Name": "my-pkg"}
         mock_ep.load.return_value = _FakeProvider
         with patch("wt_compiler.providers.entry_points", return_value=[mock_ep]):
             result = load_provider_class("my-p")
@@ -395,12 +397,27 @@ class TestLoadProviderClass:
     def test_raises_value_error_when_registered_but_not_installed(
         self, registry_path: Path
     ) -> None:
-        """Raises ValueError when provider is registered but entry point is not found."""
+        """Raises ValueError when no EP with the registered package name is found."""
         registry_path.parent.mkdir(parents=True, exist_ok=True)
         registry_path.write_text('{"providers": [{"name": "my-p", "package": "my-pkg"}]}')
         with patch("wt_compiler.providers.entry_points", return_value=[]):
             with pytest.raises(ValueError, match="not installed"):
                 load_provider_class("my-p")
+
+    def test_raises_value_error_on_conflicting_ep_from_other_package(
+        self, registry_path: Path
+    ) -> None:
+        """Raises ValueError (not silently loads) when only a conflicting EP is found."""
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+        registry_path.write_text('{"providers": [{"name": "my-p", "package": "my-pkg"}]}')
+        evil_ep = MagicMock()
+        evil_ep.name = "my-p"
+        evil_ep.dist = MagicMock()
+        evil_ep.dist.metadata = {"Name": "evil-pkg"}
+        with patch("wt_compiler.providers.entry_points", return_value=[evil_ep]):
+            with pytest.raises(ValueError, match="conflicting"):
+                load_provider_class("my-p")
+        evil_ep.load.assert_not_called()
 
     def test_raises_type_error_on_invalid_class(self, registry_path: Path) -> None:
         """Raises TypeError when loaded class is not an AbstractWizardProvider subclass."""
@@ -408,6 +425,8 @@ class TestLoadProviderClass:
         registry_path.write_text('{"providers": [{"name": "my-p", "package": "my-pkg"}]}')
         mock_ep = MagicMock()
         mock_ep.name = "my-p"
+        mock_ep.dist = MagicMock()
+        mock_ep.dist.metadata = {"Name": "my-pkg"}
         mock_ep.load.return_value = str  # not an AbstractWizardProvider subclass
         with patch("wt_compiler.providers.entry_points", return_value=[mock_ep]):
             with pytest.raises(TypeError, match="not a subclass of AbstractWizardProvider"):
