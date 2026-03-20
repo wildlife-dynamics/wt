@@ -18,10 +18,6 @@ where = ["src"]
 [tool.setuptools.package-data]
 wt_example_provider = ["templates/*"]
 
-# ============================================================================
-# Pixi Build Configuration (conda package building)
-# ============================================================================
-
 [tool.pixi.package]
 name = "wt-example-provider"
 version = "0.1.0"
