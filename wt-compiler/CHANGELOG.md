@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.3.0 — 2026-03-19
+
+- Add CI and Tag GitHub Actions workflow templates to the wizard scaffold ([#83](https://github.com/wildlife-dynamics/wt/pull/83))
+- Add `.gitignore` template to the wizard scaffold ([#83](https://github.com/wildlife-dynamics/wt/pull/83))
+- Add `linux-aarch64` platform support ([#83](https://github.com/wildlife-dynamics/wt/pull/83))
+- Fix wizard template rendering for nested output paths ([#83](https://github.com/wildlife-dynamics/wt/pull/83))
+- Pin compiled output version bounds for wt-task (`>=0.1.2`) and wt-runner (`>=0.1.4`) ([#96](https://github.com/wildlife-dynamics/wt/pull/96))
+- Remove errant injection of wt-task into wt-runner conda environment ([#96](https://github.com/wildlife-dynamics/wt/pull/96))
+- Pin `datamodel-code-generator` to `==0.42.1` ([#96](https://github.com/wildlife-dynamics/wt/pull/96))
+
 ## v0.2.0 — 2026-03-13
 
 - Support PyPI dependencies (`git`/`path`/`url` sources) in workflow specs, emitted as `[pypi-dependencies]` in compiled `pixi.toml` ([#60](https://github.com/wildlife-dynamics/wt/pull/60))
