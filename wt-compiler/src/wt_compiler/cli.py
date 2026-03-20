@@ -223,6 +223,38 @@ def main() -> None:
     Parses command-line arguments and dispatches to the appropriate subcommand.
     Currently supports the 'compile' subcommand for compiling workflow specs.
     """
+    # Phase 1: pre-parse to detect --provider before building the full parser.
+    # We need the provider name up front so its questions can be added to
+    # init_parser as proper argparse flags (enabling --no-interactive batch
+    # mode with any provider).  A dedicated flag works cleanly with
+    # parse_known_args(); subparser positionals do not.
+    _pre = argparse.ArgumentParser(add_help=False)
+    _pre.add_argument("--provider", default=None)
+    _pre_args, _ = _pre.parse_known_args()
+    _provider_name: str | None = _pre_args.provider
+
+    wizard: AbstractWizardProvider
+    if _provider_name is not None:
+        import wt_compiler.providers as _providers
+
+        try:
+            provider_cls = _providers.load_provider_class(_provider_name)
+        except (ValueError, TypeError) as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        try:
+            wizard = provider_cls()
+        except Exception as e:
+            print(
+                f"Error initializing provider {_provider_name!r}: {e}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+    else:
+        wizard = DefaultWizardProvider()
+    init_questions = wizard.get_questions()
+
+    # Phase 2: build the full parser using the resolved provider's questions.
     parser = argparse.ArgumentParser(
         prog="wt-compiler",
         description="Compile workflow specifications into executable artifacts",
@@ -289,10 +321,7 @@ def main() -> None:
         ),
     )
 
-    # init subcommand
-    wizard = DefaultWizardProvider()
-    init_questions = wizard.get_questions()
-
+    # init subcommand  (init_questions and wizard were resolved in phase 1 above)
     init_parser = subparsers.add_parser(
         "init",
         help="Scaffold a new workflow project directory",
@@ -318,13 +347,12 @@ def main() -> None:
         "--no-interactive",
         action="store_true",
         help=(
-            "Run in batch mode using CLI flags. "
-            "Requires --workflow-id, --workflow-name, and --author-name."
+            "Run in batch mode using CLI flags instead of interactive prompts. "
+            "Required flags depend on the selected provider's questions."
         ),
     )
     init_parser.add_argument(
-        "provider_name",
-        nargs="?",
+        "--provider",
         default=None,
         metavar="PROVIDER",
         help=(
@@ -479,46 +507,14 @@ def _finalize_init(provider: AbstractWizardProvider, args: argparse.Namespace) -
 def _init(args: argparse.Namespace, provider: AbstractWizardProvider) -> None:
     """Execute the init command.
 
-    Scaffolds a new workflow project directory. If a provider name is given,
-    loads the registered provider interactively. Otherwise dispatches to
-    ``_batch_init`` when ``--no-interactive`` is passed, or
-    ``_interactive_init`` for interactive mode.
+    Scaffolds a new workflow project directory. ``provider`` has already been
+    resolved and instantiated by ``main()`` (default or custom), so this
+    function only dispatches to ``_batch_init`` or ``_interactive_init``.
 
     Args:
         args: Parsed command-line arguments.
-        provider: Default wizard provider instance (used when no provider name given).
+        provider: Wizard provider instance (default or custom, pre-resolved).
     """
-    if args.provider_name is not None:
-        import wt_compiler.providers as _providers
-
-        if args.no_interactive:
-            print(
-                "Error: --no-interactive is not supported when using a custom provider.",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        try:
-            provider_cls = _providers.load_provider_class(args.provider_name)
-        except (ValueError, TypeError) as e:
-            print(f"Error: {e}", file=sys.stderr)
-            sys.exit(1)
-        provider = provider_cls()
-        try:
-            _interactive_init(provider)
-        except Exception as e:
-            print(f"Error: {e}", file=sys.stderr)
-            sys.exit(1)
-        try:
-            _finalize_init(provider, args)
-        except FileExistsError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            print("Use --clobber to overwrite existing directory", file=sys.stderr)
-            sys.exit(1)
-        except Exception as e:
-            print(f"Error: {e}", file=sys.stderr)
-            sys.exit(1)
-        return
-
     if args.no_interactive:
         _batch_init(provider, args, provider.get_questions())
         try:

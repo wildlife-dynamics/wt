@@ -1129,15 +1129,15 @@ class TestInitCommandWithProvider:
         else:
             sys.modules.pop("wt_compiler.providers", None)
 
-    def test_init_help_shows_provider_arg(
+    def test_init_help_shows_provider_flag(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """init --help shows PROVIDER positional arg metavar."""
+        """init --help shows --provider flag."""
         with patch.object(sys, "argv", ["wt-compiler", "init", "--help"]):
             with pytest.raises(SystemExit) as exc_info:
                 main()
         assert exc_info.value.code == 0
-        assert "PROVIDER" in capsys.readouterr().out
+        assert "--provider" in capsys.readouterr().out
 
     def test_init_with_provider_interactive(
         self, capsys: pytest.CaptureFixture[str], tmp_path: Path
@@ -1155,7 +1155,7 @@ class TestInitCommandWithProvider:
             with patch.object(
                 sys,
                 "argv",
-                ["wt-compiler", "init", "my-provider", "--output-dir", str(tmp_path)],
+                ["wt-compiler", "init", "--provider", "my-provider", "--output-dir", str(tmp_path)],
             ):
                 with patch("questionary.text", text_mock):
                     with patch("questionary.confirm", confirm_mock):
@@ -1166,10 +1166,10 @@ class TestInitCommandWithProvider:
 
         mock_dump.assert_called_once_with(tmp_path / "my_wf")
 
-    def test_init_with_provider_batch_flags_error(
-        self, capsys: pytest.CaptureFixture[str]
+    def test_init_with_provider_no_interactive_success(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
     ) -> None:
-        """--no-interactive with a custom provider name exits 1 with 'not supported'."""
+        """--no-interactive with all required flags succeeds for a custom provider."""
         mock_providers = make_mock_providers(
             load_provider_class=MagicMock(return_value=_MinimalProvider)
         )
@@ -1177,12 +1177,41 @@ class TestInitCommandWithProvider:
             with patch.object(
                 sys,
                 "argv",
-                ["wt-compiler", "init", "my-provider", "--no-interactive"],
+                [
+                    "wt-compiler",
+                    "init",
+                    "--provider",
+                    "my-provider",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "my_wf",
+                    "--output-dir",
+                    str(tmp_path),
+                ],
+            ):
+                with patch(
+                    "wt_compiler.wizard.abstract.AbstractWizardProvider.dump"
+                ) as mock_dump:
+                    main()
+        mock_dump.assert_called_once_with(tmp_path / "my_wf")
+
+    def test_init_with_provider_no_interactive_missing_flags(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--no-interactive without required flags exits 1 with '--no-interactive requires'."""
+        mock_providers = make_mock_providers(
+            load_provider_class=MagicMock(return_value=_MinimalProvider)
+        )
+        with patch.dict(sys.modules, {"wt_compiler.providers": mock_providers}):
+            with patch.object(
+                sys,
+                "argv",
+                ["wt-compiler", "init", "--provider", "my-provider", "--no-interactive"],
             ):
                 with pytest.raises(SystemExit) as exc_info:
                     main()
         assert exc_info.value.code == 1
-        assert "not supported" in capsys.readouterr().err
+        assert "--no-interactive requires" in capsys.readouterr().err
 
     def test_init_with_unknown_provider_error(
         self, capsys: pytest.CaptureFixture[str]
@@ -1193,7 +1222,7 @@ class TestInitCommandWithProvider:
         )
         with patch.dict(sys.modules, {"wt_compiler.providers": mock_providers}):
             with patch.object(
-                sys, "argv", ["wt-compiler", "init", "unknown-provider"]
+                sys, "argv", ["wt-compiler", "init", "--provider", "unknown-provider"]
             ):
                 with pytest.raises(SystemExit) as exc_info:
                     main()
@@ -1209,7 +1238,7 @@ class TestInitCommandWithProvider:
         )
         with patch.dict(sys.modules, {"wt_compiler.providers": mock_providers}):
             with patch.object(
-                sys, "argv", ["wt-compiler", "init", "bad-provider"]
+                sys, "argv", ["wt-compiler", "init", "--provider", "bad-provider"]
             ):
                 with pytest.raises(SystemExit) as exc_info:
                     main()
@@ -1236,6 +1265,7 @@ class TestInitCommandWithProvider:
                 [
                     "wt-compiler",
                     "init",
+                    "--provider",
                     "my-provider",
                     "--output-dir",
                     str(tmp_path),
