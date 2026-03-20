@@ -138,28 +138,21 @@ Each package can expose multiple entry points.
 Your provider **must** include a question whose `dest` is `"workflow_id"`.
 `DefaultWizardProvider` already provides this — subclasses inherit it automatically.
 
-### Registering the package
+### Installing the package
 
-Once published to PyPI (or a local index), users register it with:
+Once published to PyPI (or a local index), install it with any package
+manager into the same environment as `wt-compiler`:
 
 ```bash
-wt-compiler register-provider my-wt-provider                  # uv (default)
-wt-compiler register-provider my-wt-provider --installer pip  # pip
-wt-compiler register-provider my-wt-provider --installer pixi # pixi global
+uv pip install my-wt-provider   # uv
+pip install my-wt-provider      # pip
+pixi add my-wt-provider         # pixi
 ```
 
-`--installer` options:
-
-| Value | Command issued |
-|-------|---------------|
-| `uv` (default) | `uv pip install --python <current-python> <pkg>` |
-| `pip` | `<current-python> -m pip install <pkg>` |
-| `pixi` | `pixi global install <pkg>` |
-
-Registration persists in `~/.config/wt-compiler/providers.json` (respects
-`$XDG_CONFIG_HOME`). Registered providers appear in the provider selection
-prompt when running `wt-compiler init`, and can be selected directly with
-`--provider my-provider`.
+Installed providers are discovered automatically via the
+`wt_compiler.wizard_providers` entry point — no registration step required.
+They appear in the provider selection prompt when running `wt-compiler init`
+and can be selected directly with `--provider my-provider`.
 
 ### Minimal provider example
 

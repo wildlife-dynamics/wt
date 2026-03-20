@@ -213,7 +213,7 @@ wt-<id>-workflow/
 
 ## CLI Reference
 
-`wt-compiler` exposes four subcommands.
+`wt-compiler` exposes two subcommands.
 
 ### `init`
 
@@ -223,7 +223,7 @@ Scaffold a new workflow project directory.
 # Interactive (default) — arrow-key prompts for all fields
 wt-compiler init
 
-# Use a registered custom provider
+# Use a custom provider (installed in the current environment)
 wt-compiler init --provider my-provider-name
 
 # Write into a specific parent directory
@@ -257,40 +257,6 @@ wt-compiler compile --spec spec.yaml --clobber --update
 
 # GCP variant
 wt-compiler compile --spec spec.yaml --variant gcp
-```
-
-### `register-provider`
-
-Install a third-party wizard provider package and add it to the local
-allowlist (`~/.config/wt-compiler/providers.json`).
-
-```bash
-# Install with uv (default)
-wt-compiler register-provider my-wt-provider
-
-# Choose a specific installer
-wt-compiler register-provider my-wt-provider --installer pip
-wt-compiler register-provider my-wt-provider --installer pixi
-```
-
-`--installer` options:
-
-| Value | Command issued |
-|-------|---------------|
-| `uv` (default) | `uv pip install --python <current-python> <pkg>` |
-| `pip` | `<current-python> -m pip install <pkg>` |
-| `pixi` | `pixi global install <pkg>` |
-
-The package must expose at least one `wt_compiler.wizard_providers` entry
-point. Once registered, the provider appears in the selection prompt when
-running `wt-compiler init` and can be selected with `--provider <name>`.
-
-### `list-providers`
-
-Show all registered wizard providers.
-
-```bash
-wt-compiler list-providers
 ```
 
 ---
@@ -327,9 +293,11 @@ class MyProvider(DefaultWizardProvider):
 my-provider = "my_package.provider:MyProvider"
 ```
 
-The entry point name is the value passed to `--provider`. Every provider must
-produce a `workflow_id` answer (inherited automatically from
-`DefaultWizardProvider`) — `wt-compiler init` uses it to name the output directory.
+The entry point name is the value passed to `--provider`. Any installed
+package exposing this entry point is discovered automatically — no
+registration step required. Every provider must produce a `workflow_id`
+answer (inherited automatically from `DefaultWizardProvider`) —
+`wt-compiler init` uses it to name the output directory.
 
 See the [wizard implementor guide](https://github.com/wildfire-analytics/wt/blob/main/wt-compiler/src/wt_compiler/wizard/README.md)
 for full details on question types, conditional logic, and custom templates.
