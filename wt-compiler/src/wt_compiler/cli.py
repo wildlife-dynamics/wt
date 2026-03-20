@@ -230,8 +230,35 @@ def main() -> None:
     # parse_known_args(); subparser positionals do not.
     _pre = argparse.ArgumentParser(add_help=False)
     _pre.add_argument("--provider", default=None)
-    _pre_args, _ = _pre.parse_known_args()
+    _pre.add_argument("--no-interactive", action="store_true")
+    _pre_args, _extras = _pre.parse_known_args()
     _provider_name: str | None = _pre_args.provider
+    _is_init = bool(_extras and _extras[0] == "init")
+
+    if (
+        _provider_name is None
+        and _is_init
+        and not _pre_args.no_interactive
+        and "--help" not in _extras
+        and "-h" not in _extras
+    ):
+        import wt_compiler.providers as _providers
+
+        try:
+            _registered = _providers.get_registered_providers()
+        except (ValueError, PermissionError):
+            _registered = []
+        if _registered:
+            _choices = ["default"] + [e["name"] for e in _registered]
+            _selected = questionary.select(
+                "Select a wizard provider:",
+                choices=_choices,
+                default="default",
+            ).ask()
+            if _selected is None:
+                sys.exit(1)  # Ctrl+C
+            if _selected != "default":
+                _provider_name = _selected
 
     wizard: AbstractWizardProvider
     if _provider_name is not None:

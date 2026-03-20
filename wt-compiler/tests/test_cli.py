@@ -345,6 +345,27 @@ class TestCompileCommand:
 class TestInitCommand:
     """Tests for the init subcommand."""
 
+    @pytest.fixture(autouse=True)
+    def _reset_providers_module(self) -> None:
+        """Remove cached wt_compiler.providers before each test to avoid cross-test pollution.
+
+        The interactive provider selection in main() lazily imports wt_compiler.providers.
+        Without this fixture, a prior test's real import can leak into sys.modules and
+        bypass patch.dict mocking.
+        """
+        import wt_compiler as _pkg
+
+        orig_sys = sys.modules.get("wt_compiler.providers")
+        _pkg.__dict__.pop("providers", None)
+        sys.modules.pop("wt_compiler.providers", None)
+        yield  # type: ignore[misc]
+        _pkg.__dict__.pop("providers", None)
+        if orig_sys is not None:
+            sys.modules["wt_compiler.providers"] = orig_sys
+            _pkg.__dict__["providers"] = orig_sys
+        else:
+            sys.modules.pop("wt_compiler.providers", None)
+
     def test_init_help(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Test that init --help shows expected flags."""
         with patch.object(sys, "argv", ["wt-compiler", "init", "--help"]):
@@ -526,14 +547,16 @@ class TestInitCommand:
         select_mock = MagicMock()
         select_mock.return_value.ask.side_effect = ["MIT", "conda", "conda-forge"]
 
-        with patch.object(sys, "argv", ["wt-compiler", "init", "--output-dir", str(tmp_path)]):
-            with patch("questionary.text", text_mock):
-                with patch("questionary.select", select_mock):
-                    with patch("questionary.confirm", confirm_mock):
-                        with patch(
-                            "wt_compiler.wizard.abstract.AbstractWizardProvider.dump"
-                        ) as mock_dump:
-                            main()
+        mock_providers = make_mock_providers()
+        with patch.dict(sys.modules, {"wt_compiler.providers": mock_providers}):
+            with patch.object(sys, "argv", ["wt-compiler", "init", "--output-dir", str(tmp_path)]):
+                with patch("questionary.text", text_mock):
+                    with patch("questionary.select", select_mock):
+                        with patch("questionary.confirm", confirm_mock):
+                            with patch(
+                                "wt_compiler.wizard.abstract.AbstractWizardProvider.dump"
+                            ) as mock_dump:
+                                main()
 
         mock_dump.assert_called_once()
         assert mock_dump.call_args[0][0] == tmp_path / "my_workflow"
@@ -552,12 +575,14 @@ class TestInitCommand:
         select_mock = MagicMock()
         select_mock.return_value.ask.side_effect = ["MIT", "conda", "conda-forge"]
 
-        with patch.object(sys, "argv", ["wt-compiler", "init", "--output-dir", str(tmp_path)]):
-            with patch("questionary.text", text_mock):
-                with patch("questionary.select", select_mock):
-                    with patch("questionary.confirm", confirm_mock):
-                        with patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump"):
-                            main()
+        mock_providers = make_mock_providers()
+        with patch.dict(sys.modules, {"wt_compiler.providers": mock_providers}):
+            with patch.object(sys, "argv", ["wt-compiler", "init", "--output-dir", str(tmp_path)]):
+                with patch("questionary.text", text_mock):
+                    with patch("questionary.select", select_mock):
+                        with patch("questionary.confirm", confirm_mock):
+                            with patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump"):
+                                main()
 
         # questionary.select called for license_type, req_type (conda), channel
         assert select_mock.call_count == 3
@@ -1280,6 +1305,181 @@ class TestInitCommandWithProvider:
                             main()
 
         mock_dump.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# TestInitProviderSelection
+# ---------------------------------------------------------------------------
+
+
+class TestInitProviderSelection:
+    """Tests for the interactive provider selection prompt in wt-compiler init."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_providers_module(self) -> None:
+        """Ensure patch.dict(sys.modules, ...) works regardless of test order."""
+        import wt_compiler as _pkg
+
+        orig_sys = sys.modules.get("wt_compiler.providers")
+        _pkg.__dict__.pop("providers", None)
+        sys.modules.pop("wt_compiler.providers", None)
+        yield  # type: ignore[misc]
+        _pkg.__dict__.pop("providers", None)
+        if orig_sys is not None:
+            sys.modules["wt_compiler.providers"] = orig_sys
+            _pkg.__dict__["providers"] = orig_sys
+        else:
+            sys.modules.pop("wt_compiler.providers", None)
+
+    def test_shows_selector_and_uses_selected_provider(
+        self, tmp_path: Path
+    ) -> None:
+        """Shows selector when providers are registered; selected provider is loaded."""
+        mock_providers = make_mock_providers(
+            get_registered_providers=MagicMock(return_value=[{"name": "my-provider", "package": "pkg"}]),
+            load_provider_class=MagicMock(return_value=_MinimalProvider),
+        )
+        select_mock = MagicMock()
+        select_mock.return_value.ask.return_value = "my-provider"
+        text_mock = MagicMock()
+        text_mock.return_value.ask.side_effect = ["my_wf"]
+        confirm_mock = MagicMock()
+        confirm_mock.return_value.ask.return_value = False
+
+        with patch.dict(sys.modules, {"wt_compiler.providers": mock_providers}):
+            with patch.object(
+                sys, "argv", ["wt-compiler", "init", "--output-dir", str(tmp_path)]
+            ):
+                with patch("questionary.select", select_mock):
+                    with patch("questionary.text", text_mock):
+                        with patch("questionary.confirm", confirm_mock):
+                            with patch(
+                                "wt_compiler.wizard.abstract.AbstractWizardProvider.dump"
+                            ):
+                                main()
+
+        select_mock.assert_called_once()
+        mock_providers.load_provider_class.assert_called_once_with("my-provider")
+
+    def test_default_selection_uses_default_provider(
+        self, tmp_path: Path
+    ) -> None:
+        """Selecting 'default' does not call load_provider_class."""
+        mock_providers = make_mock_providers(
+            get_registered_providers=MagicMock(return_value=[{"name": "my-provider", "package": "pkg"}]),
+            load_provider_class=MagicMock(return_value=_MinimalProvider),
+        )
+        select_mock = MagicMock()
+        select_mock.return_value.ask.return_value = "default"
+        text_mock = MagicMock()
+        text_mock.return_value.ask.side_effect = ["my_wf", "My Workflow", "Author"]
+        confirm_mock = MagicMock()
+        confirm_mock.return_value.ask.return_value = False
+
+        with patch.dict(sys.modules, {"wt_compiler.providers": mock_providers}):
+            with patch.object(
+                sys, "argv", ["wt-compiler", "init", "--output-dir", str(tmp_path)]
+            ):
+                with patch("questionary.select", select_mock):
+                    with patch("questionary.text", text_mock):
+                        with patch("questionary.confirm", confirm_mock):
+                            with patch(
+                                "wt_compiler.wizard.abstract.AbstractWizardProvider.dump"
+                            ):
+                                main()
+
+        mock_providers.load_provider_class.assert_not_called()
+
+    def test_ctrl_c_on_selector_exits_1(self) -> None:
+        """Ctrl+C on selector (ask() returns None) exits with code 1."""
+        mock_providers = make_mock_providers(
+            get_registered_providers=MagicMock(return_value=[{"name": "my-provider", "package": "pkg"}]),
+        )
+        select_mock = MagicMock()
+        select_mock.return_value.ask.return_value = None
+
+        with patch.dict(sys.modules, {"wt_compiler.providers": mock_providers}):
+            with patch.object(sys, "argv", ["wt-compiler", "init"]):
+                with patch("questionary.select", select_mock):
+                    with pytest.raises(SystemExit) as exc_info:
+                        main()
+
+        assert exc_info.value.code == 1
+
+    def test_no_interactive_skips_selector(self, tmp_path: Path) -> None:
+        """--no-interactive skips the provider selection prompt."""
+        mock_providers = make_mock_providers(
+            get_registered_providers=MagicMock(return_value=[{"name": "my-provider", "package": "pkg"}]),
+            load_provider_class=MagicMock(return_value=_MinimalProvider),
+        )
+        select_mock = MagicMock()
+
+        with patch.dict(sys.modules, {"wt_compiler.providers": mock_providers}):
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "init",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "my_wf",
+                    "--workflow-name",
+                    "My Workflow",
+                    "--author-name",
+                    "Author",
+                    "--output-dir",
+                    str(tmp_path),
+                ],
+            ):
+                with patch("questionary.select", select_mock):
+                    with patch(
+                        "wt_compiler.wizard.abstract.AbstractWizardProvider.dump"
+                    ):
+                        main()
+
+        select_mock.assert_not_called()
+
+    def test_no_registered_providers_skips_selector(self, tmp_path: Path) -> None:
+        """When no providers are registered, selector is not shown."""
+        mock_providers = make_mock_providers(
+            get_registered_providers=MagicMock(return_value=[]),
+        )
+        select_mock = MagicMock()
+        text_mock = MagicMock()
+        text_mock.return_value.ask.side_effect = ["my_wf", "My Workflow", "Author"]
+        confirm_mock = MagicMock()
+        confirm_mock.return_value.ask.return_value = False
+
+        with patch.dict(sys.modules, {"wt_compiler.providers": mock_providers}):
+            with patch.object(
+                sys, "argv", ["wt-compiler", "init", "--output-dir", str(tmp_path)]
+            ):
+                with patch("questionary.select", select_mock):
+                    with patch("questionary.text", text_mock):
+                        with patch("questionary.confirm", confirm_mock):
+                            with patch(
+                                "wt_compiler.wizard.abstract.AbstractWizardProvider.dump"
+                            ):
+                                main()
+
+        select_mock.assert_not_called()
+
+    def test_help_skips_selector(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """--help skips the provider selection prompt."""
+        mock_providers = make_mock_providers(
+            get_registered_providers=MagicMock(return_value=[{"name": "my-provider", "package": "pkg"}]),
+        )
+        select_mock = MagicMock()
+
+        with patch.dict(sys.modules, {"wt_compiler.providers": mock_providers}):
+            with patch.object(sys, "argv", ["wt-compiler", "init", "--help"]):
+                with patch("questionary.select", select_mock):
+                    with pytest.raises(SystemExit) as exc_info:
+                        main()
+
+        assert exc_info.value.code == 0
+        select_mock.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
