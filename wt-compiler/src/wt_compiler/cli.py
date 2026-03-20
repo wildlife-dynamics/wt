@@ -258,7 +258,7 @@ def main() -> None:
         and "--help" not in extras
         and "-h" not in extras
     ):
-        import wt_compiler.providers as providers_mod
+        import wt_compiler.wizard.providers as providers_mod
 
         try:
             registered = providers_mod.get_registered_providers()
@@ -278,7 +278,7 @@ def main() -> None:
 
     wizard: AbstractWizardProvider
     if provider_name is not None:
-        import wt_compiler.providers as providers_mod
+        import wt_compiler.wizard.providers as providers_mod
 
         try:
             provider_cls = providers_mod.load_provider_class(provider_name)
@@ -584,10 +584,10 @@ def _register_provider(args: argparse.Namespace) -> None:
     import subprocess
     from importlib.metadata import PackageNotFoundError
 
-    import wt_compiler.providers as _providers
+    import wt_compiler.wizard.providers as providers_mod
 
     try:
-        new_names = _providers.install_and_register(args.package)
+        new_names = providers_mod.install_and_register(args.package)
     except subprocess.CalledProcessError as e:
         print(f"Error: installation of '{args.package}' failed:\n{e}", file=sys.stderr)
         sys.exit(1)
@@ -615,10 +615,10 @@ def _list_providers() -> None:
     Prints a formatted table of registered provider names and their package
     sources, or a message if no providers are registered.
     """
-    import wt_compiler.providers as _providers
+    import wt_compiler.wizard.providers as providers_mod
 
     try:
-        providers = _providers.get_registered_providers()
+        providers = providers_mod.get_registered_providers()
     except (ValueError, PermissionError) as e:
         print(f"Error reading provider registry: {e}", file=sys.stderr)
         sys.exit(1)

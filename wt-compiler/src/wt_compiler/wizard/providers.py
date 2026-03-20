@@ -8,7 +8,7 @@ providers are stored in an allowlist at ``~/.config/wt-compiler/providers.json``
 Examples:
     Register a provider package and list registered providers::
 
-        >>> from wt_compiler.providers import get_registry_path
+        >>> from wt_compiler.wizard.providers import get_registry_path
         >>> get_registry_path().name
         'providers.json'
 """

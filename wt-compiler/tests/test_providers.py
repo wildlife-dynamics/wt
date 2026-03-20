@@ -1,4 +1,4 @@
-"""Tests for wt_compiler.providers module."""
+"""Tests for wt_compiler.wizard.providers module."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from wt_compiler.providers import (
+from wt_compiler.wizard.providers import (
     _config_dir,
     get_registered_providers,
     get_registry_path,
@@ -29,7 +29,7 @@ from wt_compiler.wizard.abstract import AbstractWizardProvider
 def registry_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Redirect get_registry_path() to a tmp file for isolation."""
     path = tmp_path / "providers.json"
-    monkeypatch.setattr("wt_compiler.providers.get_registry_path", lambda: path)
+    monkeypatch.setattr("wt_compiler.wizard.providers.get_registry_path", lambda: path)
     return path
 
 
@@ -150,7 +150,7 @@ class TestSaveRegistry:
     ) -> None:
         """Creates parent directories if they don't exist."""
         nested = tmp_path / "nested" / "subdir" / "providers.json"
-        monkeypatch.setattr("wt_compiler.providers.get_registry_path", lambda: nested)
+        monkeypatch.setattr("wt_compiler.wizard.providers.get_registry_path", lambda: nested)
         assert not nested.parent.exists()
         save_registry([])
         assert nested.exists()
@@ -206,10 +206,10 @@ class TestInstallAndRegister:
     ) -> None:
         """Uses uv when it is found on PATH."""
         monkeypatch.delenv("CONDA_PREFIX", raising=False)
-        with patch("wt_compiler.providers.shutil.which", return_value="/usr/bin/uv"):
-            with patch("wt_compiler.providers.subprocess.run") as mock_run:
+        with patch("wt_compiler.wizard.providers.shutil.which", return_value="/usr/bin/uv"):
+            with patch("wt_compiler.wizard.providers.subprocess.run") as mock_run:
                 with patch(
-                    "wt_compiler.providers.distribution",
+                    "wt_compiler.wizard.providers.distribution",
                     return_value=_make_mock_dist("my-pkg", ["my-provider"]),
                 ):
                     install_and_register("my-pkg")
@@ -226,10 +226,10 @@ class TestInstallAndRegister:
         def which_side_effect(name: str) -> str | None:
             return None if name == "uv" else "/opt/conda/bin/conda"
 
-        with patch("wt_compiler.providers.shutil.which", side_effect=which_side_effect):
-            with patch("wt_compiler.providers.subprocess.run") as mock_run:
+        with patch("wt_compiler.wizard.providers.shutil.which", side_effect=which_side_effect):
+            with patch("wt_compiler.wizard.providers.subprocess.run") as mock_run:
                 with patch(
-                    "wt_compiler.providers.distribution",
+                    "wt_compiler.wizard.providers.distribution",
                     return_value=_make_mock_dist("my-pkg", ["my-provider"]),
                 ):
                     install_and_register("my-pkg")
@@ -240,10 +240,10 @@ class TestInstallAndRegister:
     ) -> None:
         """Falls back to sys.executable -m pip when uv and conda are absent."""
         monkeypatch.delenv("CONDA_PREFIX", raising=False)
-        with patch("wt_compiler.providers.shutil.which", return_value=None):
-            with patch("wt_compiler.providers.subprocess.run") as mock_run:
+        with patch("wt_compiler.wizard.providers.shutil.which", return_value=None):
+            with patch("wt_compiler.wizard.providers.subprocess.run") as mock_run:
                 with patch(
-                    "wt_compiler.providers.distribution",
+                    "wt_compiler.wizard.providers.distribution",
                     return_value=_make_mock_dist("my-pkg", ["my-provider"]),
                 ):
                     install_and_register("my-pkg")
@@ -259,9 +259,9 @@ class TestInstallAndRegister:
         mock_dist = MagicMock()
         mock_dist.metadata = {"Name": "my-pkg"}
         mock_dist.entry_points = []
-        with patch("wt_compiler.providers.shutil.which", return_value=None):
-            with patch("wt_compiler.providers.subprocess.run"):
-                with patch("wt_compiler.providers.distribution", return_value=mock_dist):
+        with patch("wt_compiler.wizard.providers.shutil.which", return_value=None):
+            with patch("wt_compiler.wizard.providers.subprocess.run"):
+                with patch("wt_compiler.wizard.providers.distribution", return_value=mock_dist):
                     with pytest.raises(ValueError, match="no 'wt_compiler.wizard_providers'"):
                         install_and_register("my-pkg")
 
@@ -272,10 +272,10 @@ class TestInstallAndRegister:
         registry_path.parent.mkdir(parents=True, exist_ok=True)
         registry_path.write_text('{"providers": [{"name": "my-p", "package": "old-pkg"}]}')
         monkeypatch.delenv("CONDA_PREFIX", raising=False)
-        with patch("wt_compiler.providers.shutil.which", return_value=None):
-            with patch("wt_compiler.providers.subprocess.run"):
+        with patch("wt_compiler.wizard.providers.shutil.which", return_value=None):
+            with patch("wt_compiler.wizard.providers.subprocess.run"):
                 with patch(
-                    "wt_compiler.providers.distribution",
+                    "wt_compiler.wizard.providers.distribution",
                     return_value=_make_mock_dist("new-pkg", ["my-p"]),
                 ):
                     result = install_and_register("new-pkg")
@@ -289,10 +289,10 @@ class TestInstallAndRegister:
     ) -> None:
         """Returns only the names of newly added providers."""
         monkeypatch.delenv("CONDA_PREFIX", raising=False)
-        with patch("wt_compiler.providers.shutil.which", return_value=None):
-            with patch("wt_compiler.providers.subprocess.run"):
+        with patch("wt_compiler.wizard.providers.shutil.which", return_value=None):
+            with patch("wt_compiler.wizard.providers.subprocess.run"):
                 with patch(
-                    "wt_compiler.providers.distribution",
+                    "wt_compiler.wizard.providers.distribution",
                     return_value=_make_mock_dist("my-pkg", ["p1", "p2"]),
                 ):
                     result = install_and_register("my-pkg")
@@ -303,10 +303,10 @@ class TestInstallAndRegister:
     ) -> None:
         """Saves the normalized distribution name from dist.metadata['Name']."""
         monkeypatch.delenv("CONDA_PREFIX", raising=False)
-        with patch("wt_compiler.providers.shutil.which", return_value=None):
-            with patch("wt_compiler.providers.subprocess.run"):
+        with patch("wt_compiler.wizard.providers.shutil.which", return_value=None):
+            with patch("wt_compiler.wizard.providers.subprocess.run"):
                 with patch(
-                    "wt_compiler.providers.distribution",
+                    "wt_compiler.wizard.providers.distribution",
                     return_value=_make_mock_dist("My-Pkg", ["my-p"]),
                 ):
                     install_and_register("my-pkg")
@@ -336,9 +336,9 @@ class TestInstallAndRegister:
         import subprocess as _subprocess
 
         monkeypatch.delenv("CONDA_PREFIX", raising=False)
-        with patch("wt_compiler.providers.shutil.which", return_value=None):
+        with patch("wt_compiler.wizard.providers.shutil.which", return_value=None):
             with patch(
-                "wt_compiler.providers.subprocess.run",
+                "wt_compiler.wizard.providers.subprocess.run",
                 side_effect=_subprocess.CalledProcessError(1, "pip"),
             ):
                 with pytest.raises(_subprocess.CalledProcessError):
@@ -385,7 +385,7 @@ class TestLoadProviderClass:
         mock_ep.dist = MagicMock()
         mock_ep.dist.metadata = {"Name": "my-pkg"}
         mock_ep.load.return_value = _FakeProvider
-        with patch("wt_compiler.providers.entry_points", return_value=[mock_ep]):
+        with patch("wt_compiler.wizard.providers.entry_points", return_value=[mock_ep]):
             result = load_provider_class("my-p")
         assert result is _FakeProvider
 
@@ -400,7 +400,7 @@ class TestLoadProviderClass:
         """Raises ValueError when no EP with the registered package name is found."""
         registry_path.parent.mkdir(parents=True, exist_ok=True)
         registry_path.write_text('{"providers": [{"name": "my-p", "package": "my-pkg"}]}')
-        with patch("wt_compiler.providers.entry_points", return_value=[]):
+        with patch("wt_compiler.wizard.providers.entry_points", return_value=[]):
             with pytest.raises(ValueError, match="not installed"):
                 load_provider_class("my-p")
 
@@ -414,7 +414,7 @@ class TestLoadProviderClass:
         evil_ep.name = "my-p"
         evil_ep.dist = MagicMock()
         evil_ep.dist.metadata = {"Name": "evil-pkg"}
-        with patch("wt_compiler.providers.entry_points", return_value=[evil_ep]):
+        with patch("wt_compiler.wizard.providers.entry_points", return_value=[evil_ep]):
             with pytest.raises(ValueError, match="conflicting"):
                 load_provider_class("my-p")
         evil_ep.load.assert_not_called()
@@ -428,7 +428,7 @@ class TestLoadProviderClass:
         mock_ep.dist = MagicMock()
         mock_ep.dist.metadata = {"Name": "my-pkg"}
         mock_ep.load.return_value = str  # not an AbstractWizardProvider subclass
-        with patch("wt_compiler.providers.entry_points", return_value=[mock_ep]):
+        with patch("wt_compiler.wizard.providers.entry_points", return_value=[mock_ep]):
             with pytest.raises(TypeError, match="not a subclass of AbstractWizardProvider"):
                 load_provider_class("my-p")
 
@@ -450,7 +450,7 @@ class TestLoadProviderClass:
         correct_ep.dist.metadata = {"Name": "correct-pkg"}
         correct_ep.load.return_value = _FakeProvider
 
-        with patch("wt_compiler.providers.entry_points", return_value=[wrong_ep, correct_ep]):
+        with patch("wt_compiler.wizard.providers.entry_points", return_value=[wrong_ep, correct_ep]):
             result = load_provider_class("my-p")
         assert result is _FakeProvider
         wrong_ep.load.assert_not_called()
@@ -466,7 +466,7 @@ class TestLoadProviderClass:
         mock_ep.dist = MagicMock()
         mock_ep.dist.metadata = {"Name": "my-pkg"}
         mock_ep.load.side_effect = ImportError("missing transitive dep")
-        with patch("wt_compiler.providers.entry_points", return_value=[mock_ep]):
+        with patch("wt_compiler.wizard.providers.entry_points", return_value=[mock_ep]):
             with pytest.raises(ValueError, match="Failed to load provider"):
                 load_provider_class("my-p")
 
