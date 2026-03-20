@@ -299,5 +299,28 @@ registration step required. Every provider must produce a `workflow_id`
 answer (inherited automatically from `DefaultWizardProvider`) —
 `wt-compiler init` uses it to name the output directory.
 
+### Installing a provider
+
+The provider must be installed into the same environment as `wt-compiler`.
+
+**General use** — `wt-compiler` installed via `pixi global`:
+
+```bash
+# Install wt-compiler itself
+pixi global install wt-compiler \
+    --channel https://repo.prefix.dev/ecoscope-workflows \
+    --channel conda-forge
+
+# Add a provider to the same environment
+pixi global add --environment wt-compiler my-wt-provider
+```
+
+**Local development** — `wt-compiler` invoked via `uv run`:
+
+```bash
+uv pip install my-wt-provider
+uv run wt-compiler init
+```
+
 See the [wizard implementor guide](https://github.com/wildfire-analytics/wt/blob/main/wt-compiler/src/wt_compiler/wizard/README.md)
 for full details on question types, conditional logic, and custom templates.

@@ -82,8 +82,20 @@ customising the wizard or adding custom templates.
 Third-party packages can ship their own wizard providers by exposing a
 `wt_compiler.wizard_providers` entry point (see
 [wizard README](src/wt_compiler/wizard/README.md) for packaging details).
-Once the package is installed in the current environment, it is discovered
-automatically — no registration step required.
+Once the package is installed in the same environment as `wt-compiler`, it is
+discovered automatically — no registration step required.
+
+**General use (pixi global):**
+
+```bash
+pixi global add --environment wt-compiler my-wt-provider
+```
+
+**Local development (uv):**
+
+```bash
+uv pip install my-wt-provider
+```
 
 `wt-compiler init` will prompt you to choose a provider at startup, or you
 can select one directly with `--provider`:

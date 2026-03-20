@@ -271,7 +271,13 @@ def main() -> None:
 
             available = providers_mod.get_available_providers()
             if available:
-                choices = ["default"] + [e["name"] for e in available]
+                choices = [questionary.Choice("default", value="default")] + [
+                    questionary.Choice(
+                        f"{e['name']} ({e['package']})" if e["package"] else e["name"],
+                        value=e["name"],
+                    )
+                    for e in available
+                ]
                 selected = questionary.select(
                     "Select a wizard provider:",
                     choices=choices,

@@ -140,13 +140,20 @@ Your provider **must** include a question whose `dest` is `"workflow_id"`.
 
 ### Installing the package
 
-Once published to PyPI (or a local index), install it with any package
-manager into the same environment as `wt-compiler`:
+The provider must be installed into the same environment as `wt-compiler`.
+
+**General use** — `wt-compiler` installed via `pixi global`, add the provider
+to the same pixi environment:
 
 ```bash
-uv pip install my-wt-provider   # uv
-pip install my-wt-provider      # pip
-pixi add my-wt-provider         # pixi
+pixi global add --environment wt-compiler my-wt-provider
+```
+
+**Local development** — `wt-compiler` invoked via `uv run`, install the
+provider into the same virtual environment:
+
+```bash
+uv pip install my-wt-provider
 ```
 
 Installed providers are discovered automatically via the
