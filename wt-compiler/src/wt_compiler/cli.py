@@ -16,6 +16,7 @@ import questionary
 
 from wt_compiler.compiler import compile_workflow_from_yaml
 from wt_compiler.wizard import DefaultWizardProvider
+from wt_compiler.wizard import providers as wt_providers
 from wt_compiler.wizard.abstract import (
     AbstractWizardProvider,
     LoopContext,
@@ -257,8 +258,6 @@ def main() -> None:
     pre_args, extras = pre_parser.parse_known_args()
     provider_name: str | None = pre_args.provider
     is_init = pre_args.command == "init"
-
-    import wt_compiler.wizard.providers as wt_providers
 
     wizard: AbstractWizardProvider
     if is_init:

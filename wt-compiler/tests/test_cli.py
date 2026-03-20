@@ -340,27 +340,6 @@ class TestCompileCommand:
 class TestInitCommand:
     """Tests for the init subcommand."""
 
-    @pytest.fixture(autouse=True)
-    def _reset_providers_module(self) -> None:
-        """Remove cached wt_compiler.providers before each test to avoid cross-test pollution.
-
-        The interactive provider selection in main() lazily imports wt_compiler.wizard.providers.
-        Without this fixture, a prior test's real import can leak into sys.modules and
-        bypass patch.dict mocking.
-        """
-        import wt_compiler.wizard as _wizard_pkg
-
-        orig_sys = sys.modules.get("wt_compiler.wizard.providers")
-        _wizard_pkg.__dict__.pop("providers", None)
-        sys.modules.pop("wt_compiler.wizard.providers", None)
-        yield  # type: ignore[misc]
-        _wizard_pkg.__dict__.pop("providers", None)
-        if orig_sys is not None:
-            sys.modules["wt_compiler.wizard.providers"] = orig_sys
-            _wizard_pkg.__dict__["providers"] = orig_sys
-        else:
-            sys.modules.pop("wt_compiler.wizard.providers", None)
-
     def test_init_help(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Test that init --help shows expected flags."""
         with patch.object(sys, "argv", ["wt-compiler", "init", "--help"]):
@@ -543,7 +522,7 @@ class TestInitCommand:
         select_mock.return_value.ask.side_effect = ["MIT", "conda", "conda-forge"]
 
         mock_providers = make_mock_providers()
-        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
+        with patch("wt_compiler.cli.wt_providers", mock_providers):
             with patch.object(sys, "argv", ["wt-compiler", "init", "--output-dir", str(tmp_path)]):
                 with patch("questionary.text", text_mock):
                     with patch("questionary.select", select_mock):
@@ -571,7 +550,7 @@ class TestInitCommand:
         select_mock.return_value.ask.side_effect = ["MIT", "conda", "conda-forge"]
 
         mock_providers = make_mock_providers()
-        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
+        with patch("wt_compiler.cli.wt_providers", mock_providers):
             with patch.object(sys, "argv", ["wt-compiler", "init", "--output-dir", str(tmp_path)]):
                 with patch("questionary.text", text_mock):
                     with patch("questionary.select", select_mock):
@@ -896,22 +875,6 @@ class _MinimalProvider(AbstractWizardProvider):
 class TestInitCommandWithProvider:
     """Tests for wt-compiler init <PROVIDER> path."""
 
-    @pytest.fixture(autouse=True)
-    def _reset_providers_module(self) -> None:
-        """Ensure patch.dict(sys.modules, ...) works regardless of test order."""
-        import wt_compiler.wizard as _wizard_pkg
-
-        orig_sys = sys.modules.get("wt_compiler.wizard.providers")
-        _wizard_pkg.__dict__.pop("providers", None)
-        sys.modules.pop("wt_compiler.wizard.providers", None)
-        yield  # type: ignore[misc]
-        _wizard_pkg.__dict__.pop("providers", None)
-        if orig_sys is not None:
-            sys.modules["wt_compiler.wizard.providers"] = orig_sys
-            _wizard_pkg.__dict__["providers"] = orig_sys
-        else:
-            sys.modules.pop("wt_compiler.wizard.providers", None)
-
     def test_init_help_shows_provider_flag(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -934,7 +897,7 @@ class TestInitCommandWithProvider:
         confirm_mock = MagicMock()
         confirm_mock.return_value.ask.return_value = False
 
-        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
+        with patch("wt_compiler.cli.wt_providers", mock_providers):
             with patch.object(
                 sys,
                 "argv",
@@ -956,7 +919,7 @@ class TestInitCommandWithProvider:
         mock_providers = make_mock_providers(
             load_provider_class=MagicMock(return_value=_MinimalProvider)
         )
-        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
+        with patch("wt_compiler.cli.wt_providers", mock_providers):
             with patch.object(
                 sys,
                 "argv",
@@ -985,7 +948,7 @@ class TestInitCommandWithProvider:
         mock_providers = make_mock_providers(
             load_provider_class=MagicMock(return_value=_MinimalProvider)
         )
-        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
+        with patch("wt_compiler.cli.wt_providers", mock_providers):
             with patch.object(
                 sys,
                 "argv",
@@ -1003,7 +966,7 @@ class TestInitCommandWithProvider:
         mock_providers = make_mock_providers(
             load_provider_class=MagicMock(side_effect=ValueError("not registered"))
         )
-        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
+        with patch("wt_compiler.cli.wt_providers", mock_providers):
             with patch.object(
                 sys, "argv", ["wt-compiler", "init", "--provider", "unknown-provider"]
             ):
@@ -1019,7 +982,7 @@ class TestInitCommandWithProvider:
         mock_providers = make_mock_providers(
             load_provider_class=MagicMock(side_effect=TypeError("not a subclass"))
         )
-        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
+        with patch("wt_compiler.cli.wt_providers", mock_providers):
             with patch.object(
                 sys, "argv", ["wt-compiler", "init", "--provider", "bad-provider"]
             ):
@@ -1041,7 +1004,7 @@ class TestInitCommandWithProvider:
         confirm_mock = MagicMock()
         confirm_mock.return_value.ask.return_value = False
 
-        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
+        with patch("wt_compiler.cli.wt_providers", mock_providers):
             with patch.object(
                 sys,
                 "argv",
@@ -1073,22 +1036,6 @@ class TestInitCommandWithProvider:
 class TestInitProviderSelection:
     """Tests for the interactive provider selection prompt in wt-compiler init."""
 
-    @pytest.fixture(autouse=True)
-    def _reset_providers_module(self) -> None:
-        """Ensure patch.dict(sys.modules, ...) works regardless of test order."""
-        import wt_compiler.wizard as _wizard_pkg
-
-        orig_sys = sys.modules.get("wt_compiler.wizard.providers")
-        _wizard_pkg.__dict__.pop("providers", None)
-        sys.modules.pop("wt_compiler.wizard.providers", None)
-        yield  # type: ignore[misc]
-        _wizard_pkg.__dict__.pop("providers", None)
-        if orig_sys is not None:
-            sys.modules["wt_compiler.wizard.providers"] = orig_sys
-            _wizard_pkg.__dict__["providers"] = orig_sys
-        else:
-            sys.modules.pop("wt_compiler.wizard.providers", None)
-
     def test_shows_selector_and_uses_selected_provider(
         self, tmp_path: Path
     ) -> None:
@@ -1104,7 +1051,7 @@ class TestInitProviderSelection:
         confirm_mock = MagicMock()
         confirm_mock.return_value.ask.return_value = False
 
-        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
+        with patch("wt_compiler.cli.wt_providers", mock_providers):
             with patch.object(
                 sys, "argv", ["wt-compiler", "init", "--output-dir", str(tmp_path)]
             ):
@@ -1134,7 +1081,7 @@ class TestInitProviderSelection:
         confirm_mock = MagicMock()
         confirm_mock.return_value.ask.return_value = False
 
-        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
+        with patch("wt_compiler.cli.wt_providers", mock_providers):
             with patch.object(
                 sys, "argv", ["wt-compiler", "init", "--output-dir", str(tmp_path)]
             ):
@@ -1156,7 +1103,7 @@ class TestInitProviderSelection:
         select_mock = MagicMock()
         select_mock.return_value.ask.return_value = None
 
-        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
+        with patch("wt_compiler.cli.wt_providers", mock_providers):
             with patch.object(sys, "argv", ["wt-compiler", "init"]):
                 with patch("questionary.select", select_mock):
                     with pytest.raises(SystemExit) as exc_info:
@@ -1172,7 +1119,7 @@ class TestInitProviderSelection:
         )
         select_mock = MagicMock()
 
-        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
+        with patch("wt_compiler.cli.wt_providers", mock_providers):
             with patch.object(
                 sys,
                 "argv",
@@ -1209,7 +1156,7 @@ class TestInitProviderSelection:
         confirm_mock = MagicMock()
         confirm_mock.return_value.ask.return_value = False
 
-        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
+        with patch("wt_compiler.cli.wt_providers", mock_providers):
             with patch.object(
                 sys, "argv", ["wt-compiler", "init", "--output-dir", str(tmp_path)]
             ):
@@ -1230,7 +1177,7 @@ class TestInitProviderSelection:
         )
         select_mock = MagicMock()
 
-        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
+        with patch("wt_compiler.cli.wt_providers", mock_providers):
             with patch.object(sys, "argv", ["wt-compiler", "init", "--help"]):
                 with patch("questionary.select", select_mock):
                     with pytest.raises(SystemExit) as exc_info:
