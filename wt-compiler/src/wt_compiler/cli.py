@@ -258,20 +258,20 @@ def main() -> None:
     provider_name: str | None = pre_args.provider
     is_init = pre_args.command == "init"
 
+    import wt_compiler.wizard.providers as wt_providers
+
     wizard: AbstractWizardProvider
     if is_init:
-        # Provider selection and instantiation only runs for the init subcommand.
-        # Running it for compile/register-provider/etc. would execute third-party
-        # __init__ and get_questions() code unintentionally.
+        # Provider selection and instantiation only runs for the init subcommand
+        # to avoid executing third-party __init__ and get_questions() code when
+        # running compile or other subcommands.
         if (
             provider_name is None
             and not pre_args.no_interactive
             and "--help" not in extras
             and "-h" not in extras
         ):
-            import wt_compiler.wizard.providers as providers_mod
-
-            available = providers_mod.get_available_providers()
+            available = wt_providers.get_available_providers()
             if available:
                 choices = [questionary.Choice("default", value="default")] + [
                     questionary.Choice(
@@ -291,10 +291,8 @@ def main() -> None:
                     provider_name = selected
 
         if provider_name is not None:
-            import wt_compiler.wizard.providers as providers_mod
-
             try:
-                provider_cls = providers_mod.load_provider_class(provider_name)
+                provider_cls = wt_providers.load_provider_class(provider_name)
             except (ValueError, TypeError) as e:
                 print(f"Error: {e}", file=sys.stderr)
                 sys.exit(1)
