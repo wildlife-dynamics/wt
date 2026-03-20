@@ -293,7 +293,7 @@ class MyProvider(DefaultWizardProvider):
 my-provider = "my_package.provider:MyProvider"
 ```
 
-The entry point name is the value passed to `--provider`. Any installed
+Any keys used in this entry-point table may be used as a value passed to `--provider` (e.g. `my-provider` in the example above). Note that a single provider extension package can expose one or multiple custom provider keys in this table.
 package exposing this entry point is discovered automatically — no
 registration step required. Every provider must produce a `workflow_id`
 answer (inherited automatically from `DefaultWizardProvider`) —
