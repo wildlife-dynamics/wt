@@ -77,6 +77,32 @@ wt-compiler init --no-interactive ... \
 [`src/wt_compiler/wizard/README.md`](src/wt_compiler/wizard/README.md) for details on
 customising the wizard or adding custom templates.
 
+### Register a custom wizard provider
+
+Third-party packages can ship their own wizard providers by exposing a
+`wt_compiler.wizard_providers` entry point (see
+[wizard README](src/wt_compiler/wizard/README.md) for packaging details).
+Once the package is published, register it with:
+
+```bash
+# Install and register using uv (default)
+wt-compiler register-provider my-wt-provider
+
+# Choose a different installer
+wt-compiler register-provider my-wt-provider --installer pip
+wt-compiler register-provider my-wt-provider --installer pixi
+
+# List all registered providers
+wt-compiler list-providers
+```
+
+After registration, `wt-compiler init` will prompt you to choose a provider at
+startup, or you can skip the prompt with `--provider`:
+
+```bash
+wt-compiler init --provider my-provider-name
+```
+
 ### Basic Compilation
 
 ```python

@@ -112,6 +112,78 @@ class MyProvider(DefaultWizardProvider):
 - Subdirectories are available for `{% include %}` (e.g., `licenses/`)
 - Context: all collected answers + `year` (current year)
 
+## Packaging and Distributing a Custom Provider
+
+A custom provider is just a Python package that:
+
+1. Subclasses `DefaultWizardProvider` (or `AbstractWizardProvider`)
+2. Declares a `wt_compiler.wizard_providers` entry point pointing at the class
+3. Includes a `workflow_id` answer key (required by `wt-compiler init` to name the output directory)
+
+### Entry point declaration
+
+In your package's `pyproject.toml`:
+
+```toml
+[project.entry-points."wt_compiler.wizard_providers"]
+my-provider = "my_wt_provider.provider:MyProvider"
+```
+
+The entry point name (`my-provider` above) is what users pass to `--provider`.
+Each package can expose multiple entry points.
+
+### The `workflow_id` requirement
+
+`wt-compiler init` derives the output directory name from `provider.answers["workflow_id"]`.
+Your provider **must** include a question whose `dest` is `"workflow_id"`.
+`DefaultWizardProvider` already provides this — subclasses inherit it automatically.
+
+### Registering the package
+
+Once published to PyPI (or a local index), users register it with:
+
+```bash
+wt-compiler register-provider my-wt-provider                  # uv (default)
+wt-compiler register-provider my-wt-provider --installer pip  # pip
+wt-compiler register-provider my-wt-provider --installer pixi # pixi global
+```
+
+`--installer` options:
+
+| Value | Command issued |
+|-------|---------------|
+| `uv` (default) | `uv pip install --python <current-python> <pkg>` |
+| `pip` | `<current-python> -m pip install <pkg>` |
+| `pixi` | `pixi global install <pkg>` |
+
+Registration persists in `~/.config/wt-compiler/providers.json` (respects
+`$XDG_CONFIG_HOME`). Registered providers appear in the provider selection
+prompt when running `wt-compiler init`, and can be selected directly with
+`--provider my-provider`.
+
+### Minimal provider example
+
+```python
+# src/my_wt_provider/provider.py
+from wt_compiler.wizard import DefaultWizardProvider
+
+class MyProvider(DefaultWizardProvider):
+    def get_questions(self):
+        questions = super().get_questions()
+        questions.append({
+            "dest": "my_extra_field",
+            "argparse": {"help": "Extra field", "type": str},
+            "wizard": {},
+        })
+        return questions
+```
+
+```toml
+# pyproject.toml
+[project.entry-points."wt_compiler.wizard_providers"]
+my-provider = "my_wt_provider.provider:MyProvider"
+```
+
 ## Dual CLI Modes
 
 - **Interactive**: a CLI loop iterates the generator, prompts via `input()`, sends answers via `.send()`

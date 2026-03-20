@@ -208,3 +208,128 @@ wt-<id>-workflow/
         ├── run_sequential.py
         └── run_sequential_mock_io.py
 ```
+
+---
+
+## CLI Reference
+
+`wt-compiler` exposes four subcommands.
+
+### `init`
+
+Scaffold a new workflow project directory.
+
+```bash
+# Interactive (default) — arrow-key prompts for all fields
+wt-compiler init
+
+# Use a registered custom provider
+wt-compiler init --provider my-provider-name
+
+# Write into a specific parent directory
+wt-compiler init --output-dir /path/to/projects
+
+# Overwrite an existing directory
+wt-compiler init --clobber
+
+# Batch / CI mode — supply all required fields as flags
+wt-compiler init --no-interactive \
+    --workflow-id my_workflow \
+    --workflow-name "My Workflow" \
+    --author-name "Jane Smith"
+```
+
+### `compile`
+
+Compile a `spec.yaml` into a complete workflow package.
+
+```bash
+wt-compiler compile --spec path/to/spec.yaml
+
+# Overwrite an existing output directory
+wt-compiler compile --spec spec.yaml --clobber
+
+# Compile and immediately install dependencies
+wt-compiler compile --spec spec.yaml --clobber --install
+
+# Re-use the existing lockfile and bump the version
+wt-compiler compile --spec spec.yaml --clobber --update
+
+# GCP variant
+wt-compiler compile --spec spec.yaml --variant gcp
+```
+
+### `register-provider`
+
+Install a third-party wizard provider package and add it to the local
+allowlist (`~/.config/wt-compiler/providers.json`).
+
+```bash
+# Install with uv (default)
+wt-compiler register-provider my-wt-provider
+
+# Choose a specific installer
+wt-compiler register-provider my-wt-provider --installer pip
+wt-compiler register-provider my-wt-provider --installer pixi
+```
+
+`--installer` options:
+
+| Value | Command issued |
+|-------|---------------|
+| `uv` (default) | `uv pip install --python <current-python> <pkg>` |
+| `pip` | `<current-python> -m pip install <pkg>` |
+| `pixi` | `pixi global install <pkg>` |
+
+The package must expose at least one `wt_compiler.wizard_providers` entry
+point. Once registered, the provider appears in the selection prompt when
+running `wt-compiler init` and can be selected with `--provider <name>`.
+
+### `list-providers`
+
+Show all registered wizard providers.
+
+```bash
+wt-compiler list-providers
+```
+
+---
+
+## Wizard Provider System
+
+Custom providers let teams ship organisation-specific `wt-compiler init`
+workflows as ordinary Python packages.
+
+### Creating a provider
+
+Subclass `DefaultWizardProvider`, override `get_questions()`, and optionally
+add Jinja2 templates colocated with the module:
+
+```python
+from wt_compiler.wizard import DefaultWizardProvider
+
+class MyProvider(DefaultWizardProvider):
+    def get_questions(self):
+        questions = super().get_questions()
+        questions.append({
+            "dest": "gcp_project",
+            "argparse": {"help": "GCP project ID", "type": str},
+            "wizard": {},
+        })
+        return questions
+```
+
+### Declaring the entry point
+
+```toml
+# pyproject.toml
+[project.entry-points."wt_compiler.wizard_providers"]
+my-provider = "my_package.provider:MyProvider"
+```
+
+The entry point name is the value passed to `--provider`. Every provider must
+produce a `workflow_id` answer (inherited automatically from
+`DefaultWizardProvider`) — `wt-compiler init` uses it to name the output directory.
+
+See the [wizard implementor guide](https://github.com/wildfire-analytics/wt/blob/main/wt-compiler/src/wt_compiler/wizard/README.md)
+for full details on question types, conditional logic, and custom templates.
