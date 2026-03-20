@@ -399,8 +399,8 @@ def main() -> None:
         help="Install and register a wizard provider package",
         description=(
             "Install a Python package and register all wt_compiler.wizard_providers "
-            "entry points it exposes. The package must be available on PyPI or in your "
-            "conda channels. Note: all registered providers must expose a 'workflow_id' "
+            "entry points it exposes. The package must be available on PyPI. "
+            "Note: all registered providers must expose a 'workflow_id' "
             "answer key for the init command to derive the output directory name."
         ),
     )
@@ -408,6 +408,12 @@ def main() -> None:
         "package",
         metavar="PACKAGE",
         help="Package name to install and register (e.g. my-wt-provider)",
+    )
+    reg_parser.add_argument(
+        "--installer",
+        choices=["uv", "pixi", "pip"],
+        default="uv",
+        help="Package installer to use (default: uv)",
     )
     subparsers.add_parser(
         "list-providers",
@@ -423,7 +429,7 @@ def main() -> None:
         case "init":
             _init(args, wizard)
         case "register-provider":
-            _register_provider(args.package)
+            _register_provider(args.package, args.installer)
         case "list-providers":
             _list_providers()
         case _:
@@ -572,15 +578,16 @@ def _init(args: argparse.Namespace, provider: AbstractWizardProvider) -> None:
             sys.exit(1)
 
 
-def _register_provider(package: str) -> None:
+def _register_provider(package: str, installer: str) -> None:
     """Install and register a wizard provider package.
 
-    Installs the package using the auto-detected installer, discovers all
+    Installs the package using the specified installer, discovers all
     ``wt_compiler.wizard_providers`` entry points, and adds new ones to the
     providers allowlist.
 
     Args:
         package: Package name to install and register.
+        installer: Package installer to use (``"uv"``, ``"pixi"``, or ``"pip"``).
     """
     import subprocess
     from importlib.metadata import PackageNotFoundError
@@ -588,7 +595,7 @@ def _register_provider(package: str) -> None:
     import wt_compiler.wizard.providers as providers_mod
 
     try:
-        new_names = providers_mod.install_and_register(package)
+        new_names = providers_mod.install_and_register(package, installer)
     except subprocess.CalledProcessError as e:
         print(f"Error: installation of '{package}' failed:\n{e}", file=sys.stderr)
         sys.exit(1)

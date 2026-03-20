@@ -950,6 +950,19 @@ class TestRegisterProviderCommand:
         assert "my-provider" in out
         assert "1 provider(s)" in out
 
+    def test_register_provider_installer_flag_passed_through(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--installer value is forwarded to install_and_register."""
+        mock_iar = MagicMock(return_value=["p"])
+        mock_providers = make_mock_providers(install_and_register=mock_iar)
+        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
+            with patch.object(
+                sys, "argv", ["wt-compiler", "register-provider", "--installer", "pip", "my-pkg"]
+            ):
+                main()
+        mock_iar.assert_called_once_with("my-pkg", "pip")
+
     def test_register_provider_all_duplicates(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:

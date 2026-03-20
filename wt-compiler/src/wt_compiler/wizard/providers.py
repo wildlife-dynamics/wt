@@ -18,7 +18,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -130,39 +129,48 @@ def save_provider_registry(entries: list[dict[str, str]]) -> None:
         raise
 
 
-def _build_install_command(pkg_name: str) -> list[str]:
-    """Detect the best available package installer and return the install command.
-
-    Detection order: uv > conda (when ``CONDA_PREFIX`` is set and conda is on
-    PATH) > pip fallback.
+def _build_install_command(pkg_name: str, installer: str) -> list[str]:
+    """Return the install command for the given installer.
 
     Args:
         pkg_name: Package name to install.
+        installer: One of ``"uv"``, ``"pixi"``, or ``"pip"``.
 
     Returns:
         Command list suitable for ``subprocess.run()``.
 
+    Raises:
+        ValueError: If ``installer`` is not a recognised value.
+
     Examples:
-        >>> _build_install_command("my-pkg")  # doctest: +SKIP
+        >>> _build_install_command("my-pkg", "uv")  # doctest: +SKIP
         ['uv', 'pip', 'install', '--python', '/path/to/python', 'my-pkg']
+        >>> _build_install_command("my-pkg", "pip")  # doctest: +SKIP
+        ['/path/to/python', '-m', 'pip', 'install', 'my-pkg']
     """
-    if shutil.which("uv") is not None:
-        return ["uv", "pip", "install", "--python", sys.executable, pkg_name]
-    if os.environ.get("CONDA_PREFIX") and shutil.which("conda") is not None:
-        return ["conda", "install", "-y", pkg_name]
-    return [sys.executable, "-m", "pip", "install", pkg_name]
+    match installer:
+        case "uv":
+            return ["uv", "pip", "install", "--python", sys.executable, pkg_name]
+        case "pixi":
+            return ["pixi", "global", "install", pkg_name]
+        case "pip":
+            return [sys.executable, "-m", "pip", "install", pkg_name]
+        case _:
+            raise ValueError(f"Unknown installer {installer!r}. Choose from: uv, pixi, pip")
 
 
-def install_and_register(pkg_name: str) -> list[str]:
+def install_and_register(pkg_name: str, installer: str) -> list[str]:
     """Install a package and register its wizard provider entry points.
 
-    Installs the package using the auto-detected installer, then discovers
+    Installs the package using the specified installer, then discovers
     all ``wt_compiler.wizard_providers`` entry points and adds new ones to
     the allowlist at the registry path. Duplicate entry point names are
     skipped with a warning printed to stderr.
 
     Args:
         pkg_name: Package name to install (e.g. ``"my-wt-provider"``).
+        installer: Package installer to use — one of ``"uv"``, ``"pixi"``,
+            or ``"pip"``.
 
     Returns:
         List of newly registered provider names (excludes already-registered
@@ -170,7 +178,8 @@ def install_and_register(pkg_name: str) -> list[str]:
         already registered.
 
     Raises:
-        ValueError: If ``pkg_name`` fails the safe-name validation check.
+        ValueError: If ``pkg_name`` fails the safe-name validation check or
+            ``installer`` is not a recognised value.
         subprocess.CalledProcessError: If the package installation fails.
         importlib.metadata.PackageNotFoundError: If the package is not found
             after installation.
@@ -178,7 +187,7 @@ def install_and_register(pkg_name: str) -> list[str]:
             entry points.
 
     Examples:
-        >>> install_and_register("my-wt-pkg")  # doctest: +SKIP
+        >>> install_and_register("my-wt-pkg", "uv")  # doctest: +SKIP
         ['my-provider']
     """
     if not _SAFE_PKG_NAME_RE.match(pkg_name):
@@ -186,7 +195,7 @@ def install_and_register(pkg_name: str) -> list[str]:
             f"Invalid package name: {pkg_name!r}. "
             "Package names must contain only letters, digits, hyphens, underscores, and dots."
         )
-    subprocess.run(_build_install_command(pkg_name), check=True)
+    subprocess.run(_build_install_command(pkg_name, installer), check=True)
     dist = distribution(pkg_name)
     dist_name = dist.metadata["Name"]
     eps = [ep for ep in dist.entry_points if ep.group == "wt_compiler.wizard_providers"]

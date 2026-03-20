@@ -201,148 +201,113 @@ def _make_mock_dist(dist_name: str, ep_names: list[str]) -> MagicMock:
 class TestInstallAndRegister:
     """Tests for install_and_register()."""
 
-    def test_uses_uv_when_available(
-        self, registry_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Uses uv when it is found on PATH."""
-        monkeypatch.delenv("CONDA_PREFIX", raising=False)
-        with patch("wt_compiler.wizard.providers.shutil.which", return_value="/usr/bin/uv"):
-            with patch("wt_compiler.wizard.providers.subprocess.run") as mock_run:
-                with patch(
-                    "wt_compiler.wizard.providers.distribution",
-                    return_value=_make_mock_dist("my-pkg", ["my-provider"]),
-                ):
-                    install_and_register("my-pkg")
+    def test_uses_uv_installer(self, registry_path: Path) -> None:
+        """Passes the correct uv command when installer='uv'."""
+        with patch("wt_compiler.wizard.providers.subprocess.run") as mock_run:
+            with patch(
+                "wt_compiler.wizard.providers.distribution",
+                return_value=_make_mock_dist("my-pkg", ["my-provider"]),
+            ):
+                install_and_register("my-pkg", "uv")
         mock_run.assert_called_once_with(
             ["uv", "pip", "install", "--python", sys.executable, "my-pkg"], check=True
         )
 
-    def test_uses_conda_when_no_uv_and_conda_prefix_set(
-        self, registry_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Uses conda when CONDA_PREFIX is set and uv is not found."""
-        monkeypatch.setenv("CONDA_PREFIX", "/opt/conda")
+    def test_uses_pixi_installer(self, registry_path: Path) -> None:
+        """Passes the correct pixi command when installer='pixi'."""
+        with patch("wt_compiler.wizard.providers.subprocess.run") as mock_run:
+            with patch(
+                "wt_compiler.wizard.providers.distribution",
+                return_value=_make_mock_dist("my-pkg", ["my-provider"]),
+            ):
+                install_and_register("my-pkg", "pixi")
+        mock_run.assert_called_once_with(["pixi", "global", "install", "my-pkg"], check=True)
 
-        def which_side_effect(name: str) -> str | None:
-            return None if name == "uv" else "/opt/conda/bin/conda"
-
-        with patch("wt_compiler.wizard.providers.shutil.which", side_effect=which_side_effect):
-            with patch("wt_compiler.wizard.providers.subprocess.run") as mock_run:
-                with patch(
-                    "wt_compiler.wizard.providers.distribution",
-                    return_value=_make_mock_dist("my-pkg", ["my-provider"]),
-                ):
-                    install_and_register("my-pkg")
-        mock_run.assert_called_once_with(["conda", "install", "-y", "my-pkg"], check=True)
-
-    def test_falls_back_to_pip(
-        self, registry_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Falls back to sys.executable -m pip when uv and conda are absent."""
-        monkeypatch.delenv("CONDA_PREFIX", raising=False)
-        with patch("wt_compiler.wizard.providers.shutil.which", return_value=None):
-            with patch("wt_compiler.wizard.providers.subprocess.run") as mock_run:
-                with patch(
-                    "wt_compiler.wizard.providers.distribution",
-                    return_value=_make_mock_dist("my-pkg", ["my-provider"]),
-                ):
-                    install_and_register("my-pkg")
+    def test_uses_pip_installer(self, registry_path: Path) -> None:
+        """Passes the correct pip command when installer='pip'."""
+        with patch("wt_compiler.wizard.providers.subprocess.run") as mock_run:
+            with patch(
+                "wt_compiler.wizard.providers.distribution",
+                return_value=_make_mock_dist("my-pkg", ["my-provider"]),
+            ):
+                install_and_register("my-pkg", "pip")
         mock_run.assert_called_once_with(
             [sys.executable, "-m", "pip", "install", "my-pkg"], check=True
         )
 
-    def test_raises_value_error_on_no_entry_points(
-        self, registry_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_raises_value_error_on_unknown_installer(self, registry_path: Path) -> None:
+        """Raises ValueError for unrecognised installer names."""
+        with pytest.raises(ValueError, match="Unknown installer"):
+            install_and_register("my-pkg", "conda")
+
+    def test_raises_value_error_on_no_entry_points(self, registry_path: Path) -> None:
         """Raises ValueError when the package has no wizard_providers entry points."""
-        monkeypatch.delenv("CONDA_PREFIX", raising=False)
         mock_dist = MagicMock()
         mock_dist.metadata = {"Name": "my-pkg"}
         mock_dist.entry_points = []
-        with patch("wt_compiler.wizard.providers.shutil.which", return_value=None):
-            with patch("wt_compiler.wizard.providers.subprocess.run"):
-                with patch("wt_compiler.wizard.providers.distribution", return_value=mock_dist):
-                    with pytest.raises(ValueError, match="no 'wt_compiler.wizard_providers'"):
-                        install_and_register("my-pkg")
+        with patch("wt_compiler.wizard.providers.subprocess.run"):
+            with patch("wt_compiler.wizard.providers.distribution", return_value=mock_dist):
+                with pytest.raises(ValueError, match="no 'wt_compiler.wizard_providers'"):
+                    install_and_register("my-pkg", "uv")
 
     def test_skips_duplicate_with_warning(
-        self, registry_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+        self, registry_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Skips already-registered providers and prints a warning to stderr."""
         registry_path.parent.mkdir(parents=True, exist_ok=True)
         registry_path.write_text('{"providers": [{"name": "my-p", "package": "old-pkg"}]}')
-        monkeypatch.delenv("CONDA_PREFIX", raising=False)
-        with patch("wt_compiler.wizard.providers.shutil.which", return_value=None):
-            with patch("wt_compiler.wizard.providers.subprocess.run"):
-                with patch(
-                    "wt_compiler.wizard.providers.distribution",
-                    return_value=_make_mock_dist("new-pkg", ["my-p"]),
-                ):
-                    result = install_and_register("new-pkg")
+        with patch("wt_compiler.wizard.providers.subprocess.run"):
+            with patch(
+                "wt_compiler.wizard.providers.distribution",
+                return_value=_make_mock_dist("new-pkg", ["my-p"]),
+            ):
+                result = install_and_register("new-pkg", "uv")
         assert result == []
         captured = capsys.readouterr()
         assert "Warning" in captured.err
         assert "my-p" in captured.err
 
-    def test_returns_newly_registered_names_only(
-        self, registry_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_returns_newly_registered_names_only(self, registry_path: Path) -> None:
         """Returns only the names of newly added providers."""
-        monkeypatch.delenv("CONDA_PREFIX", raising=False)
-        with patch("wt_compiler.wizard.providers.shutil.which", return_value=None):
-            with patch("wt_compiler.wizard.providers.subprocess.run"):
-                with patch(
-                    "wt_compiler.wizard.providers.distribution",
-                    return_value=_make_mock_dist("my-pkg", ["p1", "p2"]),
-                ):
-                    result = install_and_register("my-pkg")
+        with patch("wt_compiler.wizard.providers.subprocess.run"):
+            with patch(
+                "wt_compiler.wizard.providers.distribution",
+                return_value=_make_mock_dist("my-pkg", ["p1", "p2"]),
+            ):
+                result = install_and_register("my-pkg", "uv")
         assert set(result) == {"p1", "p2"}
 
-    def test_uses_normalized_dist_name(
-        self, registry_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_uses_normalized_dist_name(self, registry_path: Path) -> None:
         """Saves the normalized distribution name from dist.metadata['Name']."""
-        monkeypatch.delenv("CONDA_PREFIX", raising=False)
-        with patch("wt_compiler.wizard.providers.shutil.which", return_value=None):
-            with patch("wt_compiler.wizard.providers.subprocess.run"):
-                with patch(
-                    "wt_compiler.wizard.providers.distribution",
-                    return_value=_make_mock_dist("My-Pkg", ["my-p"]),
-                ):
-                    install_and_register("my-pkg")
+        with patch("wt_compiler.wizard.providers.subprocess.run"):
+            with patch(
+                "wt_compiler.wizard.providers.distribution",
+                return_value=_make_mock_dist("My-Pkg", ["my-p"]),
+            ):
+                install_and_register("my-pkg", "uv")
         saved = load_provider_registry()
         assert saved[0]["package"] == "My-Pkg"
 
-    def test_raises_value_error_on_invalid_package_name(
-        self, registry_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_raises_value_error_on_invalid_package_name(self, registry_path: Path) -> None:
         """Raises ValueError for package names containing flag-like characters."""
-        monkeypatch.delenv("CONDA_PREFIX", raising=False)
         with pytest.raises(ValueError, match="Invalid package name"):
-            install_and_register("--extra-index-url http://evil.com/simple/")
+            install_and_register("--extra-index-url http://evil.com/simple/", "uv")
 
-    def test_raises_value_error_on_package_name_with_spaces(
-        self, registry_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_raises_value_error_on_package_name_with_spaces(self, registry_path: Path) -> None:
         """Raises ValueError for package names containing spaces."""
-        monkeypatch.delenv("CONDA_PREFIX", raising=False)
         with pytest.raises(ValueError, match="Invalid package name"):
-            install_and_register("my pkg")
+            install_and_register("my pkg", "uv")
 
-    def test_propagates_called_process_error(
-        self, registry_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_propagates_called_process_error(self, registry_path: Path) -> None:
         """CalledProcessError from subprocess.run propagates to caller."""
         import subprocess as _subprocess
 
-        monkeypatch.delenv("CONDA_PREFIX", raising=False)
-        with patch("wt_compiler.wizard.providers.shutil.which", return_value=None):
-            with patch(
-                "wt_compiler.wizard.providers.subprocess.run",
-                side_effect=_subprocess.CalledProcessError(1, "pip"),
-            ):
-                with pytest.raises(_subprocess.CalledProcessError):
-                    install_and_register("my-pkg")
+        with patch(
+            "wt_compiler.wizard.providers.subprocess.run",
+            side_effect=_subprocess.CalledProcessError(1, "pip"),
+        ):
+            with pytest.raises(_subprocess.CalledProcessError):
+                install_and_register("my-pkg", "pip")
 
 
 # ---------------------------------------------------------------------------
