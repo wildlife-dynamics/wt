@@ -1,6 +1,10 @@
 id: {{ workflow_id }}
 
 requirements:
+  - name: "ecoscope-platform"
+    version: "*"
+    channel: "https://repo.prefix.dev/ecoscope-workflows/"
+
 {% for req in requirements %}
   - name: "{{ req.name }}"
 {% if req.req_type == 'conda' %}
@@ -24,10 +28,6 @@ requirements:
 {% endif %}
 {% endif %}
 {% endfor %}
-{% if not requirements %}
-  []
-{% endif %}
-
 {% if add_boilerplate_tasks == "yes" %}
 workflow:
   - name: Workflow Details
