@@ -30,7 +30,7 @@ def make_mock_providers(**overrides: object) -> types.ModuleType:
     import importlib.metadata
 
     m = types.ModuleType("wt_compiler.wizard.providers")
-    m.install_and_register = MagicMock(return_value=[])  # type: ignore[attr-defined]
+    m.find_and_register = MagicMock(return_value=[])  # type: ignore[attr-defined]
     m.get_registered_providers = MagicMock(return_value=[])  # type: ignore[attr-defined]
     m.load_provider_class = MagicMock()  # type: ignore[attr-defined]
     # The real PackageNotFoundError must be present so handler except clauses match.
@@ -941,7 +941,7 @@ class TestRegisterProviderCommand:
     ) -> None:
         """Success path: stdout reports the newly registered provider count and name."""
         mock_providers = make_mock_providers(
-            install_and_register=MagicMock(return_value=["my-provider"])
+            find_and_register=MagicMock(return_value=["my-provider"])
         )
         with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
             with patch.object(sys, "argv", ["wt-compiler", "register-provider", "my-pkg"]):
@@ -950,73 +950,40 @@ class TestRegisterProviderCommand:
         assert "my-provider" in out
         assert "1 provider(s)" in out
 
-    def test_register_provider_installer_flag_passed_through(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """--installer value is forwarded to install_and_register."""
-        mock_iar = MagicMock(return_value=["p"])
-        mock_providers = make_mock_providers(install_and_register=mock_iar)
-        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
-            with patch.object(
-                sys, "argv", ["wt-compiler", "register-provider", "--installer", "pip", "my-pkg"]
-            ):
-                main()
-        mock_iar.assert_called_once_with("my-pkg", "pip")
-
     def test_register_provider_all_duplicates(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """When all providers are duplicates, stdout says 'already registered'."""
         mock_providers = make_mock_providers(
-            install_and_register=MagicMock(return_value=[])
+            find_and_register=MagicMock(return_value=[])
         )
         with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
             with patch.object(sys, "argv", ["wt-compiler", "register-provider", "my-pkg"]):
                 main()
         assert "already registered" in capsys.readouterr().out
 
-    def test_register_provider_subprocess_error(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """CalledProcessError → exit 1 with 'installation' and 'failed' on stderr."""
-        import subprocess as _subprocess
-
-        mock_providers = make_mock_providers(
-            install_and_register=MagicMock(
-                side_effect=_subprocess.CalledProcessError(1, "pip")
-            )
-        )
-        with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
-            with patch.object(sys, "argv", ["wt-compiler", "register-provider", "my-pkg"]):
-                with pytest.raises(SystemExit) as exc_info:
-                    main()
-        assert exc_info.value.code == 1
-        err = capsys.readouterr().err
-        assert "installation" in err
-        assert "failed" in err
-
     def test_register_provider_package_not_found(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """PackageNotFoundError → exit 1 with 'not found' on stderr."""
+        """PackageNotFoundError → exit 1 with 'not installed' on stderr."""
         from importlib.metadata import PackageNotFoundError as _PNF
 
         mock_providers = make_mock_providers(
-            install_and_register=MagicMock(side_effect=_PNF("my-pkg"))
+            find_and_register=MagicMock(side_effect=_PNF("my-pkg"))
         )
         with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
             with patch.object(sys, "argv", ["wt-compiler", "register-provider", "my-pkg"]):
                 with pytest.raises(SystemExit) as exc_info:
                     main()
         assert exc_info.value.code == 1
-        assert "not found" in capsys.readouterr().err
+        assert "not installed" in capsys.readouterr().err
 
     def test_register_provider_no_entry_points(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """ValueError from install_and_register → exit 1 with error on stderr."""
+        """ValueError from find_and_register → exit 1 with error on stderr."""
         mock_providers = make_mock_providers(
-            install_and_register=MagicMock(side_effect=ValueError("no entry points"))
+            find_and_register=MagicMock(side_effect=ValueError("no entry points"))
         )
         with patch.dict(sys.modules, {"wt_compiler.wizard.providers": mock_providers}):
             with patch.object(sys, "argv", ["wt-compiler", "register-provider", "my-pkg"]):

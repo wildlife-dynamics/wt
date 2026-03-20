@@ -434,10 +434,11 @@ def main() -> None:
 
     reg_parser = subparsers.add_parser(
         "register-provider",
-        help="Install and register a wizard provider package",
+        help="Register a wizard provider package",
         description=(
-            "Install a Python package and register all wt_compiler.wizard_providers "
-            "entry points it exposes. The package must be available on PyPI. "
+            "Register all `wt_compiler.wizard_providers` entry points from an "
+            "already-installed package. Install the package into this environment "
+            "first (e.g. `pip install my-wt-provider`), then run this command. "
             "Note: all registered providers must expose a 'workflow_id' "
             "answer key for the init command to derive the output directory name."
         ),
@@ -445,13 +446,7 @@ def main() -> None:
     reg_parser.add_argument(
         "package",
         metavar="PACKAGE",
-        help="Package name to install and register (e.g. my-wt-provider)",
-    )
-    reg_parser.add_argument(
-        "--installer",
-        choices=["uv", "pixi", "pip"],
-        default="uv",
-        help="Package installer to use (default: uv)",
+        help="Already-installed package name to register (e.g. my-wt-provider)",
     )
     subparsers.add_parser(
         "list-providers",
@@ -467,7 +462,7 @@ def main() -> None:
         case "init":
             _init(args, wizard)
         case "register-provider":
-            _register_provider(args.package, args.installer)
+            _register_provider(args.package)
         case "list-providers":
             _list_providers()
         case _:
@@ -624,30 +619,26 @@ def _init(args: argparse.Namespace, provider: AbstractWizardProvider) -> None:
             sys.exit(1)
 
 
-def _register_provider(package: str, installer: str) -> None:
-    """Install and register a wizard provider package.
+def _register_provider(package: str) -> None:
+    """Register wizard provider entry points from an already-installed package.
 
-    Installs the package using the specified installer, discovers all
-    ``wt_compiler.wizard_providers`` entry points, and adds new ones to the
-    providers allowlist.
+    Discovers all ``wt_compiler.wizard_providers`` entry points from the given
+    installed package and adds new ones to the providers allowlist.
 
     Args:
-        package: Package name to install and register.
-        installer: Package installer to use (``"uv"``, ``"pixi"``, or ``"pip"``).
+        package: Already-installed package name to register.
     """
-    import subprocess
     from importlib.metadata import PackageNotFoundError
 
     import wt_compiler.wizard.providers as providers_mod
 
     try:
-        new_names = providers_mod.install_and_register(package, installer)
-    except subprocess.CalledProcessError as e:
-        print(f"Error: installation of '{package}' failed:\n{e}", file=sys.stderr)
-        sys.exit(1)
+        new_names = providers_mod.find_and_register(package)
     except PackageNotFoundError:
         print(
-            f"Error: Package '{package}' not found after install attempt. Check the package name.",
+            f"Error: Package '{package}' is not installed in this environment. "
+            f"Install it first (e.g. `pip install {package}`), "
+            f"then re-run `wt-compiler register-provider {package}`.",
             file=sys.stderr,
         )
         sys.exit(1)

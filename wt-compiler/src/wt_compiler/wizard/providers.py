@@ -1,9 +1,9 @@
 """Wizard provider registry for wt-compiler.
 
-Manages installation and registration of third-party ``AbstractWizardProvider``
-implementations via ``wt_compiler.wizard_providers`` entry points. Registered
-providers are stored in an allowlist at ``~/.config/wt-compiler/providers.json``
-(respecting ``XDG_CONFIG_HOME``).
+Manages registration of third-party ``AbstractWizardProvider`` implementations
+via ``wt_compiler.wizard_providers`` entry points. Registered providers are
+stored in an allowlist at ``~/.config/wt-compiler/providers.json`` (respecting
+``XDG_CONFIG_HOME``).
 
 Examples:
     Register a provider package and list registered providers::
@@ -18,7 +18,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 import sys
 import tempfile
 from importlib.metadata import distribution, entry_points
@@ -139,48 +138,22 @@ def save_provider_registry(entries: list[dict[str, str]]) -> None:
         raise
 
 
-def _build_install_command(pkg_name: str, installer: str) -> list[str]:
-    """Return the install command for the given installer.
+def find_and_register(pkg_name: str) -> list[str]:
+    """Find an installed package and register its wizard provider entry points.
+
+    Discovers all ``wt_compiler.wizard_providers`` entry points from an
+    already-installed package and adds new ones to the allowlist at the
+    registry path. Duplicate entry point names are skipped with a warning
+    printed to stderr.
+
+    The package must already be installed in the current environment before
+    calling this function. Install it first (e.g. ``pip install my-wt-provider``),
+    then call this function to add it to the allowlist.
 
     Args:
-        pkg_name: Package name to install.
-        installer: One of ``"uv"``, ``"pixi"``, or ``"pip"``.
-
-    Returns:
-        Command list suitable for ``subprocess.run()``.
-
-    Raises:
-        ValueError: If ``installer`` is not a recognised value.
-
-    Examples:
-        >>> _build_install_command("my-pkg", "uv")  # doctest: +SKIP
-        ['uv', 'pip', 'install', '--python', '/path/to/python', 'my-pkg']
-        >>> _build_install_command("my-pkg", "pip")  # doctest: +SKIP
-        ['/path/to/python', '-m', 'pip', 'install', 'my-pkg']
-    """
-    match installer:
-        case "uv":
-            return ["uv", "pip", "install", "--python", sys.executable, pkg_name]
-        case "pixi":
-            return ["pixi", "global", "install", pkg_name]
-        case "pip":
-            return [sys.executable, "-m", "pip", "install", pkg_name]
-        case _:
-            raise ValueError(f"Unknown installer {installer!r}. Choose from: uv, pixi, pip")
-
-
-def install_and_register(pkg_name: str, installer: str) -> list[str]:
-    """Install a package and register its wizard provider entry points.
-
-    Installs the package using the specified installer, then discovers
-    all ``wt_compiler.wizard_providers`` entry points and adds new ones to
-    the allowlist at the registry path. Duplicate entry point names are
-    skipped with a warning printed to stderr.
-
-    Args:
-        pkg_name: Package name to install (e.g. ``"my-wt-provider"``).
-        installer: Package installer to use — one of ``"uv"``, ``"pixi"``,
-            or ``"pip"``.
+        pkg_name: Package name (e.g. ``"my-wt-provider"``). May include
+            version specifiers or extras (e.g. ``"my-pkg==1.0"``); the bare
+            distribution name is extracted for the registry lookup.
 
     Returns:
         List of newly registered provider names (excludes already-registered
@@ -189,21 +162,16 @@ def install_and_register(pkg_name: str, installer: str) -> list[str]:
 
     Raises:
         ValueError: If ``pkg_name`` fails the safe-name validation check or
-            ``installer`` is not a recognised value.
-        subprocess.CalledProcessError: If the package installation fails.
-        importlib.metadata.PackageNotFoundError: If the package is not found
-            after installation.
-        ValueError: If the package exposes no ``wt_compiler.wizard_providers``
-            entry points.
+            the package exposes no ``wt_compiler.wizard_providers`` entry points.
+        importlib.metadata.PackageNotFoundError: If the package is not installed
+            in the current environment.
 
     Examples:
-        >>> install_and_register("my-wt-pkg", "uv")  # doctest: +SKIP
+        >>> find_and_register("my-wt-pkg")  # doctest: +SKIP
         ['my-provider']
     """
     # Extract the bare distribution name from the input (which may include version
     # specifiers or extras, e.g. "my-pkg==1.0" or "my-pkg[extra]>=2").
-    # The full specifier is passed to the installer; only the bare name is used
-    # for the post-install distribution() lookup.
     bare_name = _PKG_SPECIFIER_SPLIT_RE.split(pkg_name, maxsplit=1)[0].strip()
     if not _SAFE_PKG_NAME_RE.match(bare_name):
         raise ValueError(
@@ -211,7 +179,6 @@ def install_and_register(pkg_name: str, installer: str) -> list[str]:
             "The distribution name must contain only letters, digits, hyphens, underscores, "
             "and dots (optionally followed by version specifiers like ==1.0 or [extra])."
         )
-    subprocess.run(_build_install_command(pkg_name, installer), check=True)
     dist = distribution(bare_name)
     dist_name = dist.metadata["Name"]
     eps = [ep for ep in dist.entry_points if ep.group == "wt_compiler.wizard_providers"]
