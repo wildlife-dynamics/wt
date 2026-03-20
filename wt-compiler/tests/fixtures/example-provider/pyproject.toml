@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wt-example-provider"
+version = "0.1.0"
+description = "Example custom wizard provider — test fixture for wt-compiler"
+requires-python = ">=3.12"
+dependencies = ["wt-compiler"]
+
+[project.entry-points."wt_compiler.wizard_providers"]
+example = "wt_example_provider:ExampleProvider"
+
+[tool.setuptools.packages.find]
+where = ["src"]

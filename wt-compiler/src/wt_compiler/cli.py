@@ -417,16 +417,17 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    if args.command == "compile":
-        _compile(args)
-    elif args.command == "init":
-        _init(args, wizard)
-    elif args.command == "register-provider":
-        _register_provider(args)
-    elif args.command == "list-providers":
-        _list_providers()
-    else:
-        raise AssertionError(f"Unhandled command: {args.command!r}")
+    match args.command:
+        case "compile":
+            _compile(args)
+        case "init":
+            _init(args, wizard)
+        case "register-provider":
+            _register_provider(args.package)
+        case "list-providers":
+            _list_providers()
+        case _:
+            raise AssertionError(f"Unhandled command: {args.command!r}")
 
 
 def _compile(args: argparse.Namespace) -> None:
@@ -571,7 +572,7 @@ def _init(args: argparse.Namespace, provider: AbstractWizardProvider) -> None:
             sys.exit(1)
 
 
-def _register_provider(args: argparse.Namespace) -> None:
+def _register_provider(package: str) -> None:
     """Install and register a wizard provider package.
 
     Installs the package using the auto-detected installer, discovers all
@@ -579,7 +580,7 @@ def _register_provider(args: argparse.Namespace) -> None:
     providers allowlist.
 
     Args:
-        args: Parsed CLI arguments (``package`` field).
+        package: Package name to install and register.
     """
     import subprocess
     from importlib.metadata import PackageNotFoundError
@@ -587,14 +588,13 @@ def _register_provider(args: argparse.Namespace) -> None:
     import wt_compiler.wizard.providers as providers_mod
 
     try:
-        new_names = providers_mod.install_and_register(args.package)
+        new_names = providers_mod.install_and_register(package)
     except subprocess.CalledProcessError as e:
-        print(f"Error: installation of '{args.package}' failed:\n{e}", file=sys.stderr)
+        print(f"Error: installation of '{package}' failed:\n{e}", file=sys.stderr)
         sys.exit(1)
     except PackageNotFoundError:
         print(
-            f"Error: Package '{args.package}' not found after install attempt. "
-            "Check the package name.",
+            f"Error: Package '{package}' not found after install attempt. Check the package name.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -602,11 +602,9 @@ def _register_provider(args: argparse.Namespace) -> None:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
     if new_names:
-        print(
-            f"Registered {len(new_names)} provider(s) from '{args.package}': {', '.join(new_names)}"
-        )
+        print(f"Registered {len(new_names)} provider(s) from '{package}': {', '.join(new_names)}")
     else:
-        print(f"All providers from '{args.package}' were already registered.")
+        print(f"All providers from '{package}' were already registered.")
 
 
 def _list_providers() -> None:
