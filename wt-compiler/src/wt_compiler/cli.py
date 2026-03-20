@@ -229,8 +229,7 @@ def main() -> None:
     # Phase 1: pre-parse to detect --provider before building the full parser.
     # We need the provider name up front so its questions can be added to
     # init_parser as proper argparse flags (enabling --no-interactive batch
-    # mode with any provider).  A dedicated flag works cleanly with
-    # parse_known_args(); subparser positionals do not.
+    # mode with any provider).
     pre_parser = argparse.ArgumentParser(add_help=False)
     pre_parser.add_argument(
         "--provider",
