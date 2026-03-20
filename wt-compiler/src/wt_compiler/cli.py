@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import re
 import resource
 import sys
 from collections.abc import Callable
@@ -101,14 +102,16 @@ def _batch_init(
                             continue  # skip to match generator's condition logic
                     v = item.get(sq["dest"])
                     partial_entry[sq["dest"]] = v
+                    _default = sq["argparse"].get("default")
                     seq.append(
-                        str(v) if v is not None else str(sq["argparse"].get("default") or "")
+                        str(v) if v is not None else ("" if _default is None else str(_default))
                     )
             seq.append("")  # signal loop end
         else:
             sq = cast(SingleWizardQuestion, q)
             v = getattr(args, q["dest"])
-            seq.append(str(v) if v is not None else str(sq["argparse"].get("default") or ""))
+            _default = sq["argparse"].get("default")
+            seq.append(str(v) if v is not None else ("" if _default is None else str(_default)))
 
     answer_iter = iter(seq)
     gen = provider.input_generator()
@@ -249,50 +252,67 @@ def main() -> None:
     )
     pre_args, extras = pre_parser.parse_known_args()
     provider_name: str | None = pre_args.provider
-    is_init = bool(extras and extras[0] == "init")
-
-    if (
-        provider_name is None
-        and is_init
-        and not pre_args.no_interactive
-        and "--help" not in extras
-        and "-h" not in extras
-    ):
-        import wt_compiler.wizard.providers as providers_mod
-
-        try:
-            registered = providers_mod.get_registered_providers()
-        except (ValueError, PermissionError):
-            registered = []
-        if registered:
-            choices = ["default"] + [e["name"] for e in registered]
-            selected = questionary.select(
-                "Select a wizard provider:",
-                choices=choices,
-                default="default",
-            ).ask()
-            if selected is None:
-                sys.exit(1)  # Ctrl+C
-            if selected != "default":
-                provider_name = selected
+    # Detect init subcommand by finding the first non-flag token in extras.
+    # Using `extras[0]` would break if any unknown global flag precedes the subcommand.
+    is_init = any(arg == "init" for arg in extras if not arg.startswith("-"))
 
     wizard: AbstractWizardProvider
-    if provider_name is not None:
-        import wt_compiler.wizard.providers as providers_mod
+    if is_init:
+        # Provider selection and instantiation only runs for the init subcommand.
+        # Running it for compile/register-provider/etc. would execute third-party
+        # __init__ and get_questions() code unintentionally.
+        if (
+            provider_name is None
+            and not pre_args.no_interactive
+            and "--help" not in extras
+            and "-h" not in extras
+        ):
+            import wt_compiler.wizard.providers as providers_mod
 
-        try:
-            provider_cls = providers_mod.load_provider_class(provider_name)
-        except (ValueError, TypeError) as e:
-            print(f"Error: {e}", file=sys.stderr)
-            sys.exit(1)
-        try:
-            wizard = provider_cls()
-        except Exception as e:
-            print(
-                f"Error initializing provider {provider_name!r}: {e}",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+            try:
+                registered = providers_mod.get_registered_providers()
+            except PermissionError as e:
+                print(
+                    f"Warning: Could not read provider registry (permission denied): {e}",
+                    file=sys.stderr,
+                )
+                registered = []
+            except ValueError as e:
+                print(
+                    f"Warning: Could not read provider registry: {e}",
+                    file=sys.stderr,
+                )
+                registered = []
+            if registered:
+                choices = ["default"] + [e["name"] for e in registered]
+                selected = questionary.select(
+                    "Select a wizard provider:",
+                    choices=choices,
+                    default="default",
+                ).ask()
+                if selected is None:
+                    sys.exit(1)  # Ctrl+C
+                if selected != "default":
+                    provider_name = selected
+
+        if provider_name is not None:
+            import wt_compiler.wizard.providers as providers_mod
+
+            try:
+                provider_cls = providers_mod.load_provider_class(provider_name)
+            except (ValueError, TypeError) as e:
+                print(f"Error: {e}", file=sys.stderr)
+                sys.exit(1)
+            try:
+                wizard = provider_cls()
+            except Exception as e:
+                print(
+                    f"Error initializing provider {provider_name!r}: {e}",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+        else:
+            wizard = DefaultWizardProvider()
     else:
         wizard = DefaultWizardProvider()
     init_questions = wizard.get_questions()
@@ -365,8 +385,6 @@ def main() -> None:
     )
 
     # init subcommand  (init_questions and wizard were resolved in phase 1 above)
-    # _pre is passed as parent so --provider and --no-interactive are inherited,
-    # keeping their definitions in a single place.
     init_parser = subparsers.add_parser(
         "init",
         help="Scaffold a new workflow project directory",
@@ -375,7 +393,27 @@ def main() -> None:
             "Use --no-interactive with --workflow-id, --workflow-name, and --author-name "
             "to run in batch mode."
         ),
-        parents=[pre_parser],
+    )
+    # Declare --provider and --no-interactive explicitly rather than via parents=[pre_parser].
+    # Using a previously-parsed parser as a parent relies on argparse copying only action
+    # definitions (not parse state), which is an undocumented implementation detail.
+    init_parser.add_argument(
+        "--provider",
+        default=None,
+        metavar="PROVIDER",
+        help=(
+            "Name of a registered wizard provider. "
+            "Omit to use the built-in DefaultWizardProvider. "
+            "Custom providers must include a 'workflow_id' answer to name the output directory."
+        ),
+    )
+    init_parser.add_argument(
+        "--no-interactive",
+        action="store_true",
+        help=(
+            "Run in batch mode using CLI flags instead of interactive prompts. "
+            "Required flags depend on the selected provider's questions."
+        ),
     )
     init_parser.add_argument(
         "--output-dir",
@@ -520,16 +558,24 @@ def _finalize_init(provider: AbstractWizardProvider, args: argparse.Namespace) -
         FileExistsError: If the output directory exists and ``--clobber`` is not set.
         RuntimeError: If ``provider.dump()`` fails (e.g., no templates found).
     """
-    output_dir = args.output_dir if args.output_dir is not None else Path.cwd()
+    # Resolve to absolute immediately so the path is stable regardless of later cwd changes.
+    output_dir = (args.output_dir if args.output_dir is not None else Path.cwd()).resolve()
     workdir_name = provider.answers.get("workflow_id")
     if not workdir_name:
         raise ValueError(
             "Provider answers must include 'workflow_id' to determine the output directory name."
         )
     workdir_path = Path(workdir_name)
-    if workdir_path.is_absolute() or workdir_path.name != workdir_name:
+    # Use parts check instead of .name comparison: Path("..").name == ".." passes the
+    # old check, but Path("..").parts == ("..",) correctly fails the single-component test.
+    if workdir_path.is_absolute() or workdir_path.parts != (workdir_name,):
         raise ValueError(
             f"'workflow_id' must be a simple directory name with no path separators, "
+            f"got {workdir_name!r}."
+        )
+    if not re.match(r"^[A-Za-z0-9_\-]+$", workdir_name):
+        raise ValueError(
+            f"'workflow_id' must contain only letters, digits, hyphens, and underscores, "
             f"got {workdir_name!r}."
         )
     workdir = output_dir / workdir_name

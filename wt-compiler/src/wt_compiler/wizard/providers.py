@@ -29,6 +29,12 @@ from wt_compiler.wizard.abstract import AbstractWizardProvider
 
 # PEP 508 / PyPA distribution name: letters, digits, hyphens, underscores, dots.
 _SAFE_PKG_NAME_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$")
+# Splits a PEP 508 requirement string at the first version/extras/env-marker
+# character so we can extract the bare distribution name (e.g. "my-pkg" from
+# "my-pkg==1.0" or "my-pkg[extra]>=2").  Does NOT split on whitespace so that
+# a name with an embedded space (e.g. "my pkg") fails the distribution-name
+# validation rather than being silently truncated to a valid-looking "my".
+_PKG_SPECIFIER_SPLIT_RE = re.compile(r"[><=!@;,\[]")
 
 
 def _config_dir() -> Path:
@@ -90,9 +96,13 @@ def load_provider_registry() -> list[dict[str, str]]:
     if not isinstance(data, dict) or not isinstance(data.get("providers"), list):
         raise ValueError(f'Malformed providers.json: expected {{"providers": [...]}}, got {data!r}')
     for entry in data["providers"]:
-        if not isinstance(entry, dict) or "name" not in entry or "package" not in entry:
+        if (
+            not isinstance(entry, dict)
+            or not isinstance(entry.get("name"), str)
+            or not isinstance(entry.get("package"), str)
+        ):
             raise ValueError(
-                f"Malformed providers.json: each entry must have 'name' and 'package', "
+                f"Malformed providers.json: each entry must have string 'name' and 'package', "
                 f"got {entry!r}"
             )
     return cast(list[dict[str, str]], data["providers"])
@@ -190,13 +200,19 @@ def install_and_register(pkg_name: str, installer: str) -> list[str]:
         >>> install_and_register("my-wt-pkg", "uv")  # doctest: +SKIP
         ['my-provider']
     """
-    if not _SAFE_PKG_NAME_RE.match(pkg_name):
+    # Extract the bare distribution name from the input (which may include version
+    # specifiers or extras, e.g. "my-pkg==1.0" or "my-pkg[extra]>=2").
+    # The full specifier is passed to the installer; only the bare name is used
+    # for the post-install distribution() lookup.
+    bare_name = _PKG_SPECIFIER_SPLIT_RE.split(pkg_name, maxsplit=1)[0].strip()
+    if not _SAFE_PKG_NAME_RE.match(bare_name):
         raise ValueError(
             f"Invalid package name: {pkg_name!r}. "
-            "Package names must contain only letters, digits, hyphens, underscores, and dots."
+            "The distribution name must contain only letters, digits, hyphens, underscores, "
+            "and dots (optionally followed by version specifiers like ==1.0 or [extra])."
         )
     subprocess.run(_build_install_command(pkg_name, installer), check=True)
-    dist = distribution(pkg_name)
+    dist = distribution(bare_name)
     dist_name = dist.metadata["Name"]
     eps = [ep for ep in dist.entry_points if ep.group == "wt_compiler.wizard_providers"]
     if not eps:
@@ -217,7 +233,8 @@ def install_and_register(pkg_name: str, installer: str) -> list[str]:
         else:
             registry.append({"name": ep.name, "package": dist_name})
             newly_added.append(ep.name)
-    save_provider_registry(registry)
+    if newly_added:
+        save_provider_registry(registry)
     return newly_added
 
 
