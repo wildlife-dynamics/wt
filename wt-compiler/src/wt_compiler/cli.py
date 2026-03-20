@@ -623,7 +623,7 @@ def _list_providers() -> None:
     if not providers:
         print("No providers registered. Use 'wt-compiler register-provider <package>' to add one.")
         return
-    print(f"{'NAME':<30}{'PACKAGE'}")
+    print(f"{'PROVIDER NAME':<30}{'PACKAGE NAME'}")
     print("─" * 54)
     for entry in providers:
         print(f"{entry['name']:<30}{entry['package']}")
