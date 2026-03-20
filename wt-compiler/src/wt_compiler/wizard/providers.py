@@ -130,7 +130,7 @@ def save_registry(entries: list[dict[str, str]]) -> None:
         raise
 
 
-def _detect_installer(pkg_name: str) -> list[str]:
+def _build_install_command(pkg_name: str) -> list[str]:
     """Detect the best available package installer and return the install command.
 
     Detection order: uv > conda (when ``CONDA_PREFIX`` is set and conda is on
@@ -143,7 +143,7 @@ def _detect_installer(pkg_name: str) -> list[str]:
         Command list suitable for ``subprocess.run()``.
 
     Examples:
-        >>> _detect_installer("my-pkg")  # doctest: +SKIP
+        >>> _build_install_command("my-pkg")  # doctest: +SKIP
         ['uv', 'pip', 'install', '--python', '/path/to/python', 'my-pkg']
     """
     if shutil.which("uv") is not None:
@@ -186,7 +186,7 @@ def install_and_register(pkg_name: str) -> list[str]:
             f"Invalid package name: {pkg_name!r}. "
             "Package names must contain only letters, digits, hyphens, underscores, and dots."
         )
-    subprocess.run(_detect_installer(pkg_name), check=True)
+    subprocess.run(_build_install_command(pkg_name), check=True)
     dist = distribution(pkg_name)
     dist_name = dist.metadata["Name"]
     eps = [ep for ep in dist.entry_points if ep.group == "wt_compiler.wizard_providers"]
