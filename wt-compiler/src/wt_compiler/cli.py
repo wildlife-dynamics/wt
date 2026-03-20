@@ -228,44 +228,60 @@ def main() -> None:
     # init_parser as proper argparse flags (enabling --no-interactive batch
     # mode with any provider).  A dedicated flag works cleanly with
     # parse_known_args(); subparser positionals do not.
-    _pre = argparse.ArgumentParser(add_help=False)
-    _pre.add_argument("--provider", default=None)
-    _pre.add_argument("--no-interactive", action="store_true")
-    _pre_args, _extras = _pre.parse_known_args()
-    _provider_name: str | None = _pre_args.provider
-    _is_init = bool(_extras and _extras[0] == "init")
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument(
+        "--provider",
+        default=None,
+        metavar="PROVIDER",
+        help=(
+            "Name of a registered wizard provider. "
+            "Omit to use the built-in DefaultWizardProvider. "
+            "Custom providers must include a 'workflow_id' answer to name the output directory."
+        ),
+    )
+    pre_parser.add_argument(
+        "--no-interactive",
+        action="store_true",
+        help=(
+            "Run in batch mode using CLI flags instead of interactive prompts. "
+            "Required flags depend on the selected provider's questions."
+        ),
+    )
+    pre_args, extras = pre_parser.parse_known_args()
+    provider_name: str | None = pre_args.provider
+    is_init = bool(extras and extras[0] == "init")
 
     if (
-        _provider_name is None
-        and _is_init
-        and not _pre_args.no_interactive
-        and "--help" not in _extras
-        and "-h" not in _extras
+        provider_name is None
+        and is_init
+        and not pre_args.no_interactive
+        and "--help" not in extras
+        and "-h" not in extras
     ):
-        import wt_compiler.providers as _providers
+        import wt_compiler.providers as providers_mod
 
         try:
-            _registered = _providers.get_registered_providers()
+            registered = providers_mod.get_registered_providers()
         except (ValueError, PermissionError):
-            _registered = []
-        if _registered:
-            _choices = ["default"] + [e["name"] for e in _registered]
-            _selected = questionary.select(
+            registered = []
+        if registered:
+            choices = ["default"] + [e["name"] for e in registered]
+            selected = questionary.select(
                 "Select a wizard provider:",
-                choices=_choices,
+                choices=choices,
                 default="default",
             ).ask()
-            if _selected is None:
+            if selected is None:
                 sys.exit(1)  # Ctrl+C
-            if _selected != "default":
-                _provider_name = _selected
+            if selected != "default":
+                provider_name = selected
 
     wizard: AbstractWizardProvider
-    if _provider_name is not None:
-        import wt_compiler.providers as _providers
+    if provider_name is not None:
+        import wt_compiler.providers as providers_mod
 
         try:
-            provider_cls = _providers.load_provider_class(_provider_name)
+            provider_cls = providers_mod.load_provider_class(provider_name)
         except (ValueError, TypeError) as e:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
@@ -273,7 +289,7 @@ def main() -> None:
             wizard = provider_cls()
         except Exception as e:
             print(
-                f"Error initializing provider {_provider_name!r}: {e}",
+                f"Error initializing provider {provider_name!r}: {e}",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -349,6 +365,8 @@ def main() -> None:
     )
 
     # init subcommand  (init_questions and wizard were resolved in phase 1 above)
+    # _pre is passed as parent so --provider and --no-interactive are inherited,
+    # keeping their definitions in a single place.
     init_parser = subparsers.add_parser(
         "init",
         help="Scaffold a new workflow project directory",
@@ -357,6 +375,7 @@ def main() -> None:
             "Use --no-interactive with --workflow-id, --workflow-name, and --author-name "
             "to run in batch mode."
         ),
+        parents=[pre_parser],
     )
     init_parser.add_argument(
         "--output-dir",
@@ -369,24 +388,6 @@ def main() -> None:
         "--clobber",
         action="store_true",
         help="Overwrite existing output directory if it exists",
-    )
-    init_parser.add_argument(
-        "--no-interactive",
-        action="store_true",
-        help=(
-            "Run in batch mode using CLI flags instead of interactive prompts. "
-            "Required flags depend on the selected provider's questions."
-        ),
-    )
-    init_parser.add_argument(
-        "--provider",
-        default=None,
-        metavar="PROVIDER",
-        help=(
-            "Name of a registered wizard provider. "
-            "Omit to use the built-in DefaultWizardProvider. "
-            "Custom providers must include a 'workflow_id' answer to name the output directory."
-        ),
     )
     for q in init_questions:
         flag = "--" + q["dest"].replace("_", "-")
