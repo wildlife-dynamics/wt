@@ -8,8 +8,8 @@ providers are stored in an allowlist at ``~/.config/wt-compiler/providers.json``
 Examples:
     Register a provider package and list registered providers::
 
-        >>> from wt_compiler.wizard.providers import get_registry_path
-        >>> get_registry_path().name
+        >>> from wt_compiler.wizard.providers import get_provider_registry_path
+        >>> get_provider_registry_path().name
         'providers.json'
 """
 
@@ -53,20 +53,20 @@ def _config_dir() -> Path:
     return base / "wt-compiler"
 
 
-def get_registry_path() -> Path:
+def get_provider_registry_path() -> Path:
     """Return the path to the providers registry JSON file.
 
     Returns:
         Path to ``<config-dir>/providers.json``.
 
     Examples:
-        >>> get_registry_path().name
+        >>> get_provider_registry_path().name
         'providers.json'
     """
     return _config_dir() / "providers.json"
 
 
-def load_registry() -> list[dict[str, str]]:
+def load_provider_registry() -> list[dict[str, str]]:
     """Load registered providers from the registry file.
 
     Returns an empty list if the file does not exist. Validates that the
@@ -81,10 +81,10 @@ def load_registry() -> list[dict[str, str]]:
         ValueError: If the JSON structure does not match the expected schema.
 
     Examples:
-        >>> load_registry()  # doctest: +SKIP
+        >>> load_provider_registry()  # doctest: +SKIP
         []
     """
-    registry_path = get_registry_path()
+    registry_path = get_provider_registry_path()
     if not registry_path.exists():
         return []
     data = json.loads(registry_path.read_text(encoding="utf-8"))
@@ -99,7 +99,7 @@ def load_registry() -> list[dict[str, str]]:
     return cast(list[dict[str, str]], data["providers"])
 
 
-def save_registry(entries: list[dict[str, str]]) -> None:
+def save_provider_registry(entries: list[dict[str, str]]) -> None:
     """Save provider entries to the registry file.
 
     Creates parent directories if they do not exist. Writes with 2-space
@@ -109,9 +109,9 @@ def save_registry(entries: list[dict[str, str]]) -> None:
         entries: List of provider dicts, each with ``"name"`` and ``"package"`` keys.
 
     Examples:
-        >>> save_registry([{"name": "my-p", "package": "my-pkg"}])  # doctest: +SKIP
+        >>> save_provider_registry([{"name": "my-p", "package": "my-pkg"}])  # doctest: +SKIP
     """
-    registry_path = get_registry_path()
+    registry_path = get_provider_registry_path()
     registry_path.parent.mkdir(parents=True, exist_ok=True)
     data: dict[str, list[dict[str, str]]] = {"providers": entries}
     tmp_fd, tmp_path = tempfile.mkstemp(
@@ -194,7 +194,7 @@ def install_and_register(pkg_name: str) -> list[str]:
         raise ValueError(
             f"Package {pkg_name!r} exposes no 'wt_compiler.wizard_providers' entry points."
         )
-    registry = load_registry()
+    registry = load_provider_registry()
     existing_names = [e["name"] for e in registry]
     newly_added: list[str] = []
     for ep in eps:
@@ -208,14 +208,14 @@ def install_and_register(pkg_name: str) -> list[str]:
         else:
             registry.append({"name": ep.name, "package": dist_name})
             newly_added.append(ep.name)
-    save_registry(registry)
+    save_provider_registry(registry)
     return newly_added
 
 
 def get_registered_providers() -> list[dict[str, str]]:
     """Return all registered wizard providers.
 
-    Semantic alias for :func:`load_registry` for caller clarity.
+    Semantic alias for :func:`load_provider_registry` for caller clarity.
 
     Returns:
         List of provider entry dicts with ``"name"`` and ``"package"`` keys.
@@ -224,7 +224,7 @@ def get_registered_providers() -> list[dict[str, str]]:
         >>> get_registered_providers()  # doctest: +SKIP
         [{"name": "my-provider", "package": "my-pkg"}]
     """
-    return load_registry()
+    return load_provider_registry()
 
 
 def load_provider_class(name: str) -> type[AbstractWizardProvider]:
@@ -250,7 +250,7 @@ def load_provider_class(name: str) -> type[AbstractWizardProvider]:
         >>> load_provider_class("my-provider")  # doctest: +SKIP
         <class 'my_wt_pkg.MyProvider'>
     """
-    registry = load_registry()
+    registry = load_provider_registry()
     registered_names = [e["name"] for e in registry]
     if name not in registered_names:
         raise ValueError(

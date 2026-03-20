@@ -12,11 +12,11 @@ import pytest
 from wt_compiler.wizard.providers import (
     _config_dir,
     get_registered_providers,
-    get_registry_path,
+    get_provider_registry_path,
     install_and_register,
     load_provider_class,
-    load_registry,
-    save_registry,
+    load_provider_registry,
+    save_provider_registry,
 )
 from wt_compiler.wizard.abstract import AbstractWizardProvider
 
@@ -27,9 +27,9 @@ from wt_compiler.wizard.abstract import AbstractWizardProvider
 
 @pytest.fixture()
 def registry_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Redirect get_registry_path() to a tmp file for isolation."""
+    """Redirect get_provider_registry_path() to a tmp file for isolation."""
     path = tmp_path / "providers.json"
-    monkeypatch.setattr("wt_compiler.wizard.providers.get_registry_path", lambda: path)
+    monkeypatch.setattr("wt_compiler.wizard.providers.get_provider_registry_path", lambda: path)
     return path
 
 
@@ -70,11 +70,11 @@ class TestConfigDir:
 
 
 class TestGetRegistryPath:
-    """Tests for get_registry_path()."""
+    """Tests for get_provider_registry_path()."""
 
     def test_returns_providers_json(self) -> None:
         """Path ends with wt-compiler/providers.json."""
-        path = get_registry_path()
+        path = get_provider_registry_path()
         assert str(path).endswith("wt-compiler/providers.json")
 
     def test_respects_xdg_config_home(
@@ -82,7 +82,7 @@ class TestGetRegistryPath:
     ) -> None:
         """Path starts with XDG_CONFIG_HOME when set."""
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-        result = get_registry_path()
+        result = get_provider_registry_path()
         assert str(result).startswith(str(tmp_path))
 
 
@@ -92,12 +92,12 @@ class TestGetRegistryPath:
 
 
 class TestLoadRegistry:
-    """Tests for load_registry()."""
+    """Tests for load_provider_registry()."""
 
     def test_returns_empty_list_when_file_absent(self, registry_path: Path) -> None:
         """Returns [] when registry file does not exist."""
         assert not registry_path.exists()
-        assert load_registry() == []
+        assert load_provider_registry() == []
 
     def test_parses_valid_json(self, registry_path: Path) -> None:
         """Correctly parses a valid registry JSON file."""
@@ -105,7 +105,7 @@ class TestLoadRegistry:
         registry_path.write_text(
             '{"providers": [{"name": "my-p", "package": "my-pkg"}]}'
         )
-        result = load_registry()
+        result = load_provider_registry()
         assert result == [{"name": "my-p", "package": "my-pkg"}]
 
     def test_raises_on_malformed_json(self, registry_path: Path) -> None:
@@ -113,28 +113,28 @@ class TestLoadRegistry:
         registry_path.parent.mkdir(parents=True, exist_ok=True)
         registry_path.write_text("not json")
         with pytest.raises(ValueError):
-            load_registry()
+            load_provider_registry()
 
     def test_raises_on_missing_providers_key(self, registry_path: Path) -> None:
         """Raises ValueError when 'providers' key is absent."""
         registry_path.parent.mkdir(parents=True, exist_ok=True)
         registry_path.write_text('{"other": []}')
         with pytest.raises(ValueError):
-            load_registry()
+            load_provider_registry()
 
     def test_raises_on_providers_not_list(self, registry_path: Path) -> None:
         """Raises ValueError when 'providers' is not a list."""
         registry_path.parent.mkdir(parents=True, exist_ok=True)
         registry_path.write_text('{"providers": "bad"}')
         with pytest.raises(ValueError):
-            load_registry()
+            load_provider_registry()
 
     def test_raises_on_entry_missing_name(self, registry_path: Path) -> None:
         """Raises ValueError when an entry is missing the 'name' key."""
         registry_path.parent.mkdir(parents=True, exist_ok=True)
         registry_path.write_text('{"providers": [{"package": "x"}]}')
         with pytest.raises(ValueError):
-            load_registry()
+            load_provider_registry()
 
 
 # ---------------------------------------------------------------------------
@@ -143,37 +143,37 @@ class TestLoadRegistry:
 
 
 class TestSaveRegistry:
-    """Tests for save_registry()."""
+    """Tests for save_provider_registry()."""
 
     def test_creates_parent_dirs(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Creates parent directories if they don't exist."""
         nested = tmp_path / "nested" / "subdir" / "providers.json"
-        monkeypatch.setattr("wt_compiler.wizard.providers.get_registry_path", lambda: nested)
+        monkeypatch.setattr("wt_compiler.wizard.providers.get_provider_registry_path", lambda: nested)
         assert not nested.parent.exists()
-        save_registry([])
+        save_provider_registry([])
         assert nested.exists()
 
     def test_writes_correct_structure(self, registry_path: Path) -> None:
         """Written file can be read back and matches input."""
         entries = [{"name": "p1", "package": "pkg1"}]
-        save_registry(entries)
+        save_provider_registry(entries)
         data = json.loads(registry_path.read_text())
         assert data == {"providers": entries}
 
     def test_round_trip(self, registry_path: Path) -> None:
-        """save_registry + load_registry returns the same entries."""
+        """save_provider_registry + load_provider_registry returns the same entries."""
         entries = [
             {"name": "p1", "package": "pkg1"},
             {"name": "p2", "package": "pkg2"},
         ]
-        save_registry(entries)
-        assert load_registry() == entries
+        save_provider_registry(entries)
+        assert load_provider_registry() == entries
 
     def test_writes_with_indent_2_and_trailing_newline(self, registry_path: Path) -> None:
         """File uses 2-space indentation and ends with a newline."""
-        save_registry([{"name": "p", "package": "pkg"}])
+        save_provider_registry([{"name": "p", "package": "pkg"}])
         raw = registry_path.read_text()
         assert "  " in raw  # 2-space indentation
         assert raw.endswith("\n")  # trailing newline
@@ -310,7 +310,7 @@ class TestInstallAndRegister:
                     return_value=_make_mock_dist("My-Pkg", ["my-p"]),
                 ):
                     install_and_register("my-pkg")
-        saved = load_registry()
+        saved = load_provider_registry()
         assert saved[0]["package"] == "My-Pkg"
 
     def test_raises_value_error_on_invalid_package_name(
@@ -353,12 +353,12 @@ class TestInstallAndRegister:
 class TestGetRegisteredProviders:
     """Tests for get_registered_providers()."""
 
-    def test_returns_load_registry(self, registry_path: Path) -> None:
-        """Returns same data as load_registry()."""
+    def test_returns_load_provider_registry(self, registry_path: Path) -> None:
+        """Returns same data as load_provider_registry()."""
         registry_path.parent.mkdir(parents=True, exist_ok=True)
         entries = [{"name": "p1", "package": "pkg1"}]
         registry_path.write_text(json.dumps({"providers": entries}))
-        assert get_registered_providers() == load_registry()
+        assert get_registered_providers() == load_provider_registry()
 
 
 # ---------------------------------------------------------------------------
