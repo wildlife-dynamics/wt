@@ -484,7 +484,7 @@ def _compile(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
-def write_init_artifacts(provider: AbstractWizardProvider, args: argparse.Namespace) -> None:
+def _write_init_artifacts(provider: AbstractWizardProvider, args: argparse.Namespace) -> None:
     """Finalize the init command by writing project artifacts to disk.
 
     Derives the output directory from provider answers and CLI flags,
@@ -544,7 +544,7 @@ def _init(args: argparse.Namespace, provider: AbstractWizardProvider) -> None:
         _interactive_init(provider)
 
     try:
-        write_init_artifacts(provider, args)
+        _write_init_artifacts(provider, args)
     except FileExistsError as e:
         print(f"Error: {e}", file=sys.stderr)
         print("Use --clobber to overwrite existing directory", file=sys.stderr)

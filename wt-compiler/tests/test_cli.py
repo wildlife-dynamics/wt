@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from wt_compiler.cli import main, write_init_artifacts
+from wt_compiler.cli import main, _write_init_artifacts
 from wt_compiler.wizard.abstract import AbstractWizardProvider
 
 # ---------------------------------------------------------------------------
@@ -1246,7 +1246,7 @@ class TestInitProviderSelection:
 
 
 class TestFinalizeInit:
-    """Tests for write_init_artifacts() path-traversal guards (P1)."""
+    """Tests for _write_init_artifacts() path-traversal guards (P1)."""
 
     def _args(self, tmp_path: Path, clobber: bool = False) -> argparse.Namespace:
         return argparse.Namespace(output_dir=tmp_path, clobber=clobber)
@@ -1256,26 +1256,26 @@ class TestFinalizeInit:
         provider = MagicMock()
         provider.answers = {"workflow_id": "../etc"}
         with pytest.raises(ValueError, match="path separator"):
-            write_init_artifacts(provider, self._args(tmp_path))
+            _write_init_artifacts(provider, self._args(tmp_path))
 
     def test_rejects_nested_workflow_id(self, tmp_path: Path) -> None:
         """workflow_id with nested path components raises ValueError."""
         provider = MagicMock()
         provider.answers = {"workflow_id": "foo/bar"}
         with pytest.raises(ValueError, match="path separator"):
-            write_init_artifacts(provider, self._args(tmp_path))
+            _write_init_artifacts(provider, self._args(tmp_path))
 
     def test_rejects_absolute_workflow_id(self, tmp_path: Path) -> None:
         """Absolute workflow_id raises ValueError, preventing output_dir bypass."""
         provider = MagicMock()
         provider.answers = {"workflow_id": "/tmp/attack"}
         with pytest.raises(ValueError, match="path separator"):
-            write_init_artifacts(provider, self._args(tmp_path))
+            _write_init_artifacts(provider, self._args(tmp_path))
 
     def test_accepts_simple_workflow_id(self, tmp_path: Path) -> None:
         """A plain name with no separators is accepted."""
         provider = MagicMock()
         provider.answers = {"workflow_id": "my_workflow"}
         provider.dump = MagicMock()
-        write_init_artifacts(provider, self._args(tmp_path))
+        _write_init_artifacts(provider, self._args(tmp_path))
         provider.dump.assert_called_once_with(tmp_path / "my_workflow")
