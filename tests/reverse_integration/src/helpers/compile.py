@@ -24,11 +24,29 @@ class CompileResult:
         return self.exit_code == 0
 
 
+def _compile_flags_to_args(compile_flags: dict[str, str]) -> list[str]:
+    """Convert compile_flags dict to CLI arguments.
+
+    Args:
+        compile_flags: Dict mapping flag names (underscore style) to values.
+            Supported keys: pkg_name_prefix, results_env_var, variant.
+
+    Returns:
+        List of CLI argument strings (e.g., ["--pkg-name-prefix=value"]).
+    """
+    args: list[str] = []
+    for key, value in compile_flags.items():
+        cli_flag = f"--{key.replace('_', '-')}"
+        args.append(f"{cli_flag}={value}")
+    return args
+
+
 def run_compiler(
     spec_path: Path,
     clobber: bool = True,
     update: bool = False,
     timeout: int = 300,
+    compile_flags: dict[str, str] | None = None,
 ) -> CompileResult:
     """
     Run the wt-compiler CLI to compile a workflow spec.
@@ -38,6 +56,7 @@ def run_compiler(
         clobber: If True, overwrite existing output directory
         update: If True, carry over lockfile and bump version
         timeout: Timeout in seconds for the compilation process
+        compile_flags: Optional dict of compiler flags (e.g., pkg_name_prefix, variant)
 
     Returns:
         CompileResult with exit code, stdout, stderr, and paths
@@ -59,6 +78,8 @@ def run_compiler(
         cmd.append("--clobber")
     if update:
         cmd.append("--update")
+    if compile_flags:
+        cmd.extend(_compile_flags_to_args(compile_flags))
 
     result = subprocess.run(
         cmd,
@@ -94,6 +115,7 @@ def compile_workflow(
     clobber: bool = True,
     update: bool = False,
     timeout: int = 300,
+    compile_flags: dict[str, str] | None = None,
 ) -> CompileResult:
     """
     Compile a workflow in a cloned repository.
@@ -105,6 +127,7 @@ def compile_workflow(
         clobber: If True, overwrite existing output directory
         update: If True, carry over lockfile and bump version
         timeout: Timeout in seconds
+        compile_flags: Optional dict of compiler flags (e.g., pkg_name_prefix, variant)
 
     Returns:
         CompileResult with compilation details
@@ -117,7 +140,13 @@ def compile_workflow(
     if not full_spec_path.exists():
         raise FileNotFoundError(f"Spec file not found: {full_spec_path}")
 
-    result = run_compiler(full_spec_path, clobber=clobber, update=update, timeout=timeout)
+    result = run_compiler(
+        full_spec_path,
+        clobber=clobber,
+        update=update,
+        timeout=timeout,
+        compile_flags=compile_flags,
+    )
 
     # If generated_path was provided, verify it matches
     if result.success and generated_path:

@@ -34,6 +34,7 @@ class RepoConfig:
     spec_path: str
     generated_path: str
     spec_name: str | None = None  # For monorepos: identifies which spec (e.g., "etl")
+    compile_flags: dict[str, str] | None = None  # Optional compiler flags (e.g., pkg_name_prefix, variant)
 
     @property
     def id(self) -> str:
@@ -118,6 +119,7 @@ def get_repo_configs(
                         spec_path=spec_config["spec_path"],
                         generated_path=spec_config["generated_path"],
                         spec_name=_derive_spec_name(spec_config["spec_path"]),
+                        compile_flags=spec_config.get("compile_flags") or None,
                     )
                 )
         else:
@@ -128,6 +130,7 @@ def get_repo_configs(
                     ref=ref_override or repo.get("ref", "main"),
                     spec_path=repo.get("spec_path", "spec.yaml"),
                     generated_path=repo.get("generated_path", ""),
+                    compile_flags=repo.get("compile_flags") or None,
                 )
             )
 
@@ -325,6 +328,7 @@ def compiled_workspace(
         generated_path=repo_workspace.repo_config.generated_path or None,
         clobber=True,
         update=False,
+        compile_flags=repo_workspace.repo_config.compile_flags,
     )
 
     diff_result = None
