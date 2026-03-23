@@ -112,6 +112,78 @@ class MyProvider(DefaultWizardProvider):
 - Subdirectories are available for `{% include %}` (e.g., `licenses/`)
 - Context: all collected answers + `year` (current year)
 
+## Packaging and Distributing a Custom Provider
+
+A custom provider is just a Python package that:
+
+1. Subclasses `DefaultWizardProvider` (or `AbstractWizardProvider`)
+2. Declares a `wt_compiler.wizard_providers` entry point pointing at the class
+3. Includes a `workflow_id` answer key (required by `wt-compiler scaffold init` to name the output directory)
+
+### Entry point declaration
+
+In your package's `pyproject.toml`:
+
+```toml
+[project.entry-points."wt_compiler.wizard_providers"]
+my-provider = "my_wt_provider.provider:MyProvider"
+```
+
+The entry point name (`my-provider` above) is what users pass to `--provider`.
+Each package can expose multiple entry points.
+
+### The `workflow_id` requirement
+
+`wt-compiler scaffold init` derives the output directory name from `provider.answers["workflow_id"]`.
+Your provider **must** include a question whose `dest` is `"workflow_id"`.
+`DefaultWizardProvider` already provides this — subclasses inherit it automatically.
+
+### Installing the package
+
+The provider must be installed into the same environment as `wt-compiler`.
+
+**General use** — `wt-compiler` installed via `pixi global`, add the provider
+to the same pixi environment:
+
+```bash
+pixi global add --environment wt-compiler my-wt-provider
+```
+
+**Local development** — `wt-compiler` invoked via `uv run`, install the
+provider into the same virtual environment:
+
+```bash
+uv pip install my-wt-provider
+```
+
+Installed providers are discovered automatically via the
+`wt_compiler.wizard_providers` entry point — no registration step required.
+They appear in the provider selection prompt when running `wt-compiler scaffold init`
+and can be selected directly with `--provider my-provider`.
+
+### Minimal provider example
+
+```python
+# src/my_wt_provider/provider.py
+from wt_compiler.wizard import DefaultWizardProvider
+
+class MyProvider(DefaultWizardProvider):
+    def get_questions(self):
+        questions = super().get_questions()
+        questions.append({
+            "dest": "my_extra_field",
+            "argparse": {"help": "Extra field", "type": str},
+            "wizard": {},
+        })
+        return questions
+```
+
+```toml
+# pyproject.toml
+[project.entry-points."wt_compiler.wizard_providers"]
+my-provider = "my_wt_provider.provider:MyProvider"
+```
+
 ## Dual CLI Modes
 
 - **Interactive**: a CLI loop iterates the generator, prompts via `input()`, sends answers via `.send()`
@@ -120,7 +192,7 @@ class MyProvider(DefaultWizardProvider):
 
 ## Rich Interactive Renderers (questionary)
 
-The `wt-compiler init` interactive mode uses [questionary](https://github.com/tmbo/questionary)
+The `wt-compiler scaffold init` interactive mode uses [questionary](https://github.com/tmbo/questionary)
 to provide arrow-key select prompts, inline validation, and loop confirm prompts.
 
 The generator protocol is designed to support renderers richer than a plain `input()` loop.

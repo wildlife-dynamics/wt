@@ -208,3 +208,119 @@ wt-<id>-workflow/
         ├── run_sequential.py
         └── run_sequential_mock_io.py
 ```
+
+---
+
+## CLI Reference
+
+`wt-compiler` exposes two subcommands: `compile` and `scaffold`.
+
+### `scaffold init`
+
+Scaffold a new workflow project directory.
+
+```bash
+# Interactive (default) — arrow-key prompts for all fields
+wt-compiler scaffold init
+
+# Use a custom provider (installed in the current environment)
+wt-compiler scaffold init --provider my-provider-name
+
+# Write into a specific parent directory
+wt-compiler scaffold init --output-dir /path/to/projects
+
+# Overwrite an existing directory
+wt-compiler scaffold init --clobber
+
+# Batch / CI mode — supply all required fields as flags
+wt-compiler scaffold init --no-interactive \
+    --workflow-id my_workflow \
+    --workflow-name "My Workflow" \
+    --author-name "Jane Smith"
+```
+
+### `compile`
+
+Compile a `spec.yaml` into a complete workflow package.
+
+```bash
+wt-compiler compile --spec path/to/spec.yaml
+
+# Overwrite an existing output directory
+wt-compiler compile --spec spec.yaml --clobber
+
+# Compile and immediately install dependencies
+wt-compiler compile --spec spec.yaml --clobber --install
+
+# Re-use the existing lockfile and bump the version
+wt-compiler compile --spec spec.yaml --clobber --update
+
+# GCP variant
+wt-compiler compile --spec spec.yaml --variant gcp
+```
+
+---
+
+## Wizard Provider System
+
+Custom providers let teams ship organisation-specific workflow scaffolding 
+as ordinary Python packages.
+
+### Creating a provider
+
+Subclass `DefaultWizardProvider`, override `get_questions()`, and optionally
+add Jinja2 templates colocated with the module:
+
+```python
+from wt_compiler.wizard import DefaultWizardProvider
+
+class MyProvider(DefaultWizardProvider):
+    def get_questions(self):
+        questions = super().get_questions()
+        questions.append({
+            "dest": "gcp_project",
+            "argparse": {"help": "GCP project ID", "type": str},
+            "wizard": {},
+        })
+        return questions
+```
+
+### Declaring the entry point
+
+```toml
+# pyproject.toml
+[project.entry-points."wt_compiler.wizard_providers"]
+my-provider = "my_package.provider:MyProvider"
+```
+
+Any keys used in this entry-point table may be used as a value passed to `--provider` (e.g. `my-provider` in the example above). Note that a single provider extension package can expose one or multiple custom provider keys in this table.
+package exposing this entry point is discovered automatically — no
+registration step required. Every provider must produce a `workflow_id`
+answer (inherited automatically from `DefaultWizardProvider`) —
+`wt-compiler scaffold init` uses it to name the output directory.
+
+### Installing a provider
+
+The provider must be installed into the same environment as `wt-compiler`.
+
+**General use** — `wt-compiler` installed via `pixi global`:
+
+```bash
+# Install wt-compiler itself
+pixi global install wt-compiler \
+    --channel https://repo.prefix.dev/ecoscope-workflows \
+    --channel conda-forge
+
+# Add a provider to the same environment
+pixi global add --environment wt-compiler my-wt-provider
+```
+
+**Local development** — `wt-compiler` invoked via `uv run`:
+
+```bash
+uv pip install my-wt-provider
+uv run wt-compiler scaffold init
+```
+
+See the [wizard implementor guide](https://github.com/wildfire-analytics/wt/blob/main/wt-compiler/src/wt_compiler/wizard/README.md)
+for full details on question types, conditional logic, and custom templates.

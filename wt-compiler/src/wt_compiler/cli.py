@@ -1,7 +1,10 @@
 """Command-line interface for wt-compiler."""
 
+from __future__ import annotations
+
 import argparse
 import asyncio
+import re
 import resource
 import sys
 from collections.abc import Callable
@@ -13,6 +16,7 @@ import questionary
 
 from wt_compiler.compiler import compile_workflow_from_yaml
 from wt_compiler.wizard import DefaultWizardProvider
+from wt_compiler.wizard import providers as wt_providers
 from wt_compiler.wizard.abstract import (
     AbstractWizardProvider,
     LoopContext,
@@ -99,14 +103,16 @@ def _batch_init(
                             continue  # skip to match generator's condition logic
                     v = item.get(sq["dest"])
                     partial_entry[sq["dest"]] = v
+                    _default = sq["argparse"].get("default")
                     seq.append(
-                        str(v) if v is not None else str(sq["argparse"].get("default") or "")
+                        str(v) if v is not None else ("" if _default is None else str(_default))
                     )
             seq.append("")  # signal loop end
         else:
             sq = cast(SingleWizardQuestion, q)
             v = getattr(args, q["dest"])
-            seq.append(str(v) if v is not None else str(sq["argparse"].get("default") or ""))
+            _default = sq["argparse"].get("default")
+            seq.append(str(v) if v is not None else ("" if _default is None else str(_default)))
 
     answer_iter = iter(seq)
     gen = provider.input_generator()
@@ -221,6 +227,90 @@ def main() -> None:
     Parses command-line arguments and dispatches to the appropriate subcommand.
     Currently supports the 'compile' subcommand for compiling workflow specs.
     """
+    # Phase 1: pre-parse to detect --provider before building the full parser.
+    # We need the provider name up front so its questions can be added to
+    # init_parser as proper argparse flags (enabling --no-interactive batch
+    # mode with any provider).
+    #
+    # init_flags is a shared parent used by both the pre-parser and init_parser,
+    # so --provider and --no-interactive are declared exactly once.
+    init_flags = argparse.ArgumentParser(add_help=False)
+    init_flags.add_argument(
+        "--provider",
+        default=None,
+        metavar="PROVIDER",
+        help=(
+            "Name of an installed wizard provider. "
+            "Omit to use the built-in DefaultWizardProvider. "
+            "Custom providers must include a 'workflow_id' answer to name the output directory."
+        ),
+    )
+    init_flags.add_argument(
+        "--no-interactive",
+        action="store_true",
+        help=(
+            "Run in batch mode using CLI flags instead of interactive prompts. "
+            "Required flags depend on the selected provider's questions."
+        ),
+    )
+    pre_parser = argparse.ArgumentParser(add_help=False, parents=[init_flags])
+    pre_parser.add_argument("command", nargs="?", default=None)
+    pre_parser.add_argument("subcommand", nargs="?", default=None)
+    pre_args, extras = pre_parser.parse_known_args()
+    provider_name: str | None = pre_args.provider
+    is_init = pre_args.command == "scaffold" and pre_args.subcommand == "init"
+
+    wizard: AbstractWizardProvider
+    if is_init:
+        # Provider selection and instantiation only runs for the init subcommand
+        # to avoid executing third-party __init__ and get_questions() code when
+        # running compile or other subcommands.
+        if (
+            provider_name is None
+            and not pre_args.no_interactive
+            and "--help" not in extras
+            and "-h" not in extras
+        ):
+            available = wt_providers.get_available_providers()
+            if available:
+                choices = [questionary.Choice("default", value="default")] + [
+                    questionary.Choice(
+                        f"{e['name']} ({e['package']})" if e["package"] else e["name"],
+                        value=e["name"],
+                    )
+                    for e in available
+                ]
+                selected = questionary.select(
+                    "Select a wizard provider:",
+                    choices=choices,
+                    default="default",
+                ).ask()
+                if selected is None:
+                    sys.exit(1)  # Ctrl+C
+                if selected != "default":
+                    provider_name = selected
+
+        if provider_name is not None:
+            try:
+                provider_cls = wt_providers.load_provider_class(provider_name)
+            except (ValueError, TypeError) as e:
+                print(f"Error: {e}", file=sys.stderr)
+                sys.exit(1)
+            try:
+                wizard = provider_cls()
+            except Exception as e:
+                print(
+                    f"Error initializing provider {provider_name!r}: {e}",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+        else:
+            wizard = DefaultWizardProvider()
+    else:
+        wizard = DefaultWizardProvider()
+    init_questions = wizard.get_questions()
+
+    # Phase 2: build the full parser using the resolved provider's questions.
     parser = argparse.ArgumentParser(
         prog="wt-compiler",
         description="Compile workflow specifications into executable artifacts",
@@ -287,18 +377,24 @@ def main() -> None:
         ),
     )
 
-    # init subcommand
-    wizard = DefaultWizardProvider()
-    init_questions = wizard.get_questions()
+    # scaffold subcommand
+    scaffold_parser = subparsers.add_parser(
+        "scaffold",
+        help="Scaffold workflow project files",
+        description="Commands for scaffolding new workflow projects.",
+    )
+    scaffold_sub = scaffold_parser.add_subparsers(dest="scaffold_command", required=True)
 
-    init_parser = subparsers.add_parser(
+    # scaffold init subcommand  (init_questions and wizard were resolved in phase 1 above)
+    init_parser = scaffold_sub.add_parser(
         "init",
-        help="Scaffold a new workflow project directory",
+        help="Initialize a new workflow project directory",
         description=(
             "Interactively scaffold a new workflow project. "
             "Use --no-interactive with --workflow-id, --workflow-name, and --author-name "
             "to run in batch mode."
         ),
+        parents=[init_flags],
     )
     init_parser.add_argument(
         "--output-dir",
@@ -312,14 +408,6 @@ def main() -> None:
         action="store_true",
         help="Overwrite existing output directory if it exists",
     )
-    init_parser.add_argument(
-        "--no-interactive",
-        action="store_true",
-        help=(
-            "Run in batch mode using CLI flags. "
-            "Requires --workflow-id, --workflow-name, and --author-name."
-        ),
-    )
     for q in init_questions:
         flag = "--" + q["dest"].replace("_", "-")
         ap_kwargs: Any = {**cast(SingleWizardQuestion, q)["argparse"]}
@@ -327,10 +415,17 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    if args.command == "compile":
-        _compile(args)
-    elif args.command == "init":
-        _init(args, wizard)
+    match args.command:
+        case "compile":
+            _compile(args)
+        case "scaffold":
+            match args.scaffold_command:
+                case "init":
+                    _init(args, wizard)
+                case _:
+                    raise AssertionError(f"Unhandled scaffold command: {args.scaffold_command!r}")
+        case _:
+            raise AssertionError(f"Unhandled command: {args.command!r}")
 
 
 def _compile(args: argparse.Namespace) -> None:
@@ -401,37 +496,71 @@ def _compile(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
-def _init(args: argparse.Namespace, provider: AbstractWizardProvider) -> None:
-    """
-    Execute the init command.
+def _write_init_artifacts(provider: AbstractWizardProvider, args: argparse.Namespace) -> None:
+    """Finalize the init command by writing project artifacts to disk.
 
-    Scaffolds a new workflow project directory. Dispatches to ``_batch_init``
-    when ``--no-interactive`` is passed, otherwise to ``_interactive_init``.
+    Derives the output directory from provider answers and CLI flags,
+    validates the ``workflow_id`` answer, and delegates to
+    ``provider.dump()``.
+
+    Args:
+        provider: Completed wizard provider with ``workflow_id`` in answers.
+        args: Parsed CLI arguments (``output_dir``, ``clobber``).
+
+    Raises:
+        ValueError: If ``workflow_id`` is missing or empty in provider answers.
+        FileExistsError: If the output directory exists and ``--clobber`` is not set.
+        RuntimeError: If ``provider.dump()`` fails (e.g., no templates found).
+    """
+    # Resolve to absolute immediately so the path is stable regardless of later cwd changes.
+    output_dir = (args.output_dir if args.output_dir is not None else Path.cwd()).resolve()
+    workdir_name = provider.answers.get("workflow_id")
+    if not workdir_name:
+        raise ValueError(
+            "Provider answers must include 'workflow_id' to determine the output directory name."
+        )
+    workdir_path = Path(workdir_name)
+    # Use parts check instead of .name comparison: Path("..").name == ".." passes the
+    # old check, but Path("..").parts == ("..",) correctly fails the single-component test.
+    if workdir_path.is_absolute() or workdir_path.parts != (workdir_name,):
+        raise ValueError(
+            f"'workflow_id' must be a simple directory name with no path separators, "
+            f"got {workdir_name!r}."
+        )
+    if not re.match(r"^[A-Za-z0-9_\-]+$", workdir_name):
+        raise ValueError(
+            f"'workflow_id' must contain only letters, digits, hyphens, and underscores, "
+            f"got {workdir_name!r}."
+        )
+    workdir = output_dir / workdir_name
+    if workdir.exists() and not args.clobber:
+        raise FileExistsError(f"Output directory already exists: {workdir}")
+    provider.dump(workdir)
+    print(f"Initialized workflow project at: {workdir}")
+
+
+def _init(args: argparse.Namespace, provider: AbstractWizardProvider) -> None:
+    """Execute the init command.
+
+    Scaffolds a new workflow project directory. ``provider`` has already been
+    resolved and instantiated by ``main()`` (default or custom), so this
+    function only dispatches to ``_batch_init`` or ``_interactive_init``.
 
     Args:
         args: Parsed command-line arguments.
-        provider: Wizard provider instance to drive.
+        provider: Wizard provider instance (default or custom, pre-resolved).
     """
     if args.no_interactive:
         _batch_init(provider, args, provider.get_questions())
     else:
         _interactive_init(provider)
 
-    if "workflow_id" not in provider.answers:
-        print("Error: wizard did not complete successfully", file=sys.stderr)
-        sys.exit(1)
-
-    output_dir = args.output_dir if args.output_dir is not None else Path.cwd()
-    workdir = output_dir / provider.answers["workflow_id"]
-
-    if workdir.exists() and not args.clobber:
-        print(f"Error: Output directory already exists: {workdir}", file=sys.stderr)
+    try:
+        _write_init_artifacts(provider, args)
+    except FileExistsError as e:
+        print(f"Error: {e}", file=sys.stderr)
         print("Use --clobber to overwrite existing directory", file=sys.stderr)
         sys.exit(1)
-
-    try:
-        provider.dump(workdir)
-        print(f"Initialized workflow project at: {workdir}")
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)

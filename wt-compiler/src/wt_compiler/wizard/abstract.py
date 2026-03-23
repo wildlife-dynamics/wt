@@ -440,12 +440,17 @@ class AbstractWizardProvider(ABC):
                 "Ensure the 'templates/' directory is included in the package data."
             )
 
-        # Render each template
+        # Render each template — two passes to avoid partial workdir writes.
+        # A jinja2.UndefinedError (e.g. missing optional answer key) during
+        # the first pass raises before any files are touched on disk.
         context = {**self._answers, "year": datetime.datetime.now().year}
-        workdir.mkdir(parents=True, exist_ok=True)
+        rendered: list[tuple[Path, str]] = []
         for tname in sorted(template_names):
             template = env.get_template(tname)
             output_name = tname.removesuffix(".jinja2")
-            output_path = workdir / output_name
+            rendered.append((workdir / output_name, template.render(context)))
+        # All templates rendered successfully — now write to disk.
+        workdir.mkdir(parents=True, exist_ok=True)
+        for output_path, content in rendered:
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.write_text(template.render(context))
+            output_path.write_text(content)

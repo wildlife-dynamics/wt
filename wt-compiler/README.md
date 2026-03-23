@@ -45,29 +45,29 @@ uv add wt-compiler
 
 ```bash
 # Interactive mode (default) — arrow-key prompts for all fields
-wt-compiler init
+wt-compiler scaffold init
 
 # Write into a specific parent directory
-wt-compiler init --output-dir /path/to/projects
+wt-compiler scaffold init --output-dir /path/to/projects
 
 # Overwrite an existing directory
-wt-compiler init --clobber
+wt-compiler scaffold init --clobber
 
 # Batch mode — supply all required fields as flags (CI / scripting)
-wt-compiler init --no-interactive \
+wt-compiler scaffold init --no-interactive \
     --workflow-id my_workflow \
     --workflow-name "My Workflow" \
     --author-name "Jane Smith"
 
 # Batch mode with a conda requirement
-wt-compiler init --no-interactive \
+wt-compiler scaffold init --no-interactive \
     --workflow-id my_workflow \
     --workflow-name "My Workflow" \
     --author-name "Jane Smith" \
     --requirements '{"name":"numpy","version":">=1.0","channel":"conda-forge"}'
 
 # --requirements is repeatable for multiple packages
-wt-compiler init --no-interactive ... \
+wt-compiler scaffold init --no-interactive ... \
     --requirements '{"name":"numpy","version":">=1.0"}' \
     --requirements '{"name":"mypkg","path":"/abs/path/to/mypkg"}'
 ```
@@ -76,6 +76,33 @@ wt-compiler init --no-interactive ... \
 `spec.yaml`, CI configuration, and packaging boilerplate. See
 [`src/wt_compiler/wizard/README.md`](src/wt_compiler/wizard/README.md) for details on
 customising the wizard or adding custom templates.
+
+### Use a custom wizard provider
+
+Third-party packages can ship their own wizard providers by exposing a
+`wt_compiler.wizard_providers` entry point (see
+[wizard README](src/wt_compiler/wizard/README.md) for packaging details).
+Once the package is installed in the same environment as `wt-compiler`, it is
+discovered automatically — no registration step required.
+
+**General use (pixi global):**
+
+```bash
+pixi global add --environment wt-compiler my-wt-provider
+```
+
+**Local development (uv):**
+
+```bash
+uv pip install my-wt-provider
+```
+
+`wt-compiler scaffold init` will prompt you to choose a provider at startup, or you
+can select one directly with `--provider`:
+
+```bash
+wt-compiler scaffold init --provider my-provider-name
+```
 
 ### Basic Compilation
 
