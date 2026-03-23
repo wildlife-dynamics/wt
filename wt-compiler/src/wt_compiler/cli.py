@@ -255,9 +255,10 @@ def main() -> None:
     )
     pre_parser = argparse.ArgumentParser(add_help=False, parents=[init_flags])
     pre_parser.add_argument("command", nargs="?", default=None)
+    pre_parser.add_argument("subcommand", nargs="?", default=None)
     pre_args, extras = pre_parser.parse_known_args()
     provider_name: str | None = pre_args.provider
-    is_init = pre_args.command == "init"
+    is_init = pre_args.command == "scaffold" and pre_args.subcommand == "init"
 
     wizard: AbstractWizardProvider
     if is_init:
@@ -376,10 +377,18 @@ def main() -> None:
         ),
     )
 
-    # init subcommand  (init_questions and wizard were resolved in phase 1 above)
-    init_parser = subparsers.add_parser(
+    # scaffold subcommand
+    scaffold_parser = subparsers.add_parser(
+        "scaffold",
+        help="Scaffold workflow project files",
+        description="Commands for scaffolding new workflow projects.",
+    )
+    scaffold_sub = scaffold_parser.add_subparsers(dest="scaffold_command", required=True)
+
+    # scaffold init subcommand  (init_questions and wizard were resolved in phase 1 above)
+    init_parser = scaffold_sub.add_parser(
         "init",
-        help="Scaffold a new workflow project directory",
+        help="Initialize a new workflow project directory",
         description=(
             "Interactively scaffold a new workflow project. "
             "Use --no-interactive with --workflow-id, --workflow-name, and --author-name "
@@ -409,8 +418,12 @@ def main() -> None:
     match args.command:
         case "compile":
             _compile(args)
-        case "init":
-            _init(args, wizard)
+        case "scaffold":
+            match args.scaffold_command:
+                case "init":
+                    _init(args, wizard)
+                case _:
+                    raise AssertionError(f"Unhandled scaffold command: {args.scaffold_command!r}")
         case _:
             raise AssertionError(f"Unhandled command: {args.command!r}")
 

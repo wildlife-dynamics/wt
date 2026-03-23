@@ -213,27 +213,27 @@ wt-<id>-workflow/
 
 ## CLI Reference
 
-`wt-compiler` exposes two subcommands.
+`wt-compiler` exposes two subcommands: `compile` and `scaffold`.
 
-### `init`
+### `scaffold init`
 
 Scaffold a new workflow project directory.
 
 ```bash
 # Interactive (default) — arrow-key prompts for all fields
-wt-compiler init
+wt-compiler scaffold init
 
 # Use a custom provider (installed in the current environment)
-wt-compiler init --provider my-provider-name
+wt-compiler scaffold init --provider my-provider-name
 
 # Write into a specific parent directory
-wt-compiler init --output-dir /path/to/projects
+wt-compiler scaffold init --output-dir /path/to/projects
 
 # Overwrite an existing directory
-wt-compiler init --clobber
+wt-compiler scaffold init --clobber
 
 # Batch / CI mode — supply all required fields as flags
-wt-compiler init --no-interactive \
+wt-compiler scaffold init --no-interactive \
     --workflow-id my_workflow \
     --workflow-name "My Workflow" \
     --author-name "Jane Smith"
@@ -263,7 +263,7 @@ wt-compiler compile --spec spec.yaml --variant gcp
 
 ## Wizard Provider System
 
-Custom providers let teams ship organisation-specific `wt-compiler init`
+Custom providers let teams ship organisation-specific `wt-compiler scaffold init`
 workflows as ordinary Python packages.
 
 ### Creating a provider
@@ -297,7 +297,7 @@ Any keys used in this entry-point table may be used as a value passed to `--prov
 package exposing this entry point is discovered automatically — no
 registration step required. Every provider must produce a `workflow_id`
 answer (inherited automatically from `DefaultWizardProvider`) —
-`wt-compiler init` uses it to name the output directory.
+`wt-compiler scaffold init` uses it to name the output directory.
 
 ### Installing a provider
 
@@ -319,7 +319,7 @@ pixi global add --environment wt-compiler my-wt-provider
 
 ```bash
 uv pip install my-wt-provider
-uv run wt-compiler init
+uv run wt-compiler scaffold init
 ```
 
 See the [wizard implementor guide](https://github.com/wildfire-analytics/wt/blob/main/wt-compiler/src/wt_compiler/wizard/README.md)

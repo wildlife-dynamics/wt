@@ -45,29 +45,29 @@ uv add wt-compiler
 
 ```bash
 # Interactive mode (default) — arrow-key prompts for all fields
-wt-compiler init
+wt-compiler scaffold init
 
 # Write into a specific parent directory
-wt-compiler init --output-dir /path/to/projects
+wt-compiler scaffold init --output-dir /path/to/projects
 
 # Overwrite an existing directory
-wt-compiler init --clobber
+wt-compiler scaffold init --clobber
 
 # Batch mode — supply all required fields as flags (CI / scripting)
-wt-compiler init --no-interactive \
+wt-compiler scaffold init --no-interactive \
     --workflow-id my_workflow \
     --workflow-name "My Workflow" \
     --author-name "Jane Smith"
 
 # Batch mode with a conda requirement
-wt-compiler init --no-interactive \
+wt-compiler scaffold init --no-interactive \
     --workflow-id my_workflow \
     --workflow-name "My Workflow" \
     --author-name "Jane Smith" \
     --requirements '{"name":"numpy","version":">=1.0","channel":"conda-forge"}'
 
 # --requirements is repeatable for multiple packages
-wt-compiler init --no-interactive ... \
+wt-compiler scaffold init --no-interactive ... \
     --requirements '{"name":"numpy","version":">=1.0"}' \
     --requirements '{"name":"mypkg","path":"/abs/path/to/mypkg"}'
 ```
@@ -97,11 +97,11 @@ pixi global add --environment wt-compiler my-wt-provider
 uv pip install my-wt-provider
 ```
 
-`wt-compiler init` will prompt you to choose a provider at startup, or you
+`wt-compiler scaffold init` will prompt you to choose a provider at startup, or you
 can select one directly with `--provider`:
 
 ```bash
-wt-compiler init --provider my-provider-name
+wt-compiler scaffold init --provider my-provider-name
 ```
 
 ### Basic Compilation

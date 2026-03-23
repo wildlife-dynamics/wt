@@ -118,7 +118,7 @@ A custom provider is just a Python package that:
 
 1. Subclasses `DefaultWizardProvider` (or `AbstractWizardProvider`)
 2. Declares a `wt_compiler.wizard_providers` entry point pointing at the class
-3. Includes a `workflow_id` answer key (required by `wt-compiler init` to name the output directory)
+3. Includes a `workflow_id` answer key (required by `wt-compiler scaffold init` to name the output directory)
 
 ### Entry point declaration
 
@@ -134,7 +134,7 @@ Each package can expose multiple entry points.
 
 ### The `workflow_id` requirement
 
-`wt-compiler init` derives the output directory name from `provider.answers["workflow_id"]`.
+`wt-compiler scaffold init` derives the output directory name from `provider.answers["workflow_id"]`.
 Your provider **must** include a question whose `dest` is `"workflow_id"`.
 `DefaultWizardProvider` already provides this — subclasses inherit it automatically.
 
@@ -158,7 +158,7 @@ uv pip install my-wt-provider
 
 Installed providers are discovered automatically via the
 `wt_compiler.wizard_providers` entry point — no registration step required.
-They appear in the provider selection prompt when running `wt-compiler init`
+They appear in the provider selection prompt when running `wt-compiler scaffold init`
 and can be selected directly with `--provider my-provider`.
 
 ### Minimal provider example
@@ -192,7 +192,7 @@ my-provider = "my_wt_provider.provider:MyProvider"
 
 ## Rich Interactive Renderers (questionary)
 
-The `wt-compiler init` interactive mode uses [questionary](https://github.com/tmbo/questionary)
+The `wt-compiler scaffold init` interactive mode uses [questionary](https://github.com/tmbo/questionary)
 to provide arrow-key select prompts, inline validation, and loop confirm prompts.
 
 The generator protocol is designed to support renderers richer than a plain `input()` loop.
