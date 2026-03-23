@@ -263,8 +263,8 @@ wt-compiler compile --spec spec.yaml --variant gcp
 
 ## Wizard Provider System
 
-Custom providers let teams ship organisation-specific `wt-compiler scaffold init`
-workflows as ordinary Python packages.
+Custom providers let teams ship organisation-specific workflow scaffolding 
+as ordinary Python packages.
 
 ### Creating a provider
 
