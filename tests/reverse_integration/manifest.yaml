@@ -37,3 +37,4 @@ diff_allowlist:
   - README.md
   - pixi.lock
   - VERSION.yaml
+  - graph.png
