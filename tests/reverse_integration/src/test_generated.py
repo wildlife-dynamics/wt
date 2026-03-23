@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import Workspace
+from conftest import PixiInstallResult, Workspace
 
 
 class TestGenerated:
@@ -28,8 +28,7 @@ class TestGenerated:
 
     def test_pixi_install_succeeds(
         self,
-        compiled_workspace: Workspace,
-        generated_package_path: Path,
+        pixi_installed_workspace: tuple[Workspace, PixiInstallResult],
         request: pytest.FixtureRequest,
     ) -> None:
         """
@@ -41,25 +40,21 @@ class TestGenerated:
         if request.config.getoption("--skip-generated-tests"):
             pytest.skip("Skipping generated tests (--skip-generated-tests)")
 
-        result = subprocess.run(
-            ["pixi", "install"],
-            cwd=generated_package_path,
-            capture_output=True,
-            text=True,
-            timeout=600,  # 10 minutes for dependency resolution
-        )
+        workspace, pixi_result = pixi_installed_workspace
 
-        if result.returncode != 0:
+        if workspace.compile_result is None or not workspace.compile_result.success:
+            pytest.skip("Compilation failed, skipping generated tests")
+
+        if not pixi_result.success:
             pytest.fail(
-                f"pixi install failed with exit code {result.returncode}\n"
-                f"STDOUT:\n{result.stdout}\n"
-                f"STDERR:\n{result.stderr}"
+                f"pixi install failed\n"
+                f"STDOUT:\n{pixi_result.stdout}\n"
+                f"STDERR:\n{pixi_result.stderr}"
             )
 
     def test_generated_tests_pass(
         self,
-        compiled_workspace: Workspace,
-        generated_package_path: Path,
+        pixi_installed_workspace: tuple[Workspace, PixiInstallResult],
         test_cases: list[str],
         request: pytest.FixtureRequest,
     ) -> None:
@@ -75,20 +70,18 @@ class TestGenerated:
         if not test_cases:
             pytest.skip("No test cases found in test-cases.yaml")
 
-        # Ensure pixi is installed first
-        install_result = subprocess.run(
-            ["pixi", "install"],
-            cwd=generated_package_path,
-            capture_output=True,
-            text=True,
-            timeout=600,
-        )
+        workspace, pixi_result = pixi_installed_workspace
 
-        if install_result.returncode != 0:
-            pytest.fail(
+        if workspace.compile_result is None or not workspace.compile_result.success:
+            pytest.skip("Compilation failed, skipping generated tests")
+
+        if not pixi_result.success:
+            pytest.skip(
                 f"pixi install failed, cannot run tests\n"
-                f"STDERR:\n{install_result.stderr}"
+                f"STDERR:\n{pixi_result.stderr}"
             )
+
+        generated_package_path = workspace.compile_result.generated_path
 
         # Run tests for each case
         failed_cases = []
@@ -126,8 +119,7 @@ class TestGenerated:
 
     def test_metadata_valid(
         self,
-        compiled_workspace: Workspace,
-        generated_package_path: Path,
+        pixi_installed_workspace: tuple[Workspace, PixiInstallResult],
         request: pytest.FixtureRequest,
     ) -> None:
         """
@@ -139,20 +131,23 @@ class TestGenerated:
         if request.config.getoption("--skip-generated-tests"):
             pytest.skip("Skipping generated tests (--skip-generated-tests)")
 
+        workspace, pixi_result = pixi_installed_workspace
+
+        if workspace.compile_result is None or not workspace.compile_result.success:
+            pytest.skip("Compilation failed, skipping generated tests")
+
+        if not pixi_result.success:
+            pytest.skip(
+                f"pixi install failed, cannot run metadata tests\n"
+                f"STDERR:\n{pixi_result.stderr}"
+            )
+
+        generated_package_path = workspace.compile_result.generated_path
         tests_dir = generated_package_path / "tests"
         metadata_test = tests_dir / "test_metadata.py"
 
         if not metadata_test.exists():
             pytest.skip("test_metadata.py not found")
-
-        # Ensure pixi is installed
-        subprocess.run(
-            ["pixi", "install"],
-            cwd=generated_package_path,
-            capture_output=True,
-            text=True,
-            timeout=600,
-        )
 
         result = subprocess.run(
             ["pixi", "run", "pytest", "tests/test_metadata.py", "-v"],

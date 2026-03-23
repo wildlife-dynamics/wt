@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import subprocess
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -44,7 +45,7 @@ class RepoConfig:
         return f"{repo_name}@{self.ref}"
 
 
-@dataclass
+@dataclass(frozen=True)
 class Workspace:
     """A cloned repository workspace ready for testing."""
 
@@ -52,6 +53,15 @@ class Workspace:
     clone_result: CloneResult
     compile_result: CompileResult | None = None
     diff_result: DiffResult | None = None
+
+
+@dataclass(frozen=True)
+class PixiInstallResult:
+    """Result of running pixi install in a generated package."""
+
+    success: bool
+    stdout: str
+    stderr: str
 
 
 def load_manifest() -> dict[str, Any]:
@@ -255,13 +265,14 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
             "repo_config",
             configs,
             ids=[c.id for c in configs],
+            scope="session",
         )
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def repo_workspace(
     repo_config: RepoConfig,
-    tmp_path: Path,
+    tmp_path_factory: pytest.TempPathFactory,
     auth_token: str | None,
     request: pytest.FixtureRequest,
 ) -> Workspace:
@@ -284,7 +295,7 @@ def repo_workspace(
 
     clone_result = clone_at_ref(
         url=repo_config.url,
-        dest=tmp_path / "repo",
+        dest=tmp_path_factory.mktemp("repo"),
         ref=ref,
         auth_token=auth_token,
     )
@@ -295,7 +306,7 @@ def repo_workspace(
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def compiled_workspace(
     repo_workspace: Workspace,
     diff_allowlist: list[str],
@@ -316,7 +327,7 @@ def compiled_workspace(
         update=False,
     )
 
-    repo_workspace.compile_result = compile_result
+    diff_result = None
 
     # Check for diffs if compilation succeeded
     if compile_result.success:
@@ -326,12 +337,15 @@ def compiled_workspace(
             diff_allowlist,
             repo_workspace.repo_config.generated_path or None,
         )
-        repo_workspace.diff_result = diff_result
 
-    return repo_workspace
+    return replace(
+        repo_workspace,
+        compile_result=compile_result,
+        diff_result=diff_result,
+    )
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def test_cases(
     repo_workspace: Workspace,
     selected_cases: list[str] | None,
@@ -358,3 +372,39 @@ def test_cases(
         return [c for c in all_cases if c in selected_cases]
 
     return all_cases
+
+
+@pytest.fixture(scope="session")
+def pixi_installed_workspace(
+    compiled_workspace: Workspace,
+) -> tuple[Workspace, PixiInstallResult]:
+    """
+    Run pixi install once per compiled workspace.
+
+    Returns the workspace and the install result so tests can assert
+    on the install outcome or skip if it failed.
+    """
+    compile_result = compiled_workspace.compile_result
+
+    if (
+        compile_result is None
+        or not compile_result.success
+        or compile_result.generated_path is None
+    ):
+        return compiled_workspace, PixiInstallResult(
+            success=False, stdout="", stderr="Compilation failed"
+        )
+
+    result = subprocess.run(
+        ["pixi", "install"],
+        cwd=compile_result.generated_path,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+
+    return compiled_workspace, PixiInstallResult(
+        success=result.returncode == 0,
+        stdout=result.stdout,
+        stderr=result.stderr,
+    )
