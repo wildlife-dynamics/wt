@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
-from conftest import RepoConfig, Workspace
-from helpers.diff import format_diff_report
+from conftest import Workspace
+from helpers.diff import format_diff_report, format_variance_analysis, parse_allowlist
 
 
 class TestRecompile:
@@ -34,7 +36,8 @@ class TestRecompile:
     def test_no_unexpected_diff(
         self,
         compiled_workspace: Workspace,
-        diff_allowlist: list[str],
+        diff_allowlist: list[str | dict[str, Any]],
+        show_diff_analysis: bool,
     ) -> None:
         """
         Verify that only allowlisted files have changes after recompilation.
@@ -50,6 +53,14 @@ class TestRecompile:
             pytest.skip("Compilation failed, skipping diff check")
 
         assert diff_result is not None, "Diff check was not performed"
+
+        # Show variance analysis if requested
+        if show_diff_analysis and diff_result.variance_results:
+            _, conditional_entries = parse_allowlist(diff_allowlist)
+            analysis = format_variance_analysis(
+                diff_result.variance_results, conditional_entries
+            )
+            print(f"\n{analysis}")
 
         if diff_result.has_unexpected_changes:
             report = format_diff_report(diff_result)

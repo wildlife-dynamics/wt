@@ -31,10 +31,22 @@ repos:
   #     - spec_path: workflows/reports/spec.yaml
   #       generated_path: workflows/reports/wf-reports-workflow
 
-# Files allowed to have diffs after recompilation
-# These files contain dynamic content (hashes, versions, lock files)
+# Files allowed to have diffs after recompilation.
+# Simple string entries allow any change. Conditional entries with
+# allowed_variance only permit changes in regions matching the patterns.
+# Use single-quoted strings for regex patterns (no escaping needed).
+# See README.md for details.
 diff_allowlist:
   - README.md
   - pixi.lock
-  - VERSION.yaml
   - graph.png
+
+  # Only the MIN version field may change
+  - file: VERSION.yaml
+    allowed_variance:
+      - 'MIN: \d+'
+
+  # Only the PIXI_VERSION value may change
+  - file: Dockerfile
+    allowed_variance:
+      - 'PIXI_VERSION=\S+'
