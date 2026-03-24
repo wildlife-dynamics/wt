@@ -339,7 +339,7 @@ def compiled_workspace(
         spec_path=repo_workspace.repo_config.spec_path,
         generated_path=repo_workspace.repo_config.generated_path or None,
         clobber=True,
-        update=False,
+        update=True,
         compile_flags=repo_workspace.repo_config.compile_flags,
     )
 
