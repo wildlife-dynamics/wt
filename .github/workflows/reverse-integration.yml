@@ -76,14 +76,14 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --dev
 
-      - name: Run reverse-integration tests (recompilation only)
-        run: uv run pytest src/test_recompile.py -v --manifest-item="${{ matrix.id }}"
-
       - name: Set up pixi
         uses: prefix-dev/setup-pixi@v0.8.1
         with:
           pixi-version: v0.63.0
           run-install: false
+
+      - name: Run reverse-integration tests (recompilation only)
+        run: uv run pytest src/test_recompile.py -v --manifest-item="${{ matrix.id }}"
 
       - name: Run reverse-integration tests (generated tests)
         run: uv run pytest src/test_generated.py -v --manifest-item="${{ matrix.id }}"
