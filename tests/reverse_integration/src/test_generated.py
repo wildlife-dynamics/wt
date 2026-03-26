@@ -87,7 +87,7 @@ class TestGenerated:
         failed_cases = []
         for case in test_cases:
             result = subprocess.run(
-                ["pixi", "run", "pytest", "tests/", f"--case={case}", "-v"],
+                ["pixi", "run", "-e", "test", "pytest", "tests/", f"--case={case}", "-v"],
                 cwd=generated_package_path,
                 capture_output=True,
                 text=True,
@@ -150,7 +150,7 @@ class TestGenerated:
             pytest.skip("test_metadata.py not found")
 
         result = subprocess.run(
-            ["pixi", "run", "pytest", "tests/test_metadata.py", "-v"],
+            ["pixi", "run", "-e", "test", "pytest", "tests/test_metadata.py", "-v"],
             cwd=generated_package_path,
             capture_output=True,
             text=True,
