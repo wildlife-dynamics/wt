@@ -2,10 +2,37 @@
 # Lists downstream repos to test against the latest wt-compiler
 
 repos:
+  - url: https://github.com/ecoscope-platform-workflows-releases/event-details
+    ref: main  # Default: main branch
+    spec_path: spec.yaml  # Default: spec.yaml at repo root
+    generated_path: ecoscope-workflows-event-details-workflow
+    compile_flags:
+      pkg_name_prefix: ecoscope-workflows
+      results_env_var: ECOSCOPE_WORKFLOWS_RESULTS
+      variant: gcp
+
   - url: https://github.com/ecoscope-platform-workflows-releases/events
     ref: main  # Default: main branch
     spec_path: spec.yaml  # Default: spec.yaml at repo root
     generated_path: ecoscope-workflows-events-workflow
+    compile_flags:
+      pkg_name_prefix: ecoscope-workflows
+      results_env_var: ECOSCOPE_WORKFLOWS_RESULTS
+      variant: gcp
+
+  - url: https://github.com/ecoscope-platform-workflows-releases/patrols
+    ref: main  # Default: main branch
+    spec_path: spec.yaml  # Default: spec.yaml at repo root
+    generated_path: ecoscope-workflows-patrols-workflow
+    compile_flags:
+      pkg_name_prefix: ecoscope-workflows
+      results_env_var: ECOSCOPE_WORKFLOWS_RESULTS
+      variant: gcp
+
+  - url: https://github.com/ecoscope-platform-workflows-releases/subject-tracking
+    ref: main  # Default: main branch
+    spec_path: spec.yaml  # Default: spec.yaml at repo root
+    generated_path: ecoscope-workflows-subject-tracking-workflow
     compile_flags:
       pkg_name_prefix: ecoscope-workflows
       results_env_var: ECOSCOPE_WORKFLOWS_RESULTS
