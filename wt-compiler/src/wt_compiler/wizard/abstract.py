@@ -79,6 +79,10 @@ class LoopContext(TypedDict):
     """Zero-indexed iteration counter. ``0`` on first entry, increments each
     time the loop body completes and the first sub-question is re-yielded."""
 
+    label: str
+    """Singular display label used in confirm prompts (e.g. ``"requirement"``).
+    Defaults to ``dest`` when not explicitly set on the loop."""
+
 
 class SingleWizardQuestion(TypedDict):
     """A single question yielded by the wizard."""
@@ -106,6 +110,7 @@ class WizardQuestionLoop(TypedDict, total=False):
     argparse: ArgparseKwargs
     questions: list[WizardQuestion]  # pyright: ignore[reportGeneralTypeIssues]  # Required
     condition: Callable[[MappingProxyType[str, Any]], bool]
+    label: str
 
 
 WizardQuestion = SingleWizardQuestion | WizardQuestionLoop
@@ -301,7 +306,11 @@ class AbstractWizardProvider(ABC):
                 argparse=first_q["argparse"],
                 wizard=WizardKwargs(
                     **first_q.get("wizard", {}),
-                    loop_context=LoopContext(dest=question["dest"], iteration=iteration),
+                    loop_context=LoopContext(
+                        dest=question["dest"],
+                        iteration=iteration,
+                        label=question.get("label", question["dest"]),
+                    ),
                 ),
             )
             answer = yield first_q_with_ctx
@@ -325,7 +334,11 @@ class AbstractWizardProvider(ABC):
                     argparse=first_q["argparse"],
                     wizard=WizardKwargs(
                         **first_q.get("wizard", {}),
-                        loop_context=LoopContext(dest=question["dest"], iteration=iteration),
+                        loop_context=LoopContext(
+                            dest=question["dest"],
+                            iteration=iteration,
+                            label=question.get("label", question["dest"]),
+                        ),
                     ),
                 )
                 answer = yield first_q_with_ctx  # re-yield first question for next iteration

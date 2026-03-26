@@ -538,6 +538,7 @@ _Q_REQUIREMENTS_LOOP_QUESTIONS: list[WizardQuestion] = [
 
 _Q_REQUIREMENTS = WizardQuestionLoop(
     dest="requirements",
+    label="requirement",
     argparse=ArgparseKwargs(
         action="append",
         default=None,
