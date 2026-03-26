@@ -1031,6 +1031,140 @@ class TestInitCommandWithProvider:
 
 
 # ---------------------------------------------------------------------------
+# TestBatchInitConditionalQuestions
+# ---------------------------------------------------------------------------
+
+
+class _ConditionalProvider(AbstractWizardProvider):
+    """Provider with a top-level conditional question for testing _batch_init."""
+
+    def get_questions(self) -> list:  # type: ignore[override]
+        from types import MappingProxyType
+        from wt_compiler.wizard.abstract import ArgparseKwargs, SingleWizardQuestion, WizardKwargs
+
+        return [
+            SingleWizardQuestion(
+                dest="workflow_id",
+                argparse=ArgparseKwargs(help="ID", type=str),
+                wizard=WizardKwargs(),
+            ),
+            SingleWizardQuestion(
+                dest="include_widget",
+                argparse=ArgparseKwargs(help="Include?", choices=["yes", "no"]),
+                wizard=WizardKwargs(),
+            ),
+            SingleWizardQuestion(
+                dest="widget_title",
+                argparse=ArgparseKwargs(help="Title", type=str, default="Default Title"),
+                wizard=WizardKwargs(
+                    condition=lambda a: a.get("include_widget") == "yes",
+                ),
+            ),
+        ]
+
+
+class TestBatchInitConditionalQuestions:
+    """Tests that _batch_init correctly skips conditional questions."""
+
+    def test_conditional_question_skipped_when_condition_false(self, tmp_path: Path) -> None:
+        """When include_widget='no', widget_title is skipped and answers are correct."""
+        from wt_compiler.wizard.abstract import AbstractWizardProvider
+
+        captured: list[AbstractWizardProvider] = []
+
+        def capture_dump(self: AbstractWizardProvider, workdir: Path) -> None:
+            captured.append(self)
+
+        mock_providers = make_mock_providers(
+            load_provider_class=MagicMock(return_value=_ConditionalProvider)
+        )
+        with patch("wt_compiler.cli.wt_providers", mock_providers):
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler", "scaffold", "init",
+                    "--provider", "my-provider",
+                    "--no-interactive",
+                    "--workflow-id", "my_wf",
+                    "--include-widget", "no",
+                    "--output-dir", str(tmp_path),
+                ],
+            ):
+                with patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump", capture_dump):
+                    main()
+
+        p = captured[0]
+        assert p.answers["workflow_id"] == "my_wf"
+        assert p.answers["include_widget"] == "no"
+        assert "widget_title" not in p.answers
+
+    def test_conditional_question_included_when_condition_true(self, tmp_path: Path) -> None:
+        """When include_widget='yes', widget_title is answered with its default."""
+        from wt_compiler.wizard.abstract import AbstractWizardProvider
+
+        captured: list[AbstractWizardProvider] = []
+
+        def capture_dump(self: AbstractWizardProvider, workdir: Path) -> None:
+            captured.append(self)
+
+        mock_providers = make_mock_providers(
+            load_provider_class=MagicMock(return_value=_ConditionalProvider)
+        )
+        with patch("wt_compiler.cli.wt_providers", mock_providers):
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler", "scaffold", "init",
+                    "--provider", "my-provider",
+                    "--no-interactive",
+                    "--workflow-id", "my_wf",
+                    "--include-widget", "yes",
+                    "--output-dir", str(tmp_path),
+                ],
+            ):
+                with patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump", capture_dump):
+                    main()
+
+        p = captured[0]
+        assert p.answers["include_widget"] == "yes"
+        assert p.answers["widget_title"] == "Default Title"
+
+    def test_conditional_question_included_with_explicit_value(self, tmp_path: Path) -> None:
+        """When include_widget='yes' and --widget-title passed, explicit value is used."""
+        from wt_compiler.wizard.abstract import AbstractWizardProvider
+
+        captured: list[AbstractWizardProvider] = []
+
+        def capture_dump(self: AbstractWizardProvider, workdir: Path) -> None:
+            captured.append(self)
+
+        mock_providers = make_mock_providers(
+            load_provider_class=MagicMock(return_value=_ConditionalProvider)
+        )
+        with patch("wt_compiler.cli.wt_providers", mock_providers):
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler", "scaffold", "init",
+                    "--provider", "my-provider",
+                    "--no-interactive",
+                    "--workflow-id", "my_wf",
+                    "--include-widget", "yes",
+                    "--widget-title", "My Widget",
+                    "--output-dir", str(tmp_path),
+                ],
+            ):
+                with patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump", capture_dump):
+                    main()
+
+        p = captured[0]
+        assert p.answers["widget_title"] == "My Widget"
+
+
+# ---------------------------------------------------------------------------
 # TestInitProviderSelection
 # ---------------------------------------------------------------------------
 
