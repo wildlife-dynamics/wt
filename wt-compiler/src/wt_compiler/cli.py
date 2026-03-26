@@ -159,8 +159,8 @@ def _interactive_init(provider: AbstractWizardProvider) -> None:
     Loop boundaries are detected via ``wizard.loop_context`` injected by
     ``_process_question()``. When ``loop_context`` is present on a yielded
     question, a confirm prompt is shown before the question itself:
-    - ``iteration == 0``: "Add a {dest}?" (default True)
-    - ``iteration > 0``: "Add another {dest}?" (default True)
+    - ``iteration == 0``: "Add a {label}?" (default True)
+    - ``iteration > 0``: "Add another {label}?" (default True)
     If the user declines, ``""`` is sent to the generator to end the loop.
 
     Args:
@@ -186,8 +186,9 @@ def _interactive_init(provider: AbstractWizardProvider) -> None:
             loop_ctx: LoopContext | None = wizard_meta.get("loop_context")
             if loop_ctx is not None:
                 is_first = loop_ctx["iteration"] == 0
+                question_label = loop_ctx.get("label", loop_ctx["dest"])
                 confirm_msg = (
-                    f"Add a {loop_ctx['dest']}?" if is_first else f"Add another {loop_ctx['dest']}?"
+                    f"Add a {question_label}?" if is_first else f"Add another {question_label}?"
                 )
                 confirmed = questionary.confirm(confirm_msg, default=True).ask()
                 if confirmed is None:

@@ -211,8 +211,8 @@ question["wizard"].get("loop_context")
 
 When `loop_context` is present, show a confirm prompt **before** rendering the question:
 
-- `iteration == 0` → "Add a {dest}?" (suggest `default=True`)
-- `iteration > 0` → "Add another {dest}?" (suggest `default=True`)
+- `iteration == 0` → "Add a {label}?" (suggest `default=True`)
+- `iteration > 0` → "Add another {label}?" (suggest `default=True`)
 
 If the user declines, send `""` to the generator — this is the loop termination signal
 (the `while answer:` guard exits the loop). The generator then yields the next top-level
