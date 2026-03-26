@@ -403,13 +403,13 @@ def pixi_installed_workspace(
     """
     compile_result = compiled_workspace.compile_result
 
-    if (
-        compile_result is None
-        or not compile_result.success
-        or compile_result.generated_path is None
-    ):
+    if compile_result is None or not compile_result.success:
         return compiled_workspace, PixiInstallResult(
             success=False, stdout="", stderr="Compilation failed"
+        )
+    if compile_result.generated_path is None:
+        return compiled_workspace, PixiInstallResult(
+            success=False, stdout="", stderr="Generated path not determined"
         )
 
     result = subprocess.run(

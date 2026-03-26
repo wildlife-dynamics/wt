@@ -151,15 +151,13 @@ def compile_workflow(
     # If generated_path was provided, verify it matches
     if result.success and generated_path:
         expected_path = repo_path / generated_path
-        if result.generated_path and result.generated_path != expected_path:
-            # Update the result with the expected path if it exists
-            if expected_path.exists():
-                result = CompileResult(
-                    exit_code=result.exit_code,
-                    stdout=result.stdout,
-                    stderr=result.stderr,
-                    spec_path=result.spec_path,
-                    generated_path=expected_path,
-                )
+        if expected_path.exists() and result.generated_path != expected_path:
+            result = CompileResult(
+                exit_code=result.exit_code,
+                stdout=result.stdout,
+                stderr=result.stderr,
+                spec_path=result.spec_path,
+                generated_path=expected_path,
+            )
 
     return result
