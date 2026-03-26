@@ -128,14 +128,15 @@ class TestRecompile:
         if missing:
             pytest.fail(f"Missing required artifacts: {missing}")
 
-        # Check for the package subdirectory (wf_* pattern)
-        package_dirs = [d for d in generated_path.iterdir() if d.is_dir() and d.name.startswith("wf_")]
-        assert len(package_dirs) == 1, (
-            f"Expected exactly one wf_* package directory, found: {[d.name for d in package_dirs]}"
+        # Derive expected package directory from generated path name
+        package_name = generated_path.name.replace("-", "_")
+        package_dir = generated_path / package_name
+        assert package_dir.exists(), (
+            f"Expected package directory '{package_name}' not found in {generated_path}. "
+            f"Contents: {[d.name for d in generated_path.iterdir() if d.is_dir()]}"
         )
 
         # Check for dags subdirectory
-        package_dir = package_dirs[0]
         dags_dir = package_dir / "dags"
         assert dags_dir.exists(), f"Missing dags directory: {dags_dir}"
 

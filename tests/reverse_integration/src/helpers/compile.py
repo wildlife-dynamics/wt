@@ -90,12 +90,12 @@ def run_compiler(
     )
 
     # Try to determine the generated path from the spec
-    # The compiler creates wf-{spec_id}/ as a sibling to spec.yaml
+    # The compiler creates {pkg_name_prefix}-{spec_id}-workflow/ as a sibling to spec.yaml
     generated_path = None
     if result.returncode == 0:
         # Look for the generated directory
         for path in spec_path.parent.iterdir():
-            if path.is_dir() and path.name.startswith("wf-"):
+            if path.is_dir() and path.name.endswith("-workflow"):
                 generated_path = path
                 break
 
