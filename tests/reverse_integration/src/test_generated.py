@@ -87,7 +87,7 @@ class TestGenerated:
         failed_cases = []
         for case in test_cases:
             result = subprocess.run(
-                ["pixi", "run", "-e", "test", "pytest", "tests/", f"--case={case}", "-v"],
+                ["pixi", "run", "-e", "test", "test-app-sequential-mock-io", f"--case={case}"],
                 cwd=generated_package_path,
                 capture_output=True,
                 text=True,
@@ -120,6 +120,7 @@ class TestGenerated:
     def test_metadata_valid(
         self,
         pixi_installed_workspace: tuple[Workspace, PixiInstallResult],
+        test_cases: list[str],
         request: pytest.FixtureRequest,
     ) -> None:
         """
@@ -150,7 +151,7 @@ class TestGenerated:
             pytest.skip("test_metadata.py not found")
 
         result = subprocess.run(
-            ["pixi", "run", "-e", "test", "pytest", "tests/test_metadata.py", "-v"],
+            ["pixi", "run", "-e", "test", "test-app-metadata", f"--case={test_cases[0]}"],
             cwd=generated_package_path,
             capture_output=True,
             text=True,
