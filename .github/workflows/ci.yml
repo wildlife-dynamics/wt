@@ -95,3 +95,22 @@ jobs:
 
       - name: Check dependency sync
         run: python3 scripts/check-dep-sync.py
+
+  test-reverse-integration-helpers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        working-directory: tests/reverse_integration
+        run: uv sync --dev
+
+      - name: Run helper unit tests
+        working-directory: tests/reverse_integration
+        run: uv run pytest src/test_diff.py -v
