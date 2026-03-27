@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.5 — 2026-03-27
+
+- Fix errant injection of `wt-task` into the wt-runner conda environment
+
 ## v0.1.4 — 2026-03-18
 
 - Constrain Python to `<3.14` for ecoscope-eda-core compatibility

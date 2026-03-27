@@ -55,7 +55,7 @@ git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--mat
 
 [tool.pixi.package]
 name = "wt-runner-gcp"
-version = "0.1.4"
+version = "0.1.5"
 
 [tool.pixi.package.build]
 backend = { name = "pixi-build-python", version = "*", channels = ["conda-forge", "https://prefix.dev/pixi-build-backends"] }

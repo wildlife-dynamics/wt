@@ -482,7 +482,7 @@ class DagCompiler(BaseModel):
         if self.wt_pypi_deps is None:
             # Conda mode: wt-runner comes from conda channel
             runner_conda_deps[runner_pkg] = NamelessMatchSpec.from_match_spec(
-                MatchSpec(f"{runner_channel}::{runner_pkg} >=0.1.4,<1.0.0")
+                MatchSpec(f"{runner_channel}::{runner_pkg} >=0.1.5,<1.0.0")
             )
         else:
             # PyPI mode: wt-runner goes in runner feature pypi-deps,
