@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.4.0 — 2026-03-27
+
+- Add `wt-compiler scaffold init` command for scaffolding new workflow projects with interactive (questionary) and `--no-interactive` batch modes ([#84](https://github.com/wildlife-dynamics/wt/pull/84), [#103](https://github.com/wildlife-dynamics/wt/pull/103))
+- Add custom wizard provider plugin system — third-party packages can ship providers via the `wt_compiler.wizard_providers` entry point ([#103](https://github.com/wildlife-dynamics/wt/pull/103))
+- Add `questionary>=2.0.0,<3.0.0` dependency for interactive prompts ([#103](https://github.com/wildlife-dynamics/wt/pull/103))
+- Update compiled wt-runner lower bound to `>=0.1.5`
+
 ## v0.3.0 — 2026-03-19
 
 - Add CI and Tag GitHub Actions workflow templates to the wizard scaffold ([#83](https://github.com/wildlife-dynamics/wt/pull/83))
