@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
-from conftest import RepoConfig, Workspace
-from helpers.diff import format_diff_report
+from conftest import Workspace
+from helpers.diff import format_diff_report, format_variance_analysis, parse_allowlist
 
 
 class TestRecompile:
@@ -34,7 +36,8 @@ class TestRecompile:
     def test_no_unexpected_diff(
         self,
         compiled_workspace: Workspace,
-        diff_allowlist: list[str],
+        diff_allowlist: list[str | dict[str, Any]],
+        show_diff_analysis: bool,
     ) -> None:
         """
         Verify that only allowlisted files have changes after recompilation.
@@ -50,6 +53,14 @@ class TestRecompile:
             pytest.skip("Compilation failed, skipping diff check")
 
         assert diff_result is not None, "Diff check was not performed"
+
+        # Show variance analysis if requested
+        if show_diff_analysis and diff_result.variance_results:
+            _, conditional_entries = parse_allowlist(diff_allowlist)
+            analysis = format_variance_analysis(
+                diff_result.variance_results, conditional_entries
+            )
+            print(f"\n{analysis}")
 
         if diff_result.has_unexpected_changes:
             report = format_diff_report(diff_result)
@@ -117,14 +128,15 @@ class TestRecompile:
         if missing:
             pytest.fail(f"Missing required artifacts: {missing}")
 
-        # Check for the package subdirectory (wf_* pattern)
-        package_dirs = [d for d in generated_path.iterdir() if d.is_dir() and d.name.startswith("wf_")]
-        assert len(package_dirs) == 1, (
-            f"Expected exactly one wf_* package directory, found: {[d.name for d in package_dirs]}"
+        # Derive expected package directory from generated path name
+        package_name = generated_path.name.replace("-", "_")
+        package_dir = generated_path / package_name
+        assert package_dir.exists(), (
+            f"Expected package directory '{package_name}' not found in {generated_path}. "
+            f"Contents: {[d.name for d in generated_path.iterdir() if d.is_dir()]}"
         )
 
         # Check for dags subdirectory
-        package_dir = package_dirs[0]
         dags_dir = package_dir / "dags"
         assert dags_dir.exists(), f"Missing dags directory: {dags_dir}"
 
