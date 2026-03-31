@@ -519,6 +519,79 @@ class TestTaskInstance:
             known_tasks.clear()
 
 
+class TestInlineValue:
+    """Tests for InlineValue.serialize()."""
+
+    def test_plain_string(self):
+        """Simple string is repr'd with surrounding quotes."""
+        val = InlineValue(value="hello")
+        result = val.model_dump()
+        assert result["asstr"] == "'hello'"
+        assert result["is_inline_value"] is True
+
+    def test_string_with_single_quote(self):
+        """String containing a single quote uses double-quote delimiters via repr."""
+        val = InlineValue(value="it's a test")
+        result = val.model_dump()
+        # repr() produces "it's a test" (double-quoted) rather than the broken 'it's a test'
+        assert result["asstr"] == repr("it's a test")
+        assert result["asstr"] == '"it\'s a test"'
+
+    def test_string_with_double_quote(self):
+        """String containing a double quote is safely repr'd."""
+        val = InlineValue(value='say "hi"')
+        result = val.model_dump()
+        assert result["asstr"] == repr('say "hi"')
+
+    def test_string_with_both_quote_types(self):
+        """String with both quote types is safely repr'd with escaping."""
+        val = InlineValue(value="it's a \"test\"")
+        result = val.model_dump()
+        assert result["asstr"] == repr("it's a \"test\"")
+
+    def test_integer(self):
+        """Integer value uses f-string formatting (no quotes)."""
+        val = InlineValue(value=42)
+        result = val.model_dump()
+        assert result["asstr"] == "42"
+
+    def test_float(self):
+        """Float value uses f-string formatting."""
+        val = InlineValue(value=3.14)
+        result = val.model_dump()
+        assert result["asstr"] == "3.14"
+
+    def test_bool_true(self):
+        """Boolean True serializes as 'True'."""
+        val = InlineValue(value=True)
+        result = val.model_dump()
+        assert result["asstr"] == "True"
+
+    def test_bool_false(self):
+        """Boolean False serializes as 'False'."""
+        val = InlineValue(value=False)
+        result = val.model_dump()
+        assert result["asstr"] == "False"
+
+    def test_none(self):
+        """None serializes as 'None'."""
+        val = InlineValue(value=None)
+        result = val.model_dump()
+        assert result["asstr"] == "None"
+
+    def test_list(self):
+        """List value uses f-string formatting."""
+        val = InlineValue(value=[1, 2, 3])
+        result = val.model_dump()
+        assert result["asstr"] == "[1, 2, 3]"
+
+    def test_dict(self):
+        """Dict value uses f-string formatting."""
+        val = InlineValue(value={"key": "value"})
+        result = val.model_dump()
+        assert result["asstr"] == "{'key': 'value'}"
+
+
 class TestVariableValuesList:
     """Tests for VariableValuesList parsing, serialization, and dependency extraction."""
 
