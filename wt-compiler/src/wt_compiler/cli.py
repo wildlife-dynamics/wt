@@ -76,23 +76,20 @@ def _batch_init(
     Raises:
         SystemExit: If required flags are missing or the generator raises.
     """
-    missing = [
-        f"--{q['dest'].replace('_', '-')}"
-        for q in questions
-        if not _is_loop(q)
-        and "default" not in cast(SingleWizardQuestion, q)["argparse"]
-        and getattr(args, q["dest"]) is None
-    ]
-    if missing:
-        print(f"Error: --no-interactive requires: {', '.join(missing)}", file=sys.stderr)
-        sys.exit(1)
-
-    # Build flat answer sequence in generator-expected order.
-    # Single questions → one string; loop questions → one string per sub-field
-    # per item (respecting wizard.condition gates), then "" to signal loop end.
+    # Build flat answer sequence in generator-expected order, tracking accumulated
+    # answers so top-level wizard.condition gates are honoured (matching what
+    # input_generator() will do at runtime).
+    # Single questions → one string (skipped entirely when their condition is
+    # false); loop questions → one string per sub-field per item (respecting
+    # sub-question condition gates), then "" to signal loop end.
     seq: list[str] = []
+    partial_answers: dict[str, Any] = {}
+    missing: list[str] = []
     for q in questions:
         if _is_loop(q):
+            loop_cond = q.get("condition")
+            if loop_cond and not loop_cond(MappingProxyType(partial_answers)):
+                continue  # entire loop skipped
             for item in getattr(args, q["dest"]) or []:
                 partial_entry: dict[str, Any] = {}
                 for i, sub_q in enumerate(q["questions"]):
@@ -108,11 +105,23 @@ def _batch_init(
                         str(v) if v is not None else ("" if _default is None else str(_default))
                     )
             seq.append("")  # signal loop end
+            partial_answers[q["dest"]] = getattr(args, q["dest"]) or []
         else:
             sq = cast(SingleWizardQuestion, q)
-            v = getattr(args, q["dest"])
+            top_cond = sq.get("wizard", {}).get("condition")
+            if top_cond and not top_cond(MappingProxyType(partial_answers)):
+                continue  # question skipped by generator — do not emit an answer
+            v = getattr(args, sq["dest"])
             _default = sq["argparse"].get("default")
-            seq.append(str(v) if v is not None else ("" if _default is None else str(_default)))
+            if v is None and _default is None:
+                missing.append(f"--{sq['dest'].replace('_', '-')}")
+                continue
+            answer = str(v) if v is not None else str(_default)
+            seq.append(answer)
+            partial_answers[sq["dest"]] = answer
+    if missing:
+        print(f"Error: --no-interactive requires: {', '.join(missing)}", file=sys.stderr)
+        sys.exit(1)
 
     answer_iter = iter(seq)
     gen = provider.input_generator()
