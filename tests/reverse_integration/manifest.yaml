@@ -77,3 +77,8 @@ diff_allowlist:
   - file: Dockerfile
     allowed_variance:
       - 'PIXI_VERSION=\S+'
+
+  # Only version specifiers may change
+  - file: pixi.toml
+    allowed_variance:
+      - '(?<=version = ")[^"]*'
