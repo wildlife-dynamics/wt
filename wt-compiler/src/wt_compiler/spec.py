@@ -295,7 +295,7 @@ class InlineValue(BaseModel):
     def serialize(self) -> SerializedInlineValue:
         """Serialize inline value for template use."""
         return {
-            "asstr": (f"'{self.value}'" if isinstance(self.value, str) else f"{self.value}"),
+            "asstr": (repr(self.value) if isinstance(self.value, str) else f"{self.value}"),
             "is_inline_value": True,
         }
 
