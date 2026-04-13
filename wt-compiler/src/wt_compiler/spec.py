@@ -5,6 +5,7 @@ the workflow specification (spec.yaml) input format.
 """
 
 import builtins
+import copy
 import hashlib
 import keyword
 import os
@@ -100,7 +101,7 @@ class KnownTask(BaseModel):
             >>> "y" in schema["properties"]
             False
         """
-        schema = self.json_schema.copy()
+        schema = copy.deepcopy(self.json_schema)
 
         # Add description if available
         if self.description and "description" not in schema:
