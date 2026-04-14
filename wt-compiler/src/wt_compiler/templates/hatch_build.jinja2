@@ -8,6 +8,8 @@ yaml = ruamel.yaml.YAML(typ="safe")
 
 
 class VersionYamlHook(MetadataHookInterface):
+    """Hatch metadata hook that reads version from VERSION.yaml."""
+
     def update(self, metadata: dict) -> None:
         version_path = Path(self.root) / "VERSION.yaml"
         if not version_path.exists():

@@ -1153,9 +1153,18 @@ class TestPyprojectTomlArtifact:
         object.__setattr__(
             artifacts, "pyproject_toml", artifacts.pyproject_toml + "\n# changed"
         )
-        fp_changed = Fingerprint(spec=spec, wa=artifacts)
-        assert fp_changed.artifacts_sha256_basic != original_basic
-        assert fp_changed.artifacts_sha256_strict != original_strict
+        fp_pyproject = Fingerprint(spec=spec, wa=artifacts)
+        assert fp_pyproject.artifacts_sha256_basic != original_basic
+        assert fp_pyproject.artifacts_sha256_strict != original_strict
+
+        # Reset pyproject_toml and mutate hatch_build_py
+        artifacts = self._compile_minimal_workflow()
+        object.__setattr__(
+            artifacts, "hatch_build_py", artifacts.hatch_build_py + "\n# changed"
+        )
+        fp_hatch = Fingerprint(spec=spec, wa=artifacts)
+        assert fp_hatch.artifacts_sha256_basic != original_basic
+        assert fp_hatch.artifacts_sha256_strict != original_strict
 
 
 class TestHatchDynamicVersion:

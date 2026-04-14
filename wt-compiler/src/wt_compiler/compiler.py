@@ -897,7 +897,7 @@ class DagCompiler(BaseModel):
             release_name=self.release_name,
             package_name=self.package_name,
         )
-        hatch_build_py = self.plainrender("hatch_build.jinja2")
+        hatch_build_py = self.ruffrender("hatch_build.jinja2")
 
         if on_progress is not None:
             on_progress("Building graph...")
