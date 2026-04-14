@@ -184,6 +184,8 @@ class TestWorkflowArtifacts:
                 "pixi.toml": pixi_toml,
                 "Dockerfile": "# Dockerfile",
                 ".dockerignore": "*.pyc",
+                "pyproject.toml": "# pyproject",
+                "hatch_build.py": "# hatch_build",
             },
         )
         assert artifacts.release_name == "wf-test"
@@ -233,6 +235,8 @@ class TestWorkflowArtifacts:
                 "pixi.toml": pixi_toml,
                 "Dockerfile": "FROM python:3.10",
                 ".dockerignore": "*.pyc",
+                "pyproject.toml": "# pyproject",
+                "hatch_build.py": "# hatch_build",
             },
         )
 
@@ -291,9 +295,33 @@ class TestWorkflowArtifactsDump:
                 "pixi.toml": pixi_toml,
                 "Dockerfile": "FROM python:3.10",
                 ".dockerignore": "*.pyc",
+                "pyproject.toml": "# pyproject",
+                "hatch_build.py": "# hatch_build",
                 "README.md": "# Test <!-- params_sha256: abc123 -->",
             },
         )
+
+    def test_dump_writes_pyproject_toml_and_hatch_build_py(self, tmp_path, monkeypatch):
+        """Test that dump() writes pyproject.toml and hatch_build.py at release-dir root."""
+        monkeypatch.chdir(tmp_path)
+        artifacts = self._make_artifacts(pydot_graph=None)
+        artifacts.dump()
+
+        release_dir = tmp_path / "wf-test"
+        assert (release_dir / "pyproject.toml").exists()
+        assert (release_dir / "hatch_build.py").exists()
+        assert (release_dir / "pyproject.toml").read_text() == "# pyproject"
+        assert (release_dir / "hatch_build.py").read_text() == "# hatch_build"
+
+    def test_pyproject_toml_from_disk_roundtrip(self, tmp_path, monkeypatch):
+        """Test that from_disk() round-trips pyproject.toml and hatch_build.py."""
+        monkeypatch.chdir(tmp_path)
+        artifacts = self._make_artifacts(pydot_graph=None)
+        artifacts.dump()
+
+        loaded = WorkflowArtifacts.from_disk("spec.yaml", tmp_path / "wf-test")
+        assert loaded.pyproject_toml == "# pyproject"
+        assert loaded.hatch_build_py == "# hatch_build"
 
     def test_dump_succeeds_when_pydot_graph_is_none(self, tmp_path, monkeypatch):
         """Test that dump() succeeds when pydot_graph is None."""

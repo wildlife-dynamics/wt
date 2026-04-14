@@ -532,7 +532,13 @@ class TestFingerprint:
             package=package,
             tests=tests,
             pydot_graph=None,
-            **{"pixi.toml": pixi_toml, "Dockerfile": "", ".dockerignore": ""},
+            **{
+                "pixi.toml": pixi_toml,
+                "Dockerfile": "",
+                ".dockerignore": "",
+                "pyproject.toml": "",
+                "hatch_build.py": "",
+            },
         )
 
         fingerprint = Fingerprint(spec=spec, wa=artifacts)
@@ -592,7 +598,13 @@ class TestFingerprint:
             package=package,
             tests=tests,
             pydot_graph=None,
-            **{"pixi.toml": pixi_toml, "Dockerfile": "", ".dockerignore": ""},
+            **{
+                "pixi.toml": pixi_toml,
+                "Dockerfile": "",
+                ".dockerignore": "",
+                "pyproject.toml": "",
+                "hatch_build.py": "",
+            },
         )
 
         fingerprint = Fingerprint(spec=spec, wa=artifacts)
@@ -655,7 +667,13 @@ class TestFingerprint:
             package=package,
             tests=tests,
             pydot_graph=None,
-            **{"pixi.toml": pixi_toml, "Dockerfile": "", ".dockerignore": ""},
+            **{
+                "pixi.toml": pixi_toml,
+                "Dockerfile": "",
+                ".dockerignore": "",
+                "pyproject.toml": "",
+                "hatch_build.py": "",
+            },
         )
 
         installed_reqs = [
@@ -729,7 +747,13 @@ class TestFingerprint:
             package=package,
             tests=tests,
             pydot_graph=None,
-            **{"pixi.toml": pixi_toml, "Dockerfile": "", ".dockerignore": ""},
+            **{
+                "pixi.toml": pixi_toml,
+                "Dockerfile": "",
+                ".dockerignore": "",
+                "pyproject.toml": "",
+                "hatch_build.py": "",
+            },
         )
 
         # No installed_requirements provided — should default to empty list
@@ -1058,6 +1082,159 @@ class TestRenderDag:
             )
         finally:
             known_tasks.clear()
+
+
+class TestPyprojectTomlArtifact:
+    """Tests for pyproject.toml and hatch_build.py in compiled artifacts."""
+
+    def _compile_minimal_workflow(self):
+        """Compile a minimal workflow and return the artifacts."""
+        task = KnownTask(
+            importable_reference="mymod.my_func",
+            json_schema={"properties": {"x": {"type": "integer"}}},
+        )
+        known_tasks["my_func"] = {"mymod": task}
+        try:
+            spec = Spec(
+                id="test_pyproject",
+                requirements=[],
+                workflow=[
+                    TaskInstance(
+                        id="step_one",
+                        name="Step One",
+                        task="mymod.my_func",
+                    ),
+                ],
+            )
+            compiler = DagCompiler(
+                spec=spec,
+                wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/",
+            )
+            return compiler.compile(spec_relpath="spec.yaml")
+        finally:
+            known_tasks.clear()
+
+    def test_compile_produces_pyproject_toml_with_release_name(self):
+        """Compilation produces a pyproject.toml containing the release name."""
+        artifacts = self._compile_minimal_workflow()
+        assert 'name = "wt-test-pyproject-workflow"' in artifacts.pyproject_toml
+        assert 'dynamic = ["version"]' in artifacts.pyproject_toml
+
+    def test_compile_produces_pyproject_toml_with_script_entry(self):
+        """Compilation produces a pyproject.toml with the correct script entry point."""
+        artifacts = self._compile_minimal_workflow()
+        assert (
+            'wt-test-pyproject-workflow = "wt_test_pyproject_workflow.cli:cli"'
+            in artifacts.pyproject_toml
+        )
+
+    def test_compile_produces_pyproject_toml_with_hatch_hook(self):
+        """Compilation produces a pyproject.toml referencing the custom Hatch hook."""
+        artifacts = self._compile_minimal_workflow()
+        assert "[tool.hatch.metadata.hooks.custom]" in artifacts.pyproject_toml
+        assert 'path = "hatch_build.py"' in artifacts.pyproject_toml
+
+    def test_compile_produces_hatch_build_py_with_version_hook(self):
+        """Compilation produces a hatch_build.py containing VersionYamlHook."""
+        artifacts = self._compile_minimal_workflow()
+        assert "class VersionYamlHook" in artifacts.hatch_build_py
+        assert "VERSION.yaml" in artifacts.hatch_build_py
+
+    def test_pyproject_and_hatch_build_affect_fingerprint(self):
+        """Changing pyproject_toml or hatch_build_py changes both fingerprint hashes."""
+        artifacts = self._compile_minimal_workflow()
+
+        spec = Spec(id="test_pyproject", requirements=[], workflow=[])
+        fp_original = Fingerprint(spec=spec, wa=artifacts)
+        original_basic = fp_original.artifacts_sha256_basic
+        original_strict = fp_original.artifacts_sha256_strict
+
+        # Mutate pyproject_toml
+        object.__setattr__(
+            artifacts, "pyproject_toml", artifacts.pyproject_toml + "\n# changed"
+        )
+        fp_changed = Fingerprint(spec=spec, wa=artifacts)
+        assert fp_changed.artifacts_sha256_basic != original_basic
+        assert fp_changed.artifacts_sha256_strict != original_strict
+
+
+class TestHatchDynamicVersion:
+    """End-to-end: pyproject.toml + hatch_build.py resolve version from VERSION.yaml."""
+
+    @pytest.mark.slow
+    def test_hatch_dynamic_version_resolves_from_version_yaml(self, tmp_path, monkeypatch):
+        """Build a wheel from the compiled release dir and verify VERSION.yaml-sourced version."""
+        import email.parser
+        import subprocess
+        import zipfile
+
+        task = KnownTask(
+            importable_reference="mymod.my_func",
+            json_schema={"properties": {"x": {"type": "integer"}}},
+        )
+        known_tasks["my_func"] = {"mymod": task}
+        try:
+            spec = Spec(
+                id="hatch_e2e",
+                requirements=[],
+                workflow=[
+                    TaskInstance(
+                        id="step_one",
+                        name="Step One",
+                        task="mymod.my_func",
+                    ),
+                ],
+            )
+            compiler = DagCompiler(
+                spec=spec,
+                wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/",
+            )
+            monkeypatch.chdir(tmp_path)
+            artifacts = compiler.compile(spec_relpath="spec.yaml")
+            artifacts.dump()
+        finally:
+            known_tasks.clear()
+
+        release_dir = tmp_path / artifacts.release_name
+        dist_dir = tmp_path / "dist"
+
+        def _build_and_get_version(build_dir, out_dir):
+            """Build a wheel and extract the Version from its metadata."""
+            result = subprocess.run(
+                ["python", "-m", "build", "--wheel", "--no-isolation", f"--outdir={out_dir}"],
+                cwd=build_dir,
+                capture_output=True,
+                text=True,
+            )
+            assert result.returncode == 0, f"Build failed:\n{result.stderr}"
+            wheels = list(out_dir.glob("*.whl"))
+            assert len(wheels) == 1, f"Expected 1 wheel, got {len(wheels)}"
+            with zipfile.ZipFile(wheels[0]) as zf:
+                metadata_files = [n for n in zf.namelist() if n.endswith("/METADATA")]
+                assert metadata_files, "No METADATA found in wheel"
+                metadata_text = zf.read(metadata_files[0]).decode()
+            parser = email.parser.Parser()
+            msg = parser.parsestr(metadata_text)
+            return msg["Version"]
+
+        # Default VERSION.yaml has MAJ=0, MIN=0 → version 0.0.0
+        version = _build_and_get_version(release_dir, dist_dir)
+        assert version == "0.0.0"
+
+        # Rewrite VERSION.yaml and rebuild
+        import ruamel.yaml
+
+        yaml = ruamel.yaml.YAML()
+        yaml.dump(
+            {"MAJ": 1, "MIN": 3, "PATCH": 7},
+            (release_dir / "VERSION.yaml").open("w"),
+        )
+        # Clean dist for second build
+        for whl in dist_dir.glob("*.whl"):
+            whl.unlink()
+
+        version = _build_and_get_version(release_dir, dist_dir)
+        assert version == "1.3.7"
 
 
 if __name__ == "__main__":
