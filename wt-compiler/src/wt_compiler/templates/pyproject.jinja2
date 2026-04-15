@@ -1,0 +1,19 @@
+{{ file_header }}
+[build-system]
+requires = ["hatchling>=1.18.0,<2", "ruamel.yaml>=0.17.0,<1"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ release_name }}"
+dynamic = ["version"]
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+{{ release_name }} = "{{ package_name }}.cli:cli"
+
+[tool.hatch.metadata.hooks.custom]
+path = "hatch_build.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["{{ package_name }}"]

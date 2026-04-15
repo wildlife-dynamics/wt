@@ -891,6 +891,14 @@ class DagCompiler(BaseModel):
         # Generate .dockerignore
         dockerignore = self.plainrender("dockerignore.jinja2")
 
+        # Generate pyproject.toml and hatch_build.py
+        pyproject_toml = self.plainrender(
+            "pyproject.jinja2",
+            release_name=self.release_name,
+            package_name=self.package_name,
+        )
+        hatch_build_py = self.ruffrender("hatch_build.jinja2")
+
         if on_progress is not None:
             on_progress("Building graph...")
         # Generate pydot graph
@@ -908,6 +916,8 @@ class DagCompiler(BaseModel):
                 "graph.png": pydot_graph,
                 "Dockerfile": dockerfile,
                 ".dockerignore": dockerignore,
+                "pyproject.toml": pyproject_toml,
+                "hatch_build.py": hatch_build_py,
             },
         )
 

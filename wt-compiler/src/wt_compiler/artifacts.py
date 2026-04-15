@@ -391,6 +391,8 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
     pixi_toml: PixiToml = Field(..., alias="pixi.toml")
     dockerfile: str = Field(..., alias="Dockerfile")
     dockerignore: str = Field(..., alias=".dockerignore")
+    pyproject_toml: str = Field(..., alias="pyproject.toml")
+    hatch_build_py: str = Field(..., alias="hatch_build.py")
     pydot_graph: dot.Dot | None = Field(None, alias="graph.png")
     readme_md: str | None = Field(None, alias="README.md")
 
@@ -435,6 +437,8 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
         pixi_toml = PixiToml.from_file(artifacts_dir.joinpath("pixi.toml"))
         dockerfile = artifacts_dir.joinpath("Dockerfile").read_text()
         dockerignore = artifacts_dir.joinpath(".dockerignore").read_text()
+        pyproject_toml = artifacts_dir.joinpath("pyproject.toml").read_text()
+        hatch_build_py = artifacts_dir.joinpath("hatch_build.py").read_text()
         readme_md = artifacts_dir.joinpath("README.md").read_text()
         tests = Tests(**{f.name: f.read_text() for f in artifacts_dir.joinpath("tests").iterdir()})
         package_name = artifacts_dir.name.replace("-", "_")
@@ -461,6 +465,8 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
                 "pixi.toml": pixi_toml,
                 "Dockerfile": dockerfile,
                 ".dockerignore": dockerignore,
+                "pyproject.toml": pyproject_toml,
+                "hatch_build.py": hatch_build_py,
                 "README.md": readme_md,
             },
         )
@@ -533,6 +539,8 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
         for k, v in {
             "Dockerfile": self.dockerfile,
             ".dockerignore": self.dockerignore,
+            "pyproject.toml": self.pyproject_toml,
+            "hatch_build.py": self.hatch_build_py,
             "README.md": self.readme_md,
         }.items():
             self.release_dir.joinpath(k).write_text(v)
