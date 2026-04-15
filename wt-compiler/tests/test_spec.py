@@ -101,6 +101,34 @@ class TestKnownTask:
         assert "x" in schema["properties"]
 
 
+    def test_parameters_jsonschema_returns_independent_copies(self):
+        """Test that multiple calls return independent dicts, not shared references.
+
+        When two task instances share the same KnownTask (e.g., maybe_skip_df used
+        by both skip_map_generation and skip_attachment_download), mutations to one
+        schema must not affect the other. Regression test for #128.
+        """
+        task = KnownTask(
+            importable_reference="mod.maybe_skip_df",
+            json_schema={
+                "properties": {
+                    "skip": {"type": "boolean", "default": False, "description": "original"},
+                },
+            },
+        )
+
+        schema1 = task.parameters_jsonschema()
+        schema2 = task.parameters_jsonschema()
+
+        # Mutate schema1's nested property
+        schema1["properties"]["skip"]["default"] = True
+        schema1["properties"]["skip"]["description"] = "mutated"
+
+        # schema2 must be unaffected
+        assert schema2["properties"]["skip"]["default"] is False
+        assert schema2["properties"]["skip"]["description"] == "original"
+
+
 class TestKnownTaskSerialization:
     """Tests for KnownTask.serialize_importable_reference field serializer."""
 
