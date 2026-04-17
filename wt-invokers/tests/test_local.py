@@ -25,7 +25,7 @@ def test_local_invoker_initialization() -> None:
     invoker = LocalSubprocessInvoker(matchspec=matchspec)
 
     assert invoker.matchspec == matchspec
-    assert invoker._process is None
+    assert "process" not in invoker.run_state
 
 
 def test_local_invoker_with_custom_cwd() -> None:
@@ -254,7 +254,10 @@ async def test_wait_without_run_raises_error() -> None:
     """Test wait raises error if run was not called."""
     matchspec = MatchSpec("test-workflow>=1.0.0")
     invoker = LocalSubprocessInvoker(matchspec=matchspec)
-
+    # Simulate the IDLE -> RUNNING transition that run() would perform, then
+    # call wait() directly — wait() should still detect that no process was
+    # started (via the run_state entry) and raise.
+    invoker._is_running = True
     with pytest.raises(RuntimeError, match="Process not started. Call run\\(\\) first"):
         await invoker.wait()
 
@@ -267,7 +270,8 @@ async def test_wait_returns_exit_code() -> None:
 
     mock_process = MagicMock()
     mock_process.wait.return_value = 0
-    invoker._process = mock_process
+    invoker._is_running = True
+    invoker.run_state["process"] = mock_process
 
     exit_code = await invoker.wait()
 
@@ -283,7 +287,8 @@ async def test_wait_with_timeout() -> None:
 
     mock_process = MagicMock()
     mock_process.wait.return_value = 0
-    invoker._process = mock_process
+    invoker._is_running = True
+    invoker.run_state["process"] = mock_process
 
     await invoker.wait(timeout=30.0)
 
@@ -298,7 +303,8 @@ async def test_wait_timeout_raises_invocation_timeout_error() -> None:
 
     mock_process = MagicMock()
     mock_process.wait.side_effect = subprocess.TimeoutExpired(cmd="test", timeout=10)
-    invoker._process = mock_process
+    invoker._is_running = True
+    invoker.run_state["process"] = mock_process
 
     with pytest.raises(InvocationTimeoutError):
         await invoker.wait(timeout=10.0, error_msg="Workflow timed out")
@@ -345,7 +351,7 @@ async def test_check_output_with_stdin() -> None:
     mock_process.communicate.return_value = ("processed input", "")
     mock_process.returncode = 0
 
-    with patch.object(subprocess, "Popen", return_value=mock_process) as mock_popen:
+    with patch.object(subprocess, "Popen", return_value=mock_process):
         await invoker.check_output(["process"], stdin="input data")
 
         # Verify communicate was called with stdin

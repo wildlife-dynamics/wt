@@ -35,8 +35,11 @@ from rattler import MatchSpec
 from wt_invokers import (
     AbstractInvoker,
     CloudBatchInvoker,
+    CloudRunJobsSandboxInvoker,
     LocalSubprocessInvoker,
+    SandboxInvoker,
 )
+from wt_invokers.cloud_run_jobs import CLOUD_RUN_AVAILABLE
 
 from wt_runner.tracing import (
     TraceContextHeaders,
@@ -80,7 +83,10 @@ INVOKERS: dict[str, type[AbstractInvoker]] = {
     "BlockingLocalSubprocessInvoker": LocalSubprocessInvoker,
     "AsyncLocalSubprocessInvoker": LocalSubprocessInvoker,
     "CloudBatchInvoker": CloudBatchInvoker,
+    "SandboxInvoker": SandboxInvoker,
 }
+if CLOUD_RUN_AVAILABLE:
+    INVOKERS["CloudRunJobsSandboxInvoker"] = CloudRunJobsSandboxInvoker
 
 TITLE = "wt-runner"
 TIMEOUT_EXPIRED_ERROR_MSG = (

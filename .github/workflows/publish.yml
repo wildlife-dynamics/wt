@@ -101,6 +101,55 @@ jobs:
           name: "${{ needs.parse.outputs.package }} v${{ needs.parse.outputs.version }}"
           body_path: /tmp/release-notes.md
 
+  publish-docker:
+    needs: [parse, publish-prefix]
+    if: github.event_name == 'push' && needs.parse.outputs.package == 'wt-invokers'
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Wait for prefix.dev propagation
+        run: |
+          for i in $(seq 1 12); do
+            if pixi global install --dry-run \
+              -c https://prefix.dev/ecoscope-workflows -c conda-forge \
+              wt-invokers==${{ needs.parse.outputs.version }} 2>/dev/null; then
+              echo "Package available on prefix.dev"
+              exit 0
+            fi
+            echo "Attempt $i/12: package not yet available, waiting 10s..."
+            sleep 10
+          done
+          echo "Package not available after 2 minutes"
+          exit 1
+      - name: Build image (load locally, don't push yet)
+        uses: docker/build-push-action@v5
+        with:
+          context: wt-invokers/docker/sandbox
+          platforms: linux/amd64
+          load: true
+          tags: ghcr.io/wildlife-dynamics/wt-invokers:sandbox-${{ needs.parse.outputs.version }}
+      - name: Smoke test
+        run: |
+          docker run --rm ghcr.io/wildlife-dynamics/wt-invokers:sandbox-${{ needs.parse.outputs.version }} \
+            --help
+      - name: Push image
+        uses: docker/build-push-action@v5
+        with:
+          context: wt-invokers/docker/sandbox
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/wildlife-dynamics/wt-invokers:sandbox-${{ needs.parse.outputs.version }}
+            ghcr.io/wildlife-dynamics/wt-invokers:sandbox-latest
+
   publish-pypi:
     needs: [parse, publish-prefix]
     if: github.event_name == 'push' && !contains(needs.parse.outputs.package, '-gcp')

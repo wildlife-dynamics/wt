@@ -47,12 +47,19 @@ from __future__ import annotations
 
 from wt_invokers.abstract import AbstractInvoker
 from wt_invokers.cloud_batch import CloudBatchInvoker
+from wt_invokers.cloud_run_jobs import CloudRunJobsSandboxInvoker
 from wt_invokers.exceptions import (
     InstallationError,
     InvocationTimeoutError,
     InvokerError,
 )
 from wt_invokers.local import LocalSubprocessInvoker
+from wt_invokers.mixins import (
+    PixiUnpackMixin,
+    RetryableHTTPError,
+    UploadResultsArchiveMixin,
+)
+from wt_invokers.sandbox import SandboxInvoker
 
 try:
     from wt_invokers._version import __version__
@@ -63,6 +70,11 @@ __all__ = [
     "AbstractInvoker",
     "LocalSubprocessInvoker",
     "CloudBatchInvoker",
+    "CloudRunJobsSandboxInvoker",
+    "SandboxInvoker",
+    "PixiUnpackMixin",
+    "UploadResultsArchiveMixin",
+    "RetryableHTTPError",
     "InvokerError",
     "InvocationTimeoutError",
     "InstallationError",
