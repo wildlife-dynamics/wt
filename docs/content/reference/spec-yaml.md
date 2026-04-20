@@ -94,6 +94,23 @@ requirements:
     editable: true
 ```
 
+**Local ecoscope with extras** — for developing against a local checkout of
+the `ecoscope` package. Note: the conda package name is `ecoscope-platform`,
+but the PyPI/local package name is `ecoscope` with extras:
+
+```yaml
+requirements:
+  - name: python
+    version: "3.12.*"
+  - name: ecoscope
+    path: /Users/me/ecoscope
+    editable: true
+    extras: ["platform", "mapping", "analysis"]
+```
+
+The `python` version pin ensures the ephemeral discovery environment uses a
+Python version compatible with all transitive dependencies.
+
 **Git repository:**
 
 ```yaml
