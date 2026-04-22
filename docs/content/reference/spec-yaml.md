@@ -95,21 +95,41 @@ requirements:
 ```
 
 **Local ecoscope with extras** — for developing against a local checkout of
-the `ecoscope` package. Note: the conda package name is `ecoscope-platform`,
-but the PyPI/local package name is `ecoscope` with extras:
+the `ecoscope` package. The conda package name is `ecoscope-platform`, but
+the PyPI/local package name is `ecoscope` with extras:
 
 ```yaml
 requirements:
   - name: python
     version: "3.12.*"
+  - name: rasterio
+    version: "1.5.0"
+    channel: conda-forge
   - name: ecoscope
     path: /Users/me/ecoscope
     editable: true
     extras: ["platform", "mapping", "analysis"]
+  - name: ecoscope-workflows-ext-custom
+    path: /Users/me/ecoscope-workflow-task-library/src/ecoscope-workflows-ext-custom
+    editable: true
 ```
 
-The `python` version pin ensures the ephemeral discovery environment uses a
-Python version compatible with all transitive dependencies.
+Notes:
+
+- **`python` pin** — without this, the ephemeral discovery environment may
+  resolve Python 3.14+, where transitive deps like `pydantic-core` lack
+  pre-built wheels.
+- **`rasterio` conda dep** — ensures GDAL native libraries are available for
+  the editable ecoscope install.
+- **`extras`** — all three are required for task discovery to succeed:
+  - `platform`: pandera, pydantic, wt-registry, wt-task
+  - `mapping`: lonboard, matplotlib (results/map tasks)
+  - `analysis`: statsmodels (analysis tasks)
+- **Post-compile pydantic patch** — ecoscope requires `pydantic<2.9.0` (newer
+  versions break discriminated unions in `apply_classification`), but the
+  compiler emits `pydantic>=2.0.0,<3.0.0` as a conda dependency. After
+  compiling, manually edit the generated `pixi.toml` to pin
+  `pydantic>=2.0.0,<2.9.0`.
 
 **Git repository:**
 
