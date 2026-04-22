@@ -134,10 +134,9 @@ Notes:
   compiler emits `pydantic>=2.0.0,<3.0.0` as a conda dependency. After
   compiling, manually edit the generated `pixi.toml` to pin
   `pydantic>=2.0.0,<2.9.0`.
-- **`wt_env` limitation** — `wt-compiler` requires `pydantic>=2.9` while
+- **Separate environment limitation** — `wt-compiler` requires `pydantic>=2.9` while
   `ecoscope[platform]` requires `pydantic<2.9.0`. They cannot coexist in the
-  same pixi environment. Do not add the `platform` extra to ecoscope in the
-  `wt_env` feature of `environment-setup/pixi.toml`. The compiler does not
+  same pixi environment. Luckly, the compiler does not
   import ecoscope at runtime — it installs it in an ephemeral subprocess
   environment for task discovery.
 
