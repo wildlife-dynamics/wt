@@ -414,6 +414,18 @@ class TestPyPIRequirement:
         req = PyPIRequirement(name="foo", path="/opt/foo", editable=True)
         assert req.to_pip_install_arg() == "-e /opt/foo"
 
+    def test_to_pip_install_arg_path_with_extras(self):
+        """Test pip install arg for path requirement with extras."""
+        req = PyPIRequirement(name="foo", path="/opt/foo", extras=["platform"])
+        assert req.to_pip_install_arg() == "/opt/foo[platform]"
+
+    def test_to_pip_install_arg_path_editable_with_extras(self):
+        """Test pip install arg for editable path requirement with extras."""
+        req = PyPIRequirement(
+            name="foo", path="/opt/foo", editable=True, extras=["platform", "dev"]
+        )
+        assert req.to_pip_install_arg() == "-e /opt/foo[platform,dev]"
+
     def test_to_pip_install_arg_url(self):
         """Test pip install arg for URL requirement."""
         req = PyPIRequirement(name="foo", url="https://example.com/foo-1.0.whl")

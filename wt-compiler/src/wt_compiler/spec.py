@@ -999,9 +999,10 @@ class PyPIRequirement(_ForbidExtra):
             extras = f"[{','.join(self.extras)}]" if self.extras else ""
             return f"{self.name}{extras} @ {arg}"
         elif self.path is not None:
+            extras = f"[{','.join(self.extras)}]" if self.extras else ""
             if self.editable:
-                return f"-e {self.path}"
-            return self.path
+                return f"-e {self.path}{extras}"
+            return f"{self.path}{extras}"
         elif self.url is not None:
             extras = f"[{','.join(self.extras)}]" if self.extras else ""
             return f"{self.name}{extras} @ {self.url}"
