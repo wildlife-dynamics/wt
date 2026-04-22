@@ -109,9 +109,6 @@ requirements:
     path: /Users/me/ecoscope
     editable: true
     extras: ["platform", "mapping", "analysis"]
-  - name: ecoscope-workflows-ext-custom
-    path: /Users/me/ecoscope-workflow-task-library/src/ecoscope-workflows-ext-custom
-    editable: true
 ```
 
 Notes:
