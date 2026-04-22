@@ -125,11 +125,21 @@ Notes:
   - `platform`: pandera, pydantic, wt-registry, wt-task
   - `mapping`: lonboard, matplotlib (results/map tasks)
   - `analysis`: statsmodels (analysis tasks)
+- **Post-compile numpy patch** — ecoscope currently pins `numpy>=2,<2.1`,
+  which conflicts with what conda resolves on some platforms. After compiling,
+  manually edit the generated `pixi.toml` to pin `numpy>=2,<2.1` to match.
+  This constraint will be relaxed in a future ecoscope release.
 - **Post-compile pydantic patch** — ecoscope requires `pydantic<2.9.0` (newer
   versions break discriminated unions in `apply_classification`), but the
   compiler emits `pydantic>=2.0.0,<3.0.0` as a conda dependency. After
   compiling, manually edit the generated `pixi.toml` to pin
   `pydantic>=2.0.0,<2.9.0`.
+- **`wt_env` limitation** — `wt-compiler` requires `pydantic>=2.9` while
+  `ecoscope[platform]` requires `pydantic<2.9.0`. They cannot coexist in the
+  same pixi environment. Do not add the `platform` extra to ecoscope in the
+  `wt_env` feature of `environment-setup/pixi.toml`. The compiler does not
+  import ecoscope at runtime — it installs it in an ephemeral subprocess
+  environment for task discovery.
 
 **Git repository:**
 
