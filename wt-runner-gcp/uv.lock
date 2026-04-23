@@ -380,6 +380,23 @@ wheels = [
 ]
 
 [[package]]
+name = "google-cloud-run"
+version = "0.16.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "google-api-core", extra = ["grpc"] },
+    { name = "google-auth" },
+    { name = "grpc-google-iam-v1" },
+    { name = "grpcio" },
+    { name = "proto-plus" },
+    { name = "protobuf" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b7/89/dcaf0dc97e39b41e446456ceb60657ab025de79cfccd39cbd739d1a9849e/google_cloud_run-0.16.0.tar.gz", hash = "sha256:d52cf4e6ad3702ae48caccf6abcab543afee6f61c2a6ec753cc62a31e5b629f1", size = 514452, upload-time = "2026-03-26T22:17:05.589Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fa/c7/46153dc13713b5e4276d86f28ff4563332f9e4bae5ebc83abc5bfd994801/google_cloud_run-0.16.0-py3-none-any.whl", hash = "sha256:d7d2dd7307130fde2a0ce27e96d580dd23b7b2d973b6484b94d902e6b2618860", size = 459112, upload-time = "2026-03-26T22:16:00.018Z" },
+]
+
+[[package]]
 name = "google-cloud-trace"
 version = "1.18.0"
 source = { registry = "https://pypi.org/simple" }
@@ -405,6 +422,25 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/99/96/a0205167fa0154f4a542fd6925bdc63d039d88dab3588b875078107e6f06/googleapis_common_protos-1.73.0.tar.gz", hash = "sha256:778d07cd4fbeff84c6f7c72102f0daf98fa2bfd3fa8bea426edc545588da0b5a", size = 147323, upload-time = "2026-03-06T21:53:09.727Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/69/28/23eea8acd65972bbfe295ce3666b28ac510dfcb115fac089d3edb0feb00a/googleapis_common_protos-1.73.0-py3-none-any.whl", hash = "sha256:dfdaaa2e860f242046be561e6d6cb5c5f1541ae02cfbcb034371aadb2942b4e8", size = 297578, upload-time = "2026-03-06T21:52:33.933Z" },
+]
+
+[package.optional-dependencies]
+grpc = [
+    { name = "grpcio" },
+]
+
+[[package]]
+name = "grpc-google-iam-v1"
+version = "0.14.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "googleapis-common-protos", extra = ["grpc"] },
+    { name = "grpcio" },
+    { name = "protobuf" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/44/4f/d098419ad0bfc06c9ce440575f05aa22d8973b6c276e86ac7890093d3c37/grpc_google_iam_v1-0.14.4.tar.gz", hash = "sha256:392b3796947ed6334e61171d9ab06bf7eb357f554e5fc7556ad7aab6d0e17038", size = 23706, upload-time = "2026-04-01T01:57:49.813Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/89/22/c2dd50c09bf679bd38173656cd4402d2511e563b33bc88f90009cf50613c/grpc_google_iam_v1-0.14.4-py3-none-any.whl", hash = "sha256:412facc320fcbd94034b4df3d557662051d4d8adfa86e0ddb4dca70a3f739964", size = 32675, upload-time = "2026-04-01T01:57:47.69Z" },
 ]
 
 [[package]]
@@ -985,8 +1021,10 @@ dev = [
 name = "wt-invokers"
 source = { editable = "../wt-invokers" }
 dependencies = [
+    { name = "httpx" },
     { name = "py-rattler" },
     { name = "ruamel-yaml" },
+    { name = "stamina" },
     { name = "wt-contracts" },
 ]
 
@@ -994,8 +1032,11 @@ dependencies = [
 requires-dist = [
     { name = "google-auth", marker = "extra == 'gcp'", specifier = ">=2.0.0" },
     { name = "google-cloud-batch", marker = "extra == 'gcp'", specifier = ">=0.19.0" },
+    { name = "google-cloud-run", marker = "extra == 'gcp'", specifier = ">=0.10.0" },
+    { name = "httpx", specifier = ">=0.27.0,<1.0.0" },
     { name = "py-rattler", specifier = ">=0.8.0" },
     { name = "ruamel-yaml", specifier = ">=0.17.0" },
+    { name = "stamina", specifier = ">=25.1.0,<26" },
     { name = "wt-contracts", editable = "../wt-contracts" },
 ]
 provides-extras = ["gcp"]
@@ -1015,6 +1056,7 @@ source = { editable = "../wt-invokers-gcp" }
 dependencies = [
     { name = "google-auth" },
     { name = "google-cloud-batch" },
+    { name = "google-cloud-run" },
     { name = "wt-invokers" },
 ]
 
@@ -1022,6 +1064,7 @@ dependencies = [
 requires-dist = [
     { name = "google-auth", specifier = ">=2.0.0" },
     { name = "google-cloud-batch", specifier = ">=0.19.0" },
+    { name = "google-cloud-run", specifier = ">=0.10.0" },
     { name = "wt-invokers", specifier = ">=0.1.0,<1.0.0" },
 ]
 
