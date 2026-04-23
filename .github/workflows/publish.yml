@@ -115,6 +115,11 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          pixi-version: v0.63.0
+          run-install: false
       - name: Wait for prefix.dev propagation
         run: |
           for i in $(seq 1 12); do
@@ -136,6 +141,9 @@ jobs:
           platforms: linux/amd64
           load: true
           tags: ghcr.io/wildlife-dynamics/wt-invokers:sandbox-${{ needs.parse.outputs.version }}
+          build-args: |
+            PIXI_BASE_IMAGE=ghcr.io/prefix-dev/pixi:0.63.0
+            WT_INVOKERS_VERSION=${{ needs.parse.outputs.version }}
       - name: Smoke test
         run: |
           docker run --rm ghcr.io/wildlife-dynamics/wt-invokers:sandbox-${{ needs.parse.outputs.version }} \
@@ -149,6 +157,9 @@ jobs:
           tags: |
             ghcr.io/wildlife-dynamics/wt-invokers:sandbox-${{ needs.parse.outputs.version }}
             ghcr.io/wildlife-dynamics/wt-invokers:sandbox-latest
+          build-args: |
+            PIXI_BASE_IMAGE=ghcr.io/prefix-dev/pixi:0.63.0
+            WT_INVOKERS_VERSION=${{ needs.parse.outputs.version }}
 
   publish-pypi:
     needs: [parse, publish-prefix]
