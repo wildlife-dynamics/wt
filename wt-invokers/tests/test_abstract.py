@@ -123,50 +123,6 @@ def test_incomplete_invoker_cannot_be_instantiated() -> None:
 # ---------------------------------------------------------------------------
 
 
-@dataclass
-class RecordingInvoker(AbstractInvoker):
-    """Invoker that records hook invocations for ordering tests."""
-
-    async def is_installed(self) -> bool:
-        return True
-
-    async def install(self) -> None:
-        pass
-
-    async def _pre_run(self) -> None:
-        self.run_state.setdefault("calls", []).append("pre")
-
-    async def _run(
-        self,
-        workflow_run_id: str,
-        config_text: str,
-        results_url: str,
-        execution_mode: str,
-        mock_io: bool,
-        otel_exporter: str | None = None,
-        otel_console_exporter_dst: str | None = None,
-        extra_env: dict[str, str] | None = None,
-        lithops_config_text: str | None = None,
-        **kwargs: Any,
-    ) -> None:
-        self.run_state.setdefault("calls", []).append("run")
-
-    async def _wait(
-        self,
-        timeout: float | None = None,
-        error_msg: str | None = None,
-    ) -> int:
-        self.run_state.setdefault("calls", []).append("wait")
-        return 0
-
-    async def _post_run(self) -> None:
-        self.run_state.setdefault("calls", []).append("post")
-
-    @property
-    def is_waitable(self) -> bool:
-        return True
-
-
 def _basic_run_kwargs() -> dict[str, Any]:
     return {
         "workflow_run_id": "run-1",
@@ -288,16 +244,59 @@ async def test_run_raises_when_already_running() -> None:
 @pytest.mark.asyncio
 async def test_multiple_run_wait_cycles() -> None:
     """After wait(), run() can be called again."""
-    inv = RecordingInvoker(matchspec=MatchSpec("w>=1.0.0"))
+
+    @dataclass
+    class Cycling(ConcreteInvoker):
+        async def _run(self, **kwargs: Any) -> None:
+            self.run_state["ran"] = True
+
+    inv = Cycling(matchspec=MatchSpec("w>=1.0.0"))
     await inv.run(**_basic_run_kwargs())
     await inv.wait()
-    # state cleared
     assert inv.run_state == {}
     assert dict(inv.run_args) == {}
     assert inv.is_running is False
 
     await inv.run(**_basic_run_kwargs())
     await inv.wait()
+    assert inv.is_running is False
+
+
+@pytest.mark.asyncio
+async def test_non_waitable_reruns_without_wait() -> None:
+    """Non-waitable invokers can call run() repeatedly without wait()."""
+    call_count = 0
+
+    @dataclass
+    class FireAndForget(AbstractInvoker):
+        async def is_installed(self) -> bool:
+            return True
+
+        async def install(self) -> None:
+            pass
+
+        async def _run(self, **kwargs: Any) -> None:
+            nonlocal call_count
+            call_count += 1
+            self.run_state["last_id"] = kwargs["workflow_run_id"]
+
+        async def _wait(
+            self, timeout: float | None = None, error_msg: str | None = None
+        ) -> int:
+            return 0
+
+        @property
+        def is_waitable(self) -> bool:
+            return False
+
+    inv = FireAndForget(matchspec=MatchSpec("w>=1.0.0"))
+    await inv.run(**{**_basic_run_kwargs(), "workflow_run_id": "a"})
+    assert inv.is_running is False
+    assert inv.run_state == {}
+    assert dict(inv.run_args) == {}
+
+    await inv.run(**{**_basic_run_kwargs(), "workflow_run_id": "b"})
+    assert call_count == 2
     assert inv.is_running is False
 
 

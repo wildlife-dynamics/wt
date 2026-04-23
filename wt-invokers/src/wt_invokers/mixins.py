@@ -23,6 +23,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+from collections.abc import AsyncIterator
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -30,6 +31,8 @@ from urllib.parse import urlparse
 
 import httpx
 import stamina
+
+from .exceptions import PixiUnpackError
 
 # ---------------------------------------------------------------------------
 # Shared HTTP transfer configuration
@@ -129,12 +132,20 @@ class PixiUnpackMixin(_RunContextMixin):
                 f"Unsupported scheme for environment_tar_url: {parsed.scheme}"
             )
 
-        subprocess.run(
-            ["pixi-unpack", str(tar_path)],
-            cwd=self.work_dir,
-            check=True,
-            capture_output=True,
-        )
+        try:
+            subprocess.run(
+                ["pixi-unpack", str(tar_path)],
+                cwd=self.work_dir,
+                check=True,
+                capture_output=True,
+            )
+        except subprocess.CalledProcessError as e:
+            raise PixiUnpackError(
+                f"pixi-unpack failed with exit code {e.returncode}",
+                returncode=e.returncode,
+                stdout=e.stdout,
+                stderr=e.stderr,
+            ) from e
 
         self.run_state["activate_path"] = str(Path(self.work_dir) / "activate.sh")
 
@@ -230,10 +241,11 @@ class UploadResultsArchiveMixin(_RunContextMixin):
     async def _upload_with_retries(self, tar_path: Path, url: str) -> None:
         """Upload ``tar_path`` to ``url`` via ``PUT`` with retries.
 
-        Reads the file bytes each attempt so that a retry after a partial
-        upload re-sends from the start. The upload includes an explicit
-        ``Content-Length`` header (via ``bytes`` payload) which is required
-        by GCS signed-URL uploads.
+        Streams the file in ``TRANSFER_CHUNK_SIZE`` chunks rather than reading
+        the whole archive into memory. The upload includes an explicit
+        ``Content-Length`` header (required by GCS signed-URL uploads) sourced
+        from the file's stat size, so the server can validate the request
+        without the chunked ``Transfer-Encoding`` fallback.
         """
 
         size = tar_path.stat().st_size
@@ -245,11 +257,18 @@ class UploadResultsArchiveMixin(_RunContextMixin):
             wait_max=TRANSFER_RETRY_WAIT_MAX,
         )
         async def _do_upload() -> None:
-            data = tar_path.read_bytes()
+            async def _chunks() -> AsyncIterator[bytes]:
+                with open(tar_path, "rb") as f:
+                    while True:
+                        chunk = f.read(TRANSFER_CHUNK_SIZE)
+                        if not chunk:
+                            break
+                        yield chunk
+
             async with httpx.AsyncClient(timeout=_timeout()) as client:
                 response = await client.put(
                     url,
-                    content=data,
+                    content=_chunks(),
                     headers={
                         "Content-Type": "application/gzip",
                         "Content-Length": str(size),

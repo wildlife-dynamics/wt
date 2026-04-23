@@ -46,7 +46,7 @@ class LocalSubprocessInvoker(AbstractInvoker):
         >>> # asyncio.run(invoker.is_installed())
         >>> # True
 
-        Running a workflow (via the base class wrappers):
+        Running a workflow:
 
         >>> invoker = LocalSubprocessInvoker(
         ...     matchspec=MatchSpec("my-workflow>=1.0.0")
@@ -95,6 +95,17 @@ class LocalSubprocessInvoker(AbstractInvoker):
 
         Returns:
             True if the workflow is available, False otherwise
+
+        Examples:
+            Checking if a workflow is installed:
+
+            >>> import asyncio
+            >>> from rattler import MatchSpec
+            >>> invoker = LocalSubprocessInvoker(
+            ...     matchspec=MatchSpec("my-workflow>=1.0.0")
+            ... )
+            >>> # asyncio.run(invoker.is_installed())
+            >>> # True
         """
         cmd = f"{self.entrypoint} --help".split()
         returncode = subprocess.call(
@@ -110,6 +121,17 @@ class LocalSubprocessInvoker(AbstractInvoker):
 
         Raises:
             NotImplementedError: Dynamic installation is not yet supported
+
+        Examples:
+            Attempting to install:
+
+            >>> import asyncio
+            >>> from rattler import MatchSpec
+            >>> invoker = LocalSubprocessInvoker(
+            ...     matchspec=MatchSpec("my-workflow>=1.0.0")
+            ... )
+            >>> # asyncio.run(invoker.install())
+            >>> # NotImplementedError: Dynamic installation not yet supported.
         """
         raise NotImplementedError(
             "Dynamic installation of workflows is not yet supported."
@@ -128,18 +150,52 @@ class LocalSubprocessInvoker(AbstractInvoker):
         lithops_config_text: str | None = None,
         **kwargs: Any,
     ) -> None:
-        """Start the workflow subprocess.
+        """Invoke the workflow in a subprocess.
 
-        See :meth:`AbstractInvoker.run` for parameter documentation.
+        Args:
+            workflow_run_id: Unique identifier for this workflow run
+            config_text: YAML configuration text for the workflow
+            results_url: URL where workflow results should be stored
+            execution_mode: Execution mode (e.g., "sequential", "parallel")
+            mock_io: Whether to mock I/O operations
+            otel_exporter: Optional OpenTelemetry exporter endpoint
+            otel_console_exporter_dst: Optional console exporter destination
+            extra_env: Optional extra environment variables to pass
+            lithops_config_text: Optional Lithops configuration text
+            **kwargs: Additional arguments (ignored by this implementation)
+
+        Examples:
+            Running a workflow:
+
+            >>> import asyncio
+            >>> from rattler import MatchSpec
+            >>> invoker = LocalSubprocessInvoker(
+            ...     matchspec=MatchSpec("my-workflow>=1.0.0")
+            ... )
+            >>> config = '''
+            ... param1: value1
+            ... param2: 42
+            ... '''
+            >>> # asyncio.run(invoker.run(
+            >>> #     workflow_run_id="run-123",
+            >>> #     config_text=config,
+            >>> #     results_url="file:///tmp/results",
+            >>> #     execution_mode="sequential",
+            >>> #     mock_io=False,
+            >>> #     extra_env={"DEBUG": "1"}
+            >>> # ))
         """
+        # Create results directory if using file:// URL
         parse_results_url = urlparse(results_url)
         if parse_results_url.scheme in ("file", ""):
             Path(parse_results_url.path).mkdir(parents=True, exist_ok=True)
 
+        # Setup environment variables
         if extra_env is None:
             extra_env = {}
         extra_env[self.results_env_var] = results_url
 
+        # Create temporary config files
         with (
             tempfile.NamedTemporaryFile(
                 mode="w", delete=False, suffix=".yaml"
@@ -148,14 +204,17 @@ class LocalSubprocessInvoker(AbstractInvoker):
                 mode="w", delete=False, suffix=".yaml"
             ) as lithops_tmpfile,
         ):
+            # Write lithops config if provided
             if lithops_config_text:
                 lithops_tmpfile.write(lithops_config_text)
                 lithops_tmpfile.flush()
                 extra_env["LITHOPS_CONFIG_FILE"] = lithops_tmpfile.name
 
+            # Write workflow config
             config_tmpfile.write(config_text)
             config_tmpfile.flush()
 
+            # Build command
             otel_exp_arg = f" --otel-exporter {otel_exporter}" if otel_exporter else ""
             otel_dst_arg = (
                 f" --otel-console-exporter-dst {otel_console_exporter_dst}"
@@ -170,8 +229,10 @@ class LocalSubprocessInvoker(AbstractInvoker):
                 f"{otel_exp_arg}{otel_dst_arg}"
             ).split()
 
+            # Merge environment variables
             env = os.environ.copy() | (extra_env or {})
 
+            # Start subprocess
             self.run_state["process"] = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -206,7 +267,29 @@ class LocalSubprocessInvoker(AbstractInvoker):
     ) -> int:
         """Wait for the subprocess to finish and return the exit code.
 
-        See :meth:`AbstractInvoker.wait` for parameter documentation.
+        Args:
+            timeout: Optional timeout in seconds
+            error_msg: Optional error message to use if timeout occurs
+
+        Returns:
+            Exit code of the workflow (0 for success)
+
+        Raises:
+            RuntimeError: If process not started
+            InvocationTimeoutError: If timeout is reached
+
+        Examples:
+            Waiting for completion:
+
+            >>> import asyncio
+            >>> from rattler import MatchSpec
+            >>> invoker = LocalSubprocessInvoker(
+            ...     matchspec=MatchSpec("my-workflow>=1.0.0")
+            ... )
+            >>> # asyncio.run(invoker.run(...))
+            >>> # exit_code = asyncio.run(invoker.wait(timeout=300))
+            >>> # exit_code
+            >>> # 0
         """
         process: subprocess.Popen[bytes] | None = self.run_state.get("process")
         if process is None:
@@ -231,6 +314,18 @@ class LocalSubprocessInvoker(AbstractInvoker):
 
         Raises:
             RuntimeError: If the command fails (non-zero exit code)
+
+        Examples:
+            Running a command and capturing output:
+
+            >>> import asyncio
+            >>> from rattler import MatchSpec
+            >>> invoker = LocalSubprocessInvoker(
+            ...     matchspec=MatchSpec("my-workflow>=1.0.0")
+            ... )
+            >>> # output = asyncio.run(invoker.check_output(["--version"]))
+            >>> # output
+            >>> # '1.2.3'
         """
         p = subprocess.Popen(
             self.entrypoint.split() + command,

@@ -321,8 +321,6 @@ async def test_run_generates_unique_job_name(mock_gcp_modules) -> None:
     job_names = []
 
     with patch.object(invoker, "_create_container_job", new=AsyncMock()) as mock_create:
-        # Run multiple times — must call wait() between runs to satisfy the
-        # IDLE -> RUNNING -> IDLE re-entry guard on AbstractInvoker.run().
         for _ in range(3):
             await invoker.run(
                 workflow_run_id="test-run",
@@ -332,7 +330,6 @@ async def test_run_generates_unique_job_name(mock_gcp_modules) -> None:
                 mock_io=False,
                 docker_image_uri="gcr.io/project/image:latest",
             )
-            await invoker.wait()
 
             call_kwargs = mock_create.call_args[1]
             job_names.append(call_kwargs["job_name"])

@@ -12,7 +12,7 @@ import os
 import subprocess
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from rattler import MatchSpec
@@ -216,38 +216,12 @@ async def test_end_to_end_lifecycle_with_mocked_externals(tmp_path: Path) -> Non
 
 
 @pytest.mark.asyncio
-async def test_check_output_requires_is_running(tmp_path: Path) -> None:
+async def test_check_output_is_not_supported(tmp_path: Path) -> None:
+    """Sandbox runs workflows in an isolated container, so the driver cannot
+    introspect the environment via ``check_output``."""
     inv = SandboxInvoker(matchspec=MatchSpec("w>=1.0.0"), work_dir=str(tmp_path))
-    with pytest.raises(RuntimeError, match="call run\\(\\) first"):
+    with pytest.raises(NotImplementedError):
         await inv.check_output(["--help"])
-
-
-@pytest.mark.asyncio
-async def test_check_output_returns_stdout(tmp_path: Path) -> None:
-    inv = SandboxInvoker(matchspec=MatchSpec("w>=1.0.0"), work_dir=str(tmp_path))
-    inv._is_running = True
-    inv.run_state["activate_path"] = "/a.sh"
-
-    proc = MagicMock()
-    proc.communicate.return_value = ("hi\n", "")
-    proc.returncode = 0
-    with patch("wt_invokers.sandbox.subprocess.Popen", return_value=proc):
-        out = await inv.check_output(["--version"])
-    assert out == "hi"
-
-
-@pytest.mark.asyncio
-async def test_check_output_non_zero_exit_raises(tmp_path: Path) -> None:
-    inv = SandboxInvoker(matchspec=MatchSpec("w>=1.0.0"), work_dir=str(tmp_path))
-    inv._is_running = True
-    inv.run_state["activate_path"] = "/a.sh"
-
-    proc = MagicMock()
-    proc.communicate.return_value = ("", "kaboom")
-    proc.returncode = 1
-    with patch("wt_invokers.sandbox.subprocess.Popen", return_value=proc):
-        with pytest.raises(RuntimeError, match="Command failed"):
-            await inv.check_output(["--bad"])
 
 
 # ---------------------------------------------------------------------------
@@ -346,7 +320,3 @@ def test_cli_main_invokes_run_and_wait(tmp_path: Path) -> None:
     assert called["run_kwargs"]["workflow_run_id"] == "r1"
     assert called["run_kwargs"]["environment_tar_url"] == f"file://{tmp_path}/env.tar"
     assert called["run_kwargs"]["results_upload_url"] == f"file://{tmp_path}/out.tar.gz"
-
-
-# suppress unused import warnings
-_ = AsyncMock

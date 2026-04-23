@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any
 
 try:
     from google.cloud.run_v2 import JobsAsyncClient, RunJobRequest
@@ -43,9 +42,9 @@ class CloudRunJobsSandboxInvoker(AbstractInvoker):
         matchspec: Rattler MatchSpec specifying the workflow package
 
     Note:
-        Requires the ``cloud-run`` optional dependency::
+        Requires the ``gcp`` optional dependency::
 
-            pip install wt-invokers[cloud-run]
+            pip install wt-invokers[gcp]
 
         or the ``wt-invokers-gcp`` metapackage.
     """
@@ -54,7 +53,7 @@ class CloudRunJobsSandboxInvoker(AbstractInvoker):
         if not CLOUD_RUN_AVAILABLE:
             raise ImportError(
                 "Google Cloud Run dependencies not available. "
-                "Install with: pip install wt-invokers[cloud-run]"
+                "Install with: pip install wt-invokers[gcp]"
             )
 
     async def is_installed(self) -> bool:
@@ -103,7 +102,6 @@ class CloudRunJobsSandboxInvoker(AbstractInvoker):
         job_name: str,
         project_id: str,
         region: str = "us-central1",
-        **kwargs: Any,
     ) -> None:
         """Trigger a new execution of the pre-deployed Cloud Run Job.
 

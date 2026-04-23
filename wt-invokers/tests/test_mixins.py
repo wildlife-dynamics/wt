@@ -24,6 +24,7 @@ from rattler import MatchSpec
 
 from wt_invokers import mixins
 from wt_invokers.abstract import AbstractInvoker
+from wt_invokers.exceptions import PixiUnpackError
 from wt_invokers.mixins import (
     PixiUnpackMixin,
     RetryableHTTPError,
@@ -38,7 +39,7 @@ def _fast_stamina() -> None:
 
 
 @dataclass
-class _PixiOnly(PixiUnpackMixin, AbstractInvoker):
+class _PixiUnpackOnly(PixiUnpackMixin, AbstractInvoker):
     """Minimal invoker composing only PixiUnpackMixin for isolated tests."""
 
     work_dir: str = "/tmp/work"
@@ -87,8 +88,8 @@ class _UploadOnly(UploadResultsArchiveMixin, AbstractInvoker):
         return True
 
 
-def _make_pixi(tmp_path: Path, **run_args: Any) -> _PixiOnly:
-    inv = _PixiOnly(matchspec=MatchSpec("w>=1.0.0"), work_dir=str(tmp_path))
+def _make_pixi(tmp_path: Path, **run_args: Any) -> _PixiUnpackOnly:
+    inv = _PixiUnpackOnly(matchspec=MatchSpec("w>=1.0.0"), work_dir=str(tmp_path))
     inv._run_args.update(run_args)
     return inv
 
@@ -175,19 +176,32 @@ async def test_pre_run_file_url_copies_and_unpacks(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_pre_run_pixi_unpack_failure_propagates(tmp_path: Path) -> None:
+async def test_pre_run_pixi_unpack_failure_wraps_in_domain_exception(
+    tmp_path: Path,
+) -> None:
+    """CalledProcessError from pixi-unpack is wrapped in PixiUnpackError.
+
+    The captured exit code, stdout, and stderr are preserved on the wrapping
+    exception so callers can inspect the failure without handling
+    subprocess-specific types.
+    """
     source_tar = tmp_path / "env.tar"
     source_tar.write_bytes(b"bad")
     inv = _make_pixi(tmp_path, environment_tar_url=f"file://{source_tar}")
+    underlying = subprocess.CalledProcessError(
+        2, "pixi-unpack", output=b"out", stderr=b"err"
+    )
     with (
         patch("wt_invokers.mixins.shutil.which", return_value="/usr/bin/pixi-unpack"),
-        patch(
-            "wt_invokers.mixins.subprocess.run",
-            side_effect=subprocess.CalledProcessError(2, "pixi-unpack"),
-        ),
-        pytest.raises(subprocess.CalledProcessError),
+        patch("wt_invokers.mixins.subprocess.run", side_effect=underlying),
     ):
-        await inv._pre_run()
+        with pytest.raises(PixiUnpackError) as excinfo:
+            await inv._pre_run()
+
+    assert excinfo.value.returncode == 2
+    assert excinfo.value.stdout == b"out"
+    assert excinfo.value.stderr == b"err"
+    assert excinfo.value.__cause__ is underlying
 
 
 @pytest.mark.asyncio
@@ -513,8 +527,17 @@ def test_retryable_http_error_is_exception() -> None:
 
 
 @pytest.mark.asyncio
-async def test_upload_sets_content_type_header(tmp_path: Path) -> None:
-    """Upload must include Content-Type: application/gzip."""
+async def test_upload_streams_content_with_headers(tmp_path: Path) -> None:
+    """Upload streams chunks via an async iterator and sets required headers.
+
+    The archive must not be buffered into memory as a single bytes payload;
+    ``_upload_with_retries`` should pass an async iterator to httpx so large
+    results archives stream chunk-by-chunk. ``Content-Type`` and
+    ``Content-Length`` headers must still be set (GCS signed URLs require
+    ``Content-Length``).
+    """
+    from collections.abc import AsyncIterator
+
     results_dir = tmp_path / "results"
     results_dir.mkdir()
     (results_dir / "r.txt").write_text("x")
@@ -535,6 +558,7 @@ async def test_upload_sets_content_type_header(tmp_path: Path) -> None:
             self, url: str, content: Any = None, headers: Any = None
         ) -> httpx.Response:
             captured["content"] = content
+            captured["content_bytes"] = b"".join([chunk async for chunk in content])
             captured["headers"] = headers
             return httpx.Response(200, request=httpx.Request("PUT", url))
 
@@ -546,9 +570,11 @@ async def test_upload_sets_content_type_header(tmp_path: Path) -> None:
     with patch("wt_invokers.mixins.httpx.AsyncClient", RecordingClient):
         await inv._post_run()
 
-    assert isinstance(captured["content"], (bytes, bytearray))
+    assert isinstance(captured["content"], AsyncIterator)
+    assert len(captured["content_bytes"]) > 0
     assert captured["headers"]["Content-Type"] == "application/gzip"
     assert "Content-Length" in captured["headers"]
+    assert captured["headers"]["Content-Length"] == str(len(captured["content_bytes"]))
 
 
 # ---------------------------------------------------------------------------

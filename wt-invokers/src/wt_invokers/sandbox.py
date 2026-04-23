@@ -171,34 +171,12 @@ class SandboxInvoker(PixiUnpackMixin, UploadResultsArchiveMixin, AbstractInvoker
             raise InvocationTimeoutError(error_msg or str(e)) from e
 
     async def check_output(self, command: list[str], stdin: str | None = None) -> str:
-        """Run a command in the activated environment and return its stdout.
-
-        Requires :meth:`run` to have been called so that the environment is
-        unpacked and the activation script is available.
-        """
-        if not self.is_running:
-            raise RuntimeError(
-                "check_output requires the environment to be unpacked; call run() first"
-            )
-        activate_path = self.run_state.get("activate_path")
-        if not activate_path:
-            raise RuntimeError("activate_path not set in run_state")
-        workflow_name = self._workflow_name()
-        args = " ".join(command)
-        cmd = f"source {activate_path} && {workflow_name} {args}"
-        p = subprocess.Popen(
-            cmd,
-            shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            stdin=subprocess.PIPE,
-            text=True,
-            cwd=self.work_dir,
+        """Sandbox invocations do not support driver-side introspection."""
+        raise NotImplementedError(
+            "SandboxInvoker does not support check_output; the workflow "
+            "runs inside a sandboxed container and its environment is not "
+            "reachable from the driver process."
         )
-        out, err = p.communicate(stdin)
-        if p.returncode != 0:
-            raise RuntimeError(f"Command failed with error: {err}")
-        return out.strip()
 
 
 # ---------------------------------------------------------------------------

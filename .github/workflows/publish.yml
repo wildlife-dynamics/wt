@@ -118,9 +118,9 @@ jobs:
       - name: Wait for prefix.dev propagation
         run: |
           for i in $(seq 1 12); do
-            if pixi global install --dry-run \
+            if pixi search \
               -c https://prefix.dev/ecoscope-workflows -c conda-forge \
-              wt-invokers==${{ needs.parse.outputs.version }} 2>/dev/null; then
+              wt-invokers==${{ needs.parse.outputs.version }} 2>/dev/null | grep -q "wt-invokers"; then
               echo "Package available on prefix.dev"
               exit 0
             fi

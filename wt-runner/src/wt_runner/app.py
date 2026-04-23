@@ -39,7 +39,6 @@ from wt_invokers import (
     LocalSubprocessInvoker,
     SandboxInvoker,
 )
-from wt_invokers.cloud_run_jobs import CLOUD_RUN_AVAILABLE
 
 from wt_runner.tracing import (
     TraceContextHeaders,
@@ -84,9 +83,8 @@ INVOKERS: dict[str, type[AbstractInvoker]] = {
     "AsyncLocalSubprocessInvoker": LocalSubprocessInvoker,
     "CloudBatchInvoker": CloudBatchInvoker,
     "SandboxInvoker": SandboxInvoker,
+    "CloudRunJobsSandboxInvoker": CloudRunJobsSandboxInvoker,
 }
-if CLOUD_RUN_AVAILABLE:
-    INVOKERS["CloudRunJobsSandboxInvoker"] = CloudRunJobsSandboxInvoker
 
 TITLE = "wt-runner"
 TIMEOUT_EXPIRED_ERROR_MSG = (

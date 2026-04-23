@@ -50,8 +50,10 @@ class AbstractInvoker(ABC):
         >>> @dataclass
         ... class MyInvoker(AbstractInvoker):
         ...     async def is_installed(self) -> bool:
+        ...         # Check if workflow is available
         ...         return True
         ...     async def install(self) -> None:
+        ...         # Install the workflow
         ...         pass
         ...     async def _run(
         ...         self,
@@ -116,6 +118,15 @@ class AbstractInvoker(ABC):
 
         Returns:
             True if the workflow is installed, False otherwise
+
+        Examples:
+            Checking if a workflow is installed:
+
+            >>> import asyncio
+            >>> from rattler import MatchSpec
+            >>> # invoker = MyInvoker(matchspec=MatchSpec("my-workflow>=1.0.0"))
+            >>> # asyncio.run(invoker.is_installed())
+            >>> # True
         """
         pass
 
@@ -126,6 +137,14 @@ class AbstractInvoker(ABC):
         Raises:
             NotImplementedError: If dynamic installation is not supported
             InstallationError: If installation fails
+
+        Examples:
+            Installing a workflow:
+
+            >>> import asyncio
+            >>> from rattler import MatchSpec
+            >>> # invoker = MyInvoker(matchspec=MatchSpec("my-workflow>=1.0.0"))
+            >>> # asyncio.run(invoker.install())
         """
         pass
 
@@ -202,6 +221,14 @@ class AbstractInvoker(ABC):
             self._run_state.clear()
             self._is_running = False
             raise
+
+        # Non-waitable invokers have no ``wait()`` phase to reset state in, so
+        # ``run()`` itself is the whole lifecycle — clear state here so the
+        # invoker can be re-run without calling ``wait()`` in between.
+        if not self.is_waitable:
+            self._run_args.clear()
+            self._run_state.clear()
+            self._is_running = False
 
     async def wait(
         self,
@@ -285,6 +312,17 @@ class AbstractInvoker(ABC):
 
         Some invokers (e.g., cloud batch jobs) may submit work asynchronously
         and not support waiting for completion within the same process.
+
+        Returns:
+            True if wait() can be called, False otherwise
+
+        Examples:
+            Checking if invoker is waitable:
+
+            >>> from rattler import MatchSpec
+            >>> # invoker = MyInvoker(matchspec=MatchSpec("my-workflow>=1.0.0"))
+            >>> # invoker.is_waitable
+            >>> # False
         """
         pass
 
@@ -304,6 +342,16 @@ class AbstractInvoker(ABC):
         Raises:
             NotImplementedError: If the invoker does not support this operation
             RuntimeError: If the command fails (non-zero exit code)
+
+        Examples:
+            Running a command and capturing output:
+
+            >>> import asyncio
+            >>> from rattler import MatchSpec
+            >>> # invoker = MyInvoker(matchspec=MatchSpec("my-workflow>=1.0.0"))
+            >>> # output = asyncio.run(invoker.check_output(["--version"]))
+            >>> # output
+            >>> # '1.2.3'
         """
         raise NotImplementedError(
             f"{type(self).__name__} does not support check_output"

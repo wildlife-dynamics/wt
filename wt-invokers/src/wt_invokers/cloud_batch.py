@@ -170,23 +170,53 @@ class CloudBatchInvoker(AbstractInvoker):
         lithops_config_text: str | None = None,
         **kwargs: Any,
     ) -> None:
-        """Submit the workflow as a GCP Cloud Batch job.
+        """Invoke the workflow with GCP Cloud Batch API.
 
-        See :meth:`AbstractInvoker.run` for shared parameter documentation.
-        Requires the following keyword arguments:
+        Args:
+            workflow_run_id: Unique identifier for this workflow run
+            config_text: YAML configuration text for the workflow
+            results_url: URL where workflow results should be stored (e.g., gs://...)
+            execution_mode: Execution mode (e.g., "sequential", "parallel")
+            mock_io: Whether to mock I/O operations
+            otel_exporter: Optional OpenTelemetry exporter endpoint
+            otel_console_exporter_dst: Optional console exporter destination
+            extra_env: Optional extra environment variables to pass
+            lithops_config_text: Optional Lithops configuration text (not used)
 
-        - ``docker_image_uri`` (required): Docker image URI
-        - ``project_id``: GCP project ID (default: from GOOGLE_CLOUD_PROJECT)
-        - ``region``: GCP region (default: from CLOUD_RUN_REGION or us-central1)
-        - ``cpu_milli``: CPU allocation in millicores (default: 8000)
-        - ``memory_mib``: Memory allocation in MiB (default: 32768)
-        - ``machine_type``: Optional specific machine type
-        - ``timeout``: Optional timeout in seconds
-        - ``gpu_type``: Optional GPU type
-        - ``gpu_count``: Optional GPU count (default: 1)
+        Keyword Args:
+            docker_image_uri (required): Docker image URI.
+            project_id: GCP project ID (default: from ``GOOGLE_CLOUD_PROJECT``).
+            region: GCP region (default: from ``CLOUD_RUN_REGION`` or ``us-central1``).
+            cpu_milli: CPU allocation in millicores (default: 8000).
+            memory_mib: Memory allocation in MiB (default: 32768).
+            machine_type: Optional specific machine type.
+            timeout: Optional timeout in seconds.
+            gpu_type: Optional GPU type.
+            gpu_count: Optional GPU count (default: 1).
 
         Raises:
             ValueError: If ``docker_image_uri`` or ``workflow_run_id`` is missing.
+
+        Examples:
+            Running a workflow:
+
+            >>> import asyncio
+            >>> from rattler import MatchSpec
+            >>> invoker = CloudBatchInvoker(
+            ...     matchspec=MatchSpec("my-workflow>=1.0.0")
+            ... )
+            >>> config = '''
+            ... param1: value1
+            ... param2: 42
+            ... '''
+            >>> # asyncio.run(invoker.run(
+            >>> #     workflow_run_id="run-123",
+            >>> #     config_text=config,
+            >>> #     results_url="gs://my-bucket/results",
+            >>> #     execution_mode="sequential",
+            >>> #     mock_io=False,
+            >>> #     docker_image_uri="gcr.io/project/workflow:latest"
+            >>> # ))
         """
         # Validate required parameters
         docker_image_uri = kwargs.pop("docker_image_uri", None)
@@ -266,11 +296,29 @@ class CloudBatchInvoker(AbstractInvoker):
         timeout: float | None = None,
         error_msg: str | None = None,
     ) -> int:
-        """No-op wait (Cloud Batch jobs run asynchronously).
+        """Wait for the workflow to finish.
+
+        This is a no-op for Cloud Batch as jobs run asynchronously.
+
+        Args:
+            timeout: Ignored
+            error_msg: Ignored
 
         Returns:
             0 (always successful)
+
+        Examples:
+            Calling wait (no-op):
+
+            >>> import asyncio
+            >>> from rattler import MatchSpec
+            >>> invoker = CloudBatchInvoker(
+            ...     matchspec=MatchSpec("my-workflow>=1.0.0")
+            ... )
+            >>> asyncio.run(invoker.wait())
+            0
         """
+        # Cannot wait for the job to finish in this invoker
         return 0
 
     async def _create_container_job(
