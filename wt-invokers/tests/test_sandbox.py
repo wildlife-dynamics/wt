@@ -72,7 +72,7 @@ async def test_run_without_activate_path_raises(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_builds_expected_shell_command(tmp_path: Path) -> None:
+async def test_run_builds_expected_argv(tmp_path: Path) -> None:
     inv = SandboxInvoker(
         matchspec=MatchSpec("my-workflow>=1.0.0"), work_dir=str(tmp_path)
     )
@@ -93,15 +93,21 @@ async def test_run_builds_expected_shell_command(tmp_path: Path) -> None:
 
     cmd = mp.call_args[0][0]
     kwargs = mp.call_args[1]
-    assert isinstance(cmd, str)
-    assert "source /fake/activate.sh" in cmd
-    assert "my-workflow run" in cmd
+    # argv form: no shell interpolation, no injection surface.
+    assert isinstance(cmd, list)
+    assert cmd[:4] == ["sh", "-c", '. "$1" && shift && exec "$@"', "sh"]
+    assert "/fake/activate.sh" in cmd
+    assert "my-workflow" in cmd
+    assert "run" in cmd
     assert "--config-json" in cmd
-    assert "--execution-mode sequential" in cmd
+    assert "--execution-mode" in cmd and "sequential" in cmd
     assert "--mock-io" in cmd
-    assert "--otel-exporter http://localhost:4318" in cmd
-    assert kwargs["shell"] is True
+    assert "--otel-exporter" in cmd and "http://localhost:4318" in cmd
+    assert kwargs["shell"] is False
     assert kwargs["cwd"] == str(tmp_path)
+    # Inherit parent stdout/stderr — no PIPE that could deadlock wait().
+    assert "stdout" not in kwargs
+    assert "stderr" not in kwargs
     env = kwargs["env"]
     assert env[inv.results_env_var] == "file:///results"
     assert env["CUSTOM"] == "yes"
@@ -122,6 +128,35 @@ async def test_run_no_mock_io_flag(tmp_path: Path) -> None:
     cmd = mp.call_args[0][0]
     assert "--no-mock-io" in cmd
     assert "--otel-exporter" not in cmd
+
+
+@pytest.mark.asyncio
+async def test_run_shell_metacharacters_in_fields_are_not_interpreted(
+    tmp_path: Path,
+) -> None:
+    """Shell metacharacters in config/otel fields are positional args, not shell input.
+
+    Regression test for the shell-injection surface that existed when ``_run``
+    used ``shell=True`` with f-string interpolation. The argv-form invocation
+    passes each field as its own positional argument, so no shell parsing of
+    field content can occur.
+    """
+    inv = SandboxInvoker(matchspec=MatchSpec("w>=1.0.0"), work_dir=str(tmp_path))
+    inv.run_state["activate_path"] = "/a.sh"
+    hostile = "http://x?a=1&b=$(rm -rf /)"
+    with patch("wt_invokers.sandbox.subprocess.Popen") as mp:
+        await inv._run(
+            workflow_run_id="r",
+            config_text="k: v",
+            results_url="file:///r",
+            execution_mode="sequential",
+            mock_io=False,
+            otel_exporter=hostile,
+        )
+    cmd = mp.call_args[0][0]
+    # Hostile value appears as a discrete argv entry, not wrapped in a shell
+    # string. Any metacharacter is inert at this layer.
+    assert hostile in cmd
 
 
 @pytest.mark.asyncio

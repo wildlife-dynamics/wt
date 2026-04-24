@@ -10,12 +10,13 @@ mock httpx for fine-grained retry behaviour.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import tarfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
@@ -113,7 +114,7 @@ def test_transfer_config_defaults() -> None:
     assert mixins.TRANSFER_RETRY_WAIT_MAX == 60.0
     assert mixins.TRANSFER_CONNECT_TIMEOUT == 30.0
     assert mixins.TRANSFER_TIMEOUT == 1800.0
-    assert mixins.TRANSFER_CHUNK_SIZE == 65536
+    assert mixins.TRANSFER_CHUNK_SIZE == 8 * 1024 * 1024
 
 
 # ---------------------------------------------------------------------------
@@ -522,6 +523,138 @@ def test_retryable_http_error_is_exception() -> None:
 
 
 # ---------------------------------------------------------------------------
+# archive_results_safely — TarSlip hardening tests
+# ---------------------------------------------------------------------------
+
+
+def _names_in(archive: Path) -> set[str]:
+    with tarfile.open(archive, "r:gz") as tar:
+        return set(tar.getnames())
+
+
+def test_archive_results_safely_happy_path(tmp_path: Path) -> None:
+    """Regular files and subdirectories archive with their names preserved."""
+    results = tmp_path / "results"
+    results.mkdir()
+    (results / "result.json").write_text('{"ok": true}')
+    sub = results / "sub"
+    sub.mkdir()
+    (sub / "inner.txt").write_text("hi")
+
+    dest = tmp_path / "out.tar.gz"
+    mixins.archive_results_safely(results, dest)
+
+    names = _names_in(dest)
+    assert "result.json" in names
+    assert "sub" in names
+    assert "sub/inner.txt" in names
+
+
+def test_archive_results_safely_empty_dir(tmp_path: Path) -> None:
+    """An empty results dir produces a valid (empty) gz-tar."""
+    results = tmp_path / "results"
+    results.mkdir()
+    dest = tmp_path / "out.tar.gz"
+    mixins.archive_results_safely(results, dest)
+
+    with tarfile.open(dest, "r:gz") as tar:
+        assert tar.getnames() == []
+
+
+def test_archive_results_safely_rejects_symlink_outside_tree(tmp_path: Path) -> None:
+    """Symlink pointing outside results_dir must not appear in the archive.
+
+    Without ``tarfile.data_filter`` at archive time, a downstream consumer
+    extracting the tarball with pre-3.12 defaults would follow the link and
+    clobber or expose files outside the extraction root — TarSlip. The
+    filter rejects the entry; the archive is produced but the entry is
+    absent.
+    """
+    results = tmp_path / "results"
+    results.mkdir()
+    target = tmp_path / "outside"
+    target.write_text("secret")
+    (results / "evil").symlink_to(target)
+    (results / "ok.txt").write_text("ok")
+
+    dest = tmp_path / "out.tar.gz"
+    mixins.archive_results_safely(results, dest)
+
+    names = _names_in(dest)
+    assert "ok.txt" in names
+    assert "evil" not in names
+
+
+def test_archive_results_safely_rejects_fifo(tmp_path: Path) -> None:
+    """FIFO entries are rejected by the data filter."""
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("mkfifo unavailable on this platform")
+
+    results = tmp_path / "results"
+    results.mkdir()
+    os.mkfifo(results / "pipe")
+    (results / "ok.txt").write_text("ok")
+
+    dest = tmp_path / "out.tar.gz"
+    mixins.archive_results_safely(results, dest)
+
+    names = _names_in(dest)
+    assert "ok.txt" in names
+    assert "pipe" not in names
+
+
+# ---------------------------------------------------------------------------
+# file:// URL path percent-decoding
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pre_run_file_url_with_space_in_path(tmp_path: Path) -> None:
+    """file:// URLs with percent-encoded spaces round-trip through url2pathname."""
+    source = tmp_path / "src with space"
+    source.mkdir()
+    source_tar = source / "env.tar"
+    source_tar.write_bytes(b"bytes")
+
+    work = tmp_path / "work dir"
+    work.mkdir()
+
+    # urlparse("file:///tmp/src%20with%20space/env.tar").path keeps the
+    # percent-encoded form; without url2pathname, shutil.copy2 would fail.
+    url = f"file://{str(source_tar).replace(' ', '%20')}"
+    inv = _make_pixi(work, environment_tar_url=url)
+
+    with (
+        patch("wt_invokers.mixins.shutil.which", return_value="/usr/bin/pixi-unpack"),
+        patch("wt_invokers.mixins.subprocess.run"),
+    ):
+        await inv._pre_run()
+
+    assert (work / "environment.tar").read_bytes() == b"bytes"
+
+
+@pytest.mark.asyncio
+async def test_post_run_file_urls_with_space_in_path(tmp_path: Path) -> None:
+    """file:// URLs for results dir and upload dest handle percent-encoded paths."""
+    results_dir = tmp_path / "res dir"
+    results_dir.mkdir()
+    (results_dir / "result.json").write_text("{}")
+
+    dest = tmp_path / "up load" / "out.tar.gz"
+    results_url = f"file://{str(results_dir).replace(' ', '%20')}"
+    upload_url = f"file://{str(dest).replace(' ', '%20')}"
+
+    inv = _make_upload(
+        tmp_path,
+        results_url=results_url,
+        results_upload_url=upload_url,
+    )
+    await inv._post_run()
+
+    assert dest.exists()
+
+
+# ---------------------------------------------------------------------------
 # Upload content streams via httpx (no manual read)
 # ---------------------------------------------------------------------------
 
@@ -655,7 +788,3 @@ async def test_download_gives_up_after_max_attempts(tmp_path: Path) -> None:
             await inv._pre_run()
     # fast_stamina sets attempts=3
     assert calls["n"] == 3
-
-
-# suppress unused import warning
-_ = AsyncMock

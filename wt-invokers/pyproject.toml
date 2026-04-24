@@ -7,7 +7,7 @@ name = "wt-invokers"
 dynamic = ["version"]
 description = "Abstract invoker interface and implementations for wt workflows"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = { text = "BSD-3-Clause" }
 authors = [
     { name = "Workflow Tools Contributors" }
@@ -18,9 +18,8 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: BSD License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
@@ -76,7 +75,7 @@ addopts = "--doctest-modules --doctest-continue-on-failure --cov=wt_invokers --c
 asyncio_mode = "auto"
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.12"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
@@ -115,7 +114,7 @@ module = "wt_invokers.cloud_run_jobs"
 warn_unused_ignores = false
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py312"
 line-length = 88
 
 [tool.ruff.lint]
@@ -171,13 +170,13 @@ backend = { name = "pixi-build-python", version = "*", channels = ["conda-forge"
 noarch = true
 
 [tool.pixi.package.host-dependencies]
-python = ">=3.10,<3.16"
+python = ">=3.12,<3.16"
 setuptools = ">=64"
 setuptools-scm = ">=8"
 pip = "*"
 
 [tool.pixi.package.run-dependencies]
-python = ">=3.10,<3.16"
+python = ">=3.12,<3.16"
 py-rattler = ">=0.8.0"
 "ruamel.yaml" = ">=0.17.0"
 wt-contracts = ">=0.1.0,<1.0.0"

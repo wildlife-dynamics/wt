@@ -98,11 +98,16 @@ async def test_wait_returns_zero(mock_run_modules: Any) -> None:
 async def test_run_triggers_job_with_correct_args(mock_run_modules: Any) -> None:
     from wt_invokers.cloud_run_jobs import CloudRunJobsSandboxInvoker
 
+    # MagicMock(name=...) sets the mock's own ``_mock_name``, NOT its
+    # ``.name`` attribute. Assign the attribute explicitly so the invoker's
+    # ``operation.metadata.name`` path returns a real resource-name string.
+    op = MagicMock()
+    op.metadata.name = (
+        "projects/my-proj/locations/us-central1/jobs/sandbox-job/executions/exec-1"
+    )
     fake_client = MagicMock()
     fake_client.get_job = AsyncMock()
-    fake_client.run_job = AsyncMock(
-        return_value=MagicMock(metadata=MagicMock(name="exec-1"))
-    )
+    fake_client.run_job = AsyncMock(return_value=op)
 
     with patch(
         "wt_invokers.cloud_run_jobs.JobsAsyncClient",
@@ -136,11 +141,11 @@ async def test_run_triggers_job_with_correct_args(mock_run_modules: Any) -> None
 async def test_run_defaults_region_to_us_central1(mock_run_modules: Any) -> None:
     from wt_invokers.cloud_run_jobs import CloudRunJobsSandboxInvoker
 
+    op = MagicMock()
+    op.metadata.name = "projects/p/locations/us-central1/jobs/j/executions/x"
     fake_client = MagicMock()
     fake_client.get_job = AsyncMock()
-    fake_client.run_job = AsyncMock(
-        return_value=MagicMock(metadata=MagicMock(name="x"))
-    )
+    fake_client.run_job = AsyncMock(return_value=op)
 
     with patch(
         "wt_invokers.cloud_run_jobs.JobsAsyncClient",
@@ -194,7 +199,10 @@ async def test_ensure_job_exists_raises_clear_error_on_missing(
         return_value=fake_client,
     ):
         inv = CloudRunJobsSandboxInvoker(matchspec=MatchSpec("w>=1.0.0"))
-        with pytest.raises(RuntimeError, match="Pre-deployed Cloud Run Job not found"):
+        with pytest.raises(
+            RuntimeError,
+            match=r"Pre-deployed Cloud Run Job .* is not available \(Exception\)",
+        ):
             await inv.run(
                 workflow_run_id="r",
                 config_text="k: v",

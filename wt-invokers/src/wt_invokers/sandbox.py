@@ -107,23 +107,12 @@ class SandboxInvoker(PixiUnpackMixin, UploadResultsArchiveMixin, AbstractInvoker
 
         The ``PixiUnpackMixin`` pre-run hook is responsible for populating
         ``self.run_state["activate_path"]``. This method sources that
-        activation script then execs the bundled workflow binary.
-
-        ``shell=True`` is used so the command can ``source`` the activation
-        script and run the workflow in one process. The workflow binary is
-        arbitrary user code that already has full subprocess access, so
-        shell-quoting is not a meaningful trust boundary — the container
-        sandbox is. No untrusted input is interpolated into the command.
+        activation script then execs the bundled workflow binary using a
+        POSIX-``sh`` wrapper with positional arguments so no field is ever
+        interpolated into a shell string (no quoting / escaping concerns).
         """
         config_as_json = yaml_to_json(text=config_text)
         workflow_name = self._workflow_name()
-
-        mock_flag = "--mock-io" if mock_io else "--no-mock-io"
-        otel_args = ""
-        if otel_exporter:
-            otel_args += f" --otel-exporter {otel_exporter}"
-        if otel_console_exporter_dst:
-            otel_args += f" --otel-console-exporter-dst {otel_console_exporter_dst}"
 
         activate_path = self.run_state.get("activate_path")
         if not activate_path:
@@ -132,16 +121,25 @@ class SandboxInvoker(PixiUnpackMixin, UploadResultsArchiveMixin, AbstractInvoker
                 "must have run first"
             )
 
-        # Quote the JSON once so single quotes inside the payload don't break
-        # the shell string (rare but defensive).
-        config_as_json_sq = config_as_json.replace("'", "'\"'\"'")
-        cmd = (
-            f"source {activate_path}"
-            f" && {workflow_name} run"
-            f" --config-json '{config_as_json_sq}'"
-            f" --execution-mode {execution_mode}"
-            f" {mock_flag}{otel_args}"
-        )
+        mock_flag = "--mock-io" if mock_io else "--no-mock-io"
+        cmd = [
+            "sh",
+            "-c",
+            '. "$1" && shift && exec "$@"',
+            "sh",  # $0 placeholder; "$1" below maps to activate_path
+            activate_path,
+            workflow_name,
+            "run",
+            "--config-json",
+            config_as_json,
+            "--execution-mode",
+            execution_mode,
+            mock_flag,
+        ]
+        if otel_exporter:
+            cmd += ["--otel-exporter", otel_exporter]
+        if otel_console_exporter_dst:
+            cmd += ["--otel-console-exporter-dst", otel_console_exporter_dst]
 
         env = os.environ.copy()
         if extra_env:
@@ -150,9 +148,7 @@ class SandboxInvoker(PixiUnpackMixin, UploadResultsArchiveMixin, AbstractInvoker
 
         self.run_state["process"] = subprocess.Popen(
             cmd,
-            shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            shell=False,
             env=env,
             cwd=self.work_dir,
         )
@@ -221,11 +217,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 async def _amain(args: argparse.Namespace) -> int:
     from urllib.parse import urlparse
+    from urllib.request import url2pathname
 
     # Ensure the local results dir exists so the workflow can write into it.
     results_parsed = urlparse(args.results_url)
     if results_parsed.scheme in ("file", ""):
-        Path(results_parsed.path).mkdir(parents=True, exist_ok=True)
+        Path(url2pathname(results_parsed.path)).mkdir(parents=True, exist_ok=True)
 
     invoker = SandboxInvoker(matchspec=MatchSpec(args.matchspec))
     await invoker.run(

@@ -122,17 +122,18 @@ jobs:
           run-install: false
       - name: Wait for prefix.dev propagation
         run: |
-          for i in $(seq 1 12); do
+          for i in $(seq 1 60); do
             if pixi search \
               -c https://prefix.dev/ecoscope-workflows -c conda-forge \
               wt-invokers==${{ needs.parse.outputs.version }} 2>/dev/null | grep -q "wt-invokers"; then
               echo "Package available on prefix.dev"
               exit 0
             fi
-            echo "Attempt $i/12: package not yet available, waiting 10s..."
+            echo "Attempt $i/60: not yet available, waiting 10s..."
             sleep 10
           done
-          echo "Package not available after 2 minutes"
+          echo "::error::Package not available on prefix.dev after 10 minutes."
+          echo "This is usually a prefix.dev propagation delay. Re-run the 'publish-docker' job in a few minutes."
           exit 1
       - name: Build image (load locally, don't push yet)
         uses: docker/build-push-action@v5

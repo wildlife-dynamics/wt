@@ -481,6 +481,29 @@ async def test_post_run_failure_still_clears_state() -> None:
 
 
 @pytest.mark.asyncio
+async def test_wait_idle_skips_post_run() -> None:
+    """wait() from IDLE raises immediately and does not invoke _post_run.
+
+    Pins the lifecycle guard: previously, calling wait() with no prior run()
+    let _wait raise "Process not started" and then _post_run ran with empty
+    run_args, failing its own preconditions and masking the real error.
+    """
+    post_run_called = False
+
+    @dataclass
+    class PostRunTracker(ConcreteInvoker):
+        async def _post_run(self) -> None:
+            nonlocal post_run_called
+            post_run_called = True
+
+    inv = PostRunTracker(matchspec=MatchSpec("w>=1.0.0"))
+    with pytest.raises(RuntimeError, match="not running"):
+        await inv.wait()
+    assert post_run_called is False
+    assert inv.is_running is False
+
+
+@pytest.mark.asyncio
 async def test_pre_and_post_run_default_to_no_ops() -> None:
     """Default _pre_run and _post_run do nothing."""
     inv = ConcreteInvoker(matchspec=MatchSpec("w>=1.0.0"))

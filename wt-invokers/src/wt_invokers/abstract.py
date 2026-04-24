@@ -235,11 +235,37 @@ class AbstractInvoker(ABC):
         timeout: float | None = None,
         error_msg: str | None = None,
     ) -> int:
-        """Wait for the workflow to finish, then run ``_post_run`` and reset state.
+        """Wait for the workflow to finish, run ``_post_run``, and return the exit code.
 
-        ``_post_run`` always runs — even when ``_wait`` raised or returned a
-        non-zero exit code — so that best-effort cleanup (e.g. uploading a
-        ``result.json`` describing a workflow error) is not skipped.
+        Outcomes by lifecycle state:
+
+        * Called from IDLE on a **waitable** invoker (never ran, or already
+          reset): raises :class:`RuntimeError` immediately. ``_post_run``
+          is not invoked. This mirrors the symmetric guard in :meth:`run`.
+        * Called on a **non-waitable** invoker: the guard is skipped,
+          ``_wait`` is invoked (which by convention returns ``0``), and
+          ``_post_run`` runs as usual. Non-waitable invokers clear state
+          inside :meth:`run`, so a post-run ``wait()`` is a no-op tail by
+          design; rejecting it would break the symmetric API.
+        * Workflow succeeds, ``_post_run`` succeeds: returns the workflow
+          exit code.
+        * Workflow finishes with non-zero exit code, ``_post_run`` succeeds:
+          returns that exit code for the caller to inspect.
+        * ``_wait`` raises, ``_post_run`` succeeds: ``_wait``'s exception
+          propagates; ``_post_run`` still runs; state is reset.
+        * Workflow (or ``_wait``) succeeds but ``_post_run`` raises:
+          ``_post_run``'s exception propagates and the workflow exit code is
+          lost **by design**. Post-run hooks do real work (e.g. results
+          upload) whose failure is not secondary to the workflow's exit code.
+          Mixins that want their own failures not to affect the return value
+          should catch and log them internally.
+        * Both ``_wait`` and ``_post_run`` raise: ``_post_run``'s exception
+          propagates with ``_wait``'s preserved on ``__context__`` (visible
+          in the default traceback as "During handling of the above
+          exception, another exception occurred").
+
+        State (:attr:`run_args`, :attr:`run_state`, :attr:`is_running`) is
+        always cleared on exit, regardless of which branch the call took.
 
         Args:
             timeout: Optional timeout in seconds. If None, wait indefinitely.
@@ -249,9 +275,14 @@ class AbstractInvoker(ABC):
             Exit code of the workflow (0 for success, non-zero for failure)
 
         Raises:
-            RuntimeError: If process not started or already finished
+            RuntimeError: If called while not running, or if the subclass
+                ``_wait`` reports the process was not started
             InvocationTimeoutError: If timeout is reached
         """
+        if self.is_waitable and not self._is_running:
+            raise RuntimeError(
+                "wait() called while not running -- run() must complete first"
+            )
         try:
             exit_code = await self._wait(timeout=timeout, error_msg=error_msg)
         finally:

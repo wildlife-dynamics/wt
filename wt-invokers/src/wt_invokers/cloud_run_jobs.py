@@ -76,13 +76,18 @@ class CloudRunJobsSandboxInvoker(AbstractInvoker):
         return 0
 
     async def _ensure_job_exists(self, fq_job_name: str) -> None:
+        # Broad catch is intentional: the check answers "is this job usable?"
+        # Any reason it isn't (missing, auth, quota, service unavailable) is
+        # equally worth surfacing. The exception type is included so callers
+        # can distinguish reasons at a glance; ``from e`` preserves the full
+        # traceback for deeper inspection.
         client = JobsAsyncClient()
         try:
             await client.get_job(name=fq_job_name)
         except Exception as e:
             raise RuntimeError(
-                f"Pre-deployed Cloud Run Job not found: {fq_job_name}. "
-                f"Original error: {e}"
+                f"Pre-deployed Cloud Run Job {fq_job_name} is not available "
+                f"({type(e).__name__}): {e}"
             ) from e
 
     async def _run(  # type: ignore[override]
@@ -160,8 +165,13 @@ class CloudRunJobsSandboxInvoker(AbstractInvoker):
             overrides=override,
         )
         operation = await client.run_job(request=request)
+        # operation.metadata is a google.cloud.run_v2.types.Execution on a
+        # well-formed LRO response; an AttributeError here would be a real bug
+        # and should surface rather than be silently swallowed.
+        execution_resource = operation.metadata.name
+        execution_id = execution_resource.rsplit("/", 1)[-1]
         logger.info(
-            "Triggered Cloud Run Job execution for %s (metadata=%s)",
-            fq_job_name,
-            getattr(getattr(operation, "metadata", None), "name", None),
+            "Triggered Cloud Run Job execution: id=%s resource=%s",
+            execution_id,
+            execution_resource,
         )

@@ -30,6 +30,10 @@ jobs:
             python-version: "3.10"
           - package: wt-compiler
             python-version: "3.11"
+          - package: wt-invokers
+            python-version: "3.10"
+          - package: wt-invokers
+            python-version: "3.11"
           - package: wt-runner
             python-version: "3.10"
           - package: wt-runner

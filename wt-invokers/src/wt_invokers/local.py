@@ -232,11 +232,13 @@ class LocalSubprocessInvoker(AbstractInvoker):
             # Merge environment variables
             env = os.environ.copy() | (extra_env or {})
 
-            # Start subprocess
+            # Start subprocess. Inherit parent stdout/stderr rather than
+            # capturing via PIPE: nothing reads the pipes, and a full pipe
+            # buffer (typically 64 KiB on Linux) would deadlock the child on
+            # its next write. The runtime (terminal / journald / Cloud
+            # Logging) is responsible for log capture.
             self.run_state["process"] = subprocess.Popen(
                 cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
                 env=env,
                 cwd=self.cwd,
             )
