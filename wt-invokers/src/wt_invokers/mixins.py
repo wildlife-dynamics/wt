@@ -88,80 +88,59 @@ def _timeout() -> httpx.Timeout:
 # ---------------------------------------------------------------------------
 
 
-def archive_results_safely(results_dir: Path, dest: Path) -> None:
-    """Write a gzip-tar of ``results_dir`` to ``dest`` with TarSlip hardening.
+def _archive_filter(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo:
+    """Archive-time safety filter: reject TarSlip-capable entries.
 
-    Threat model (producer side)
-    ----------------------------
-    This function is the final step before a results archive leaves the
-    sandbox container. The workflow that produced ``results_dir`` is
-    untrusted — it runs inside the sandbox and may write arbitrary entries
-    into ``results_dir``, including entries that would be unsafe for a
-    downstream consumer to extract (symlinks pointing at system paths,
-    hardlinks, absolute-path members, path-traversal via ``..``, device
-    files, setuid/setgid bits). A consumer extracting the archive without
-    a filter (the pre-3.12 default) would suffer arbitrary writes on its
-    own filesystem — a pivot from the sandbox to the consumer.
+    The workflow that wrote the source directory is untrusted and may plant
+    unsafe entries (symlinks pointing outside the tree, absolute paths,
+    device nodes, setuid bits, ``..`` traversal). We want none of those to
+    cross the sandbox boundary into the tarball we ship out, so that
+    whatever opens the archive downstream — Python, GNU tar, a Go service,
+    a human — gets a tarball that is safe by construction.
 
-    What this defends against
-    -------------------------
-    Applies :func:`tarfile.data_filter` at archive time. That filter rejects
-    entries with absolute paths, ``..`` components, symlinks/hardlinks with
-    external targets, device files, FIFOs, and setuid/setgid bits. The
-    produced archive is safe for any downstream consumer, including those on
-    Python < 3.12 or those using non-Python extractors with old defaults.
+    The hard check to get right is symlink/hardlink target escape (classic
+    TarSlip is almost always a symlink variant, not a ``..`` filename).
+    :func:`tarfile.data_filter` ships that check — along with absolute-path /
+    traversal / special-file / setuid checks — as part of the stdlib
+    extraction-safety API added in 3.12 (PEP 706). We repurpose it at
+    archive time so we inherit the stdlib's security-reviewed check battery
+    instead of hand-rolling it.
 
-    What this does NOT defend against
-    ---------------------------------
-    Data exfiltration. The workflow can copy any readable file into
-    ``results_dir`` as a regular file (e.g. ``shutil.copy("/etc/passwd",
-    results_dir / "passwd")``). Regular-file entries are not filtered because
-    they are indistinguishable from legitimate workflow output. Defenses
-    against exfiltration are architectural: container filesystem hardening,
-    service-account scoping on the Cloud Run Job, egress policy, and the fact
-    that ``results_upload_url`` is an orchestrator-controlled signed URL
-    constraining where the archive can land. Those live outside this function.
-
-    Consumer guidance
-    -----------------
-    Even though this producer is hardened, consumers SHOULD still extract
-    with ``tarfile.extractall(filter="data")`` as defense-in-depth — this
-    producer cannot guarantee the archive they receive came from a hardened
-    producer (e.g. a user-supplied archive from a different source), so
-    filtering at extract time is the consumer's own hygiene.
+    The two-line normalization below exists because ``data_filter`` is
+    extraction-oriented: it nulls ``uid`` / ``gid`` / ``uname`` / ``gname``
+    (and ``mode`` for dirs/symlinks) on the assumption those fields get
+    recomputed at extract time. The tar *header writer* can't serialize
+    ``None``, so we set anonymized defaults before handing the TarInfo back
+    to ``add()``. ``FilterError`` on a rejected member propagates and aborts
+    the archive — correct behavior for a sandbox that should never be the
+    hands that pass a loaded gun downstream.
     """
+    filtered = tarfile.data_filter(tarinfo, "")
+    # data_filter's type stub claims ``mode`` is ``int``, but at runtime it
+    # sets mode to ``None`` for directories and symlinks (see stdlib
+    # ``_get_filtered_attrs``). ``getattr`` dodges the unreachable-branch
+    # warning without weakening the runtime check.
+    if getattr(filtered, "mode", None) is None:
+        filtered.mode = 0o755 if tarinfo.isdir() else 0o644
+    filtered.uid = 0
+    filtered.gid = 0
+    filtered.uname = ""
+    filtered.gname = ""
+    return filtered
 
-    def _reject_unsafe(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo | None:
-        # ``tarfile.data_filter`` is designed for extraction, but its checks
-        # (no absolute paths / ``..`` / links escaping the tree / device
-        # files / FIFOs / setuid-setgid) are exactly what we want to apply
-        # at archive time too. Run them, catching the FilterError class it
-        # raises on any unsafe member; return ``None`` to exclude rejected
-        # entries from the archive.
-        #
-        # ``data_filter`` intentionally nulls some fields (uid / gid /
-        # uname / gname / sometimes mode) because those are meant to be
-        # recomputed at extraction time. But the archive header serializer
-        # cannot write ``None`` values, so we harmonize to safe anonymous
-        # defaults before handing the TarInfo back to ``add``.
-        try:
-            filtered = tarfile.data_filter(tarinfo, "")
-        except tarfile.FilterError:
-            return None
-        # mypy knows ``mode`` is typed as ``int`` but data_filter sets it
-        # to ``None`` for some member types; cast-via-getattr keeps the
-        # runtime safety without tripping the unreachable-branch warning.
-        if getattr(filtered, "mode", None) is None:
-            filtered.mode = 0o755 if tarinfo.isdir() else 0o644
-        filtered.uid = 0
-        filtered.gid = 0
-        filtered.uname = ""
-        filtered.gname = ""
-        return filtered
 
+def archive_results_safely(results_dir: Path, dest: Path) -> None:
+    """Tar ``results_dir`` into ``dest`` (gzip), applying :func:`_archive_filter`
+    to every member; unsafe entries abort the archive.
+
+    See :func:`_archive_filter` for the threat model and the set of checks
+    applied. Exfiltration of readable regular files is out of scope here and
+    is handled architecturally (container hardening, egress policy, signed
+    upload URL).
+    """
     with tarfile.open(dest, "w:gz") as tar:
         for item in results_dir.iterdir():
-            tar.add(item, arcname=item.name, filter=_reject_unsafe)
+            tar.add(item, arcname=item.name, filter=_archive_filter)
 
 
 # ---------------------------------------------------------------------------

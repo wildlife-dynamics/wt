@@ -562,13 +562,14 @@ def test_archive_results_safely_empty_dir(tmp_path: Path) -> None:
 
 
 def test_archive_results_safely_rejects_symlink_outside_tree(tmp_path: Path) -> None:
-    """Symlink pointing outside results_dir must not appear in the archive.
+    """Threat: malicious workflow plants ``results/evil -> /etc/passwd``.
 
-    Without ``tarfile.data_filter`` at archive time, a downstream consumer
-    extracting the tarball with pre-3.12 defaults would follow the link and
-    clobber or expose files outside the extraction root — TarSlip. The
-    filter rejects the entry; the archive is produced but the entry is
-    absent.
+    If this entry shipped, a naive ``tar xzf`` on the consumer would follow
+    the symlink and expose (or overwrite, if running as root) files outside
+    the extraction root — classic TarSlip via absolute symlink. The filter
+    must raise rather than silently omit the entry; silent omission would
+    let a malicious archive ship "sanitized" without the operator knowing
+    the workflow tried something funny.
     """
     results = tmp_path / "results"
     results.mkdir()
@@ -578,15 +579,18 @@ def test_archive_results_safely_rejects_symlink_outside_tree(tmp_path: Path) -> 
     (results / "ok.txt").write_text("ok")
 
     dest = tmp_path / "out.tar.gz"
-    mixins.archive_results_safely(results, dest)
-
-    names = _names_in(dest)
-    assert "ok.txt" in names
-    assert "evil" not in names
+    with pytest.raises(tarfile.AbsoluteLinkError):
+        mixins.archive_results_safely(results, dest)
 
 
 def test_archive_results_safely_rejects_fifo(tmp_path: Path) -> None:
-    """FIFO entries are rejected by the data filter."""
+    """Threat: workflow smuggles a FIFO into the archive.
+
+    Extraction stalls waiting for a writer, or lands a FIFO on the
+    consumer's filesystem that a downstream pipeline might accidentally
+    read and hang on. Special-file smuggling — the filter must refuse the
+    archive outright.
+    """
     if not hasattr(os, "mkfifo"):
         pytest.skip("mkfifo unavailable on this platform")
 
@@ -596,11 +600,188 @@ def test_archive_results_safely_rejects_fifo(tmp_path: Path) -> None:
     (results / "ok.txt").write_text("ok")
 
     dest = tmp_path / "out.tar.gz"
+    with pytest.raises(tarfile.SpecialFileError):
+        mixins.archive_results_safely(results, dest)
+
+
+def test_archive_rejects_relative_symlink_escape(tmp_path: Path) -> None:
+    """Threat: same TarSlip class as the absolute-symlink test, but via a
+    *relative* target (``../../outside``).
+
+    Different code path inside ``data_filter``: it resolves the link target
+    relative to the member's directory and commonpath-checks against the
+    destination. This test covers the case where our filter wiring might
+    accidentally only catch absolute targets.
+    """
+    results = tmp_path / "results"
+    results.mkdir()
+    (results / "evil").symlink_to("../../outside")
+    (results / "ok.txt").write_text("ok")
+
+    with pytest.raises(tarfile.FilterError):
+        mixins.archive_results_safely(results, tmp_path / "out.tar.gz")
+
+
+def test_archive_strips_setuid_setgid(tmp_path: Path) -> None:
+    """Threat: workflow emits a setuid binary.
+
+    If the archive lands on a system that extracts as root onto a
+    filesystem mounted with ``suid``, an unprivileged user could exec it
+    for privilege escalation. The filter must strip the high mode bits at
+    archive time.
+    """
+    results = tmp_path / "results"
+    results.mkdir()
+    f = results / "suid"
+    f.write_text("x")
+    f.chmod(0o4755)
+
+    dest = tmp_path / "out.tar.gz"
+    mixins.archive_results_safely(results, dest)
+    with tarfile.open(dest, "r:gz") as tar:
+        info = tar.getmember("suid")
+        assert info.mode & 0o7000 == 0
+
+
+def test_archive_normalizes_ownership(tmp_path: Path) -> None:
+    """Threat: correctness regression, not an attack.
+
+    ``data_filter`` nulls ``uid`` / ``gid`` / ``uname`` / ``gname`` (for
+    extraction); our shim re-sets them to anonymous defaults so the tar
+    header writer can serialize them. If the shim is deleted or bypassed,
+    archive writing crashes on ``None`` fields — this test catches that
+    before release.
+    """
+    results = tmp_path / "results"
+    results.mkdir()
+    (results / "f.txt").write_text("x")
+
+    dest = tmp_path / "out.tar.gz"
+    mixins.archive_results_safely(results, dest)
+    with tarfile.open(dest, "r:gz") as tar:
+        for info in tar.getmembers():
+            assert info.uid == 0
+            assert info.gid == 0
+            assert info.uname == ""
+            assert info.gname == ""
+
+
+def test_archive_extracts_safely_into_scratch_dir(tmp_path: Path) -> None:
+    """Threat: defense-in-depth proof that the produced archive is actually
+    consumer-safe.
+
+    Guards against a future bug where our filter produces structurally-
+    malformed entries that a consumer's ``filter="data"`` extraction would
+    reject — we'd rather fail our own tests than fail a user's extraction.
+    """
+    results = tmp_path / "results"
+    results.mkdir()
+    (results / "result.json").write_text('{"ok": true}')
+    (results / "sub").mkdir()
+    (results / "sub" / "inner.txt").write_text("hi")
+    dest = tmp_path / "out.tar.gz"
     mixins.archive_results_safely(results, dest)
 
-    names = _names_in(dest)
-    assert "ok.txt" in names
-    assert "pipe" not in names
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    with tarfile.open(dest, "r:gz") as tar:
+        tar.extractall(scratch, filter="data")
+    scratch_real = scratch.resolve()
+    for p in scratch.rglob("*"):
+        resolved = p.resolve()
+        assert resolved == scratch_real or scratch_real in resolved.parents
+
+
+# ---------------------------------------------------------------------------
+# _archive_filter — unit tests on synthesized TarInfo
+# ---------------------------------------------------------------------------
+
+
+def test_archive_filter_normalizes_absolute_path_name() -> None:
+    """Threat: archive entry whose name is an absolute path.
+
+    A naive consumer treating the name as absolute would write straight to
+    ``/etc/passwd``. ``data_filter`` defuses this by stripping the leading
+    ``/``, so the entry becomes a safe relative path. Our production
+    pipeline can't produce such an entry (we pass ``arcname=item.name``
+    from ``iterdir()``, which is always a basename), so this is regression
+    coverage — if someone later changes the archive loop to synthesize
+    TarInfos directly or accept pre-built entries, this test ensures the
+    filter still neutralizes the absolute name.
+    """
+    info = tarfile.TarInfo(name="/etc/passwd")
+    info.type = tarfile.REGTYPE
+    out = mixins._archive_filter(info)
+    assert not out.name.startswith("/")
+    assert out.name == "etc/passwd"
+
+
+def test_archive_filter_rejects_parent_traversal_name() -> None:
+    """Threat: entry name containing ``..`` components.
+
+    Same shape as the absolute-path test — can't happen via the current
+    ``iterdir()`` path, but the filter must reject ``..`` components to
+    remain a correct backstop for any future code path that builds
+    TarInfos directly.
+    """
+    info = tarfile.TarInfo(name="../escape")
+    info.type = tarfile.REGTYPE
+    with pytest.raises(tarfile.OutsideDestinationError):
+        mixins._archive_filter(info)
+
+
+@pytest.mark.parametrize("devtype", [tarfile.BLKTYPE, tarfile.CHRTYPE])
+def test_archive_filter_rejects_device_node(devtype: bytes) -> None:
+    """Threat: device-node entry causes the consumer's extractor to attempt
+    ``mknod`` on extraction.
+
+    If the consumer is running as root (or has ``CAP_MKNOD``), they end up
+    with a device file on their filesystem that could be used to bypass
+    access controls on the underlying block device. Creating real device
+    nodes requires root, so this test is only reachable via synthesized
+    ``TarInfo``.
+    """
+    info = tarfile.TarInfo(name="dev")
+    info.type = devtype
+    with pytest.raises(tarfile.SpecialFileError):
+        mixins._archive_filter(info)
+
+
+def test_archive_filter_rejects_fifo_synthesized() -> None:
+    """Threat: same FIFO-smuggling attack as the filesystem-level FIFO
+    test, but exercised without ``os.mkfifo``.
+
+    Ensures the filter's FIFO check is covered even on platforms where
+    filesystem-level FIFO creation isn't available (e.g. Windows CI
+    runners).
+    """
+    info = tarfile.TarInfo(name="pipe")
+    info.type = tarfile.FIFOTYPE
+    with pytest.raises(tarfile.SpecialFileError):
+        mixins._archive_filter(info)
+
+
+def test_archive_filter_normalizes_regular_file_fields() -> None:
+    """Threat: regression coverage for the normalization shim in isolation.
+
+    If a refactor inlines or deletes the shim, this unit test fails
+    directly on the filter's contract, independent of the rest of the
+    archive pipeline.
+    """
+    info = tarfile.TarInfo(name="ok.txt")
+    info.type = tarfile.REGTYPE
+    info.mode = 0o644
+    info.uid = 1000
+    info.gid = 1000
+    info.uname = "alice"
+    info.gname = "alice"
+
+    out = mixins._archive_filter(info)
+    assert out.uid == 0
+    assert out.gid == 0
+    assert out.uname == ""
+    assert out.gname == ""
+    assert out.mode is not None
 
 
 # ---------------------------------------------------------------------------

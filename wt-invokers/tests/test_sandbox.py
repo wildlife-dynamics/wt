@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -157,6 +158,68 @@ async def test_run_shell_metacharacters_in_fields_are_not_interpreted(
     # Hostile value appears as a discrete argv entry, not wrapped in a shell
     # string. Any metacharacter is inert at this layer.
     assert hostile in cmd
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX sh required")
+@pytest.mark.asyncio
+async def test_run_actually_sources_activate_and_execs_workflow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End-to-end check that _run's sh wrapper sources then execs correctly.
+
+    Drives the *real* ``SandboxInvoker._run`` (no Popen mock). The fake
+    ``activate.sh`` exports a marker env var; the fake workflow binary
+    dumps its argv and the marker var to a file. Assertions prove:
+
+    * the activation script was sourced (marker visible to exec'd prog),
+    * the ``shift && exec`` pipeline passed argv through unmodified,
+    * a hostile value in an optional arg arrived as a literal string,
+      not shell-interpreted.
+
+    If a future edit drops the ``shift``, flips ``$1`` / ``$@``, or
+    re-introduces shell interpolation of fields, one of these asserts
+    will fail.
+    """
+    activate = tmp_path / "activate.sh"
+    activate.write_text("export WT_ACTIVATED=yes\n")
+
+    dump = tmp_path / "dump.txt"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    fake_bin = bin_dir / "my-workflow"
+    fake_bin.write_text(
+        "#!/bin/sh\n"
+        f'echo "ACT=$WT_ACTIVATED" > "{dump}"\n'
+        f'for a in "$@"; do echo "ARG=$a" >> "{dump}"; done\n'
+    )
+    fake_bin.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+
+    inv = SandboxInvoker(
+        matchspec=MatchSpec("my-workflow>=1.0.0"), work_dir=str(tmp_path)
+    )
+    inv.run_state["activate_path"] = str(activate)
+
+    hostile = "http://x?$(touch " + str(tmp_path / "pwned") + ")"
+    await inv._run(
+        workflow_run_id="r",
+        config_text="k: v",
+        results_url=f"file://{tmp_path}/out",
+        execution_mode="sequential",
+        mock_io=False,
+        otel_exporter=hostile,
+    )
+    exit_code = inv.run_state["process"].wait(timeout=10)
+    assert exit_code == 0
+
+    contents = dump.read_text()
+    assert "ACT=yes" in contents
+    assert "ARG=run" in contents
+    assert "ARG=sequential" in contents
+    assert "ARG=--no-mock-io" in contents
+    assert f"ARG={hostile}" in contents
+    assert not (tmp_path / "pwned").exists()
 
 
 @pytest.mark.asyncio
