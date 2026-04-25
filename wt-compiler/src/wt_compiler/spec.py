@@ -271,7 +271,11 @@ class SerializedVariableValuesDict(TypedDict):
     """Serialized shape of a VariableValuesDict."""
 
     asstr: str
-    asdict: dict[str, "SerializedInlineValue | SerializedVars"]
+    asdict: dict[
+        str,
+        "SerializedInlineValue | SerializedVars"
+        " | SerializedVariableValuesDict | SerializedVariableValuesList",
+    ]
     has_variable_values: bool
 
 
