@@ -477,7 +477,9 @@ class VariableValuesDict(BaseModel):
                 )
                 + "}"
             ),
-            "asdict": ({k: _serialize_dict_or_variables_or_inline_value(v) for k, v in self.value.items()}),
+            "asdict": (
+                {k: _serialize_dict_or_variables_or_inline_value(v) for k, v in self.value.items()}
+            ),
             "has_variable_values": True,
         }
 
