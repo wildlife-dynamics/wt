@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.5.1 — 2026-04-28
+
+- Fix `PyPIRequirement.to_pip_install_arg()` to emit extras for local path requirements, both editable and non-editable ([#137](https://github.com/wildlife-dynamics/wt/pull/137))
+
 ## v0.5.0 — 2026-04-14
 
 - Fix shallow copy in `KnownTask.parameters_jsonschema` to prevent schema mutation across task uses ([#129](https://github.com/wildlife-dynamics/wt/pull/129))
