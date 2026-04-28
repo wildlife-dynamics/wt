@@ -192,6 +192,12 @@ class CloudBatchInvoker(AbstractInvoker):
                 - timeout: Optional timeout in seconds
                 - gpu_type: Optional GPU type
                 - gpu_count: Optional GPU count (default: 1)
+                - network: GCP VPC network resource path
+                    (e.g. projects/<project>/global/networks/<vpc>)
+                - subnetwork: GCP subnetwork resource path
+                    (e.g. projects/<project>/regions/<region>/subnetworks/<subnet>)
+                - no_external_ip: When True, VMs get no external IP and
+                    egress via Cloud NAT (default: False)
 
         Raises:
             ValueError: If docker_image_uri or workflow_run_id is missing
@@ -339,6 +345,9 @@ class CloudBatchInvoker(AbstractInvoker):
                 - timeout: Optional timeout in seconds
                 - gpu_type: Optional GPU type
                 - gpu_count: Optional GPU count
+                - network: GCP VPC network resource path
+                - subnetwork: GCP subnetwork resource path
+                - no_external_ip: When True, VMs get no external IP
 
         Returns:
             Created Cloud Batch Job object
@@ -396,6 +405,19 @@ class CloudBatchInvoker(AbstractInvoker):
         instances.policy = policy
         allocation_policy = AllocationPolicy()
         allocation_policy.instances = [instances]
+
+        # Route batch VMs through a specific VPC so they egress via Cloud NAT
+        # instead of getting a random external IP.
+        if network := kwargs.get("network"):
+            network_interface = AllocationPolicy.NetworkInterface()
+            network_interface.network = network
+            network_interface.subnetwork = kwargs.get("subnetwork", "")
+            network_interface.no_external_ip_address = bool(
+                kwargs.get("no_external_ip", False)
+            )
+            network_policy = AllocationPolicy.NetworkPolicy()
+            network_policy.network_interfaces = [network_interface]
+            allocation_policy.network = network_policy
 
         # Use a different service account if specified
         if batch_service_account_email := os.getenv("BATCH_SERVICE_ACCOUNT"):
