@@ -32,7 +32,7 @@ git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--mat
 
 [tool.pixi.package]
 name = "wt-invokers-gcp"
-version = "0.1.2"
+version = "0.2.0"
 
 [tool.pixi.package.build]
 backend = { name = "pixi-build-python", version = "*", channels = ["conda-forge", "https://prefix.dev/pixi-build-backends"] }
