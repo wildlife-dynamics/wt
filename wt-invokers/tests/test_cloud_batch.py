@@ -321,8 +321,7 @@ async def test_run_generates_unique_job_name(mock_gcp_modules) -> None:
     job_names = []
 
     with patch.object(invoker, "_create_container_job", new=AsyncMock()) as mock_create:
-        # Run multiple times
-        for i in range(3):
+        for _ in range(3):
             await invoker.run(
                 workflow_run_id="test-run",
                 config_text="param: value",
@@ -415,3 +414,68 @@ async def test_create_container_job_with_gpu(mock_gcp_modules) -> None:
         )
 
         assert result == mock_job
+
+
+@pytest.mark.asyncio
+async def test_create_container_job_with_vpc_network(mock_gcp_modules) -> None:
+    """Test _create_container_job configures VPC network."""
+    from wt_invokers.cloud_batch import CloudBatchInvoker
+
+    matchspec = MatchSpec("test-workflow>=1.0.0")
+    invoker = CloudBatchInvoker(matchspec=matchspec)
+
+    mock_client = MagicMock()
+    mock_job = MagicMock()
+    mock_client.create_job.return_value = mock_job
+    mock_gcp_modules.BatchServiceClient.return_value = mock_client
+
+    vpc_network = "projects/my-project/global/networks/my-vpc"
+    vpc_subnetwork = "projects/my-project/regions/us-west2/subnetworks/cloud-batch"
+
+    with patch("asyncio.to_thread", new=AsyncMock(return_value=mock_job)):
+        result = await invoker._create_container_job(
+            job_name="test-job",
+            docker_image_uri="gcr.io/project/image:latest",
+            cmd=["pixi", "run", "workflow"],
+            network=vpc_network,
+            subnetwork=vpc_subnetwork,
+            no_external_ip=True,
+        )
+
+        assert result == mock_job
+
+    mock_gcp_modules.AllocationPolicy.NetworkInterface.assert_called_once_with()
+    net_iface = mock_gcp_modules.AllocationPolicy.NetworkInterface.return_value
+    assert net_iface.network == vpc_network
+    assert net_iface.subnetwork == vpc_subnetwork
+    assert net_iface.no_external_ip_address is True
+
+    mock_gcp_modules.AllocationPolicy.NetworkPolicy.assert_called_once_with()
+    net_policy = mock_gcp_modules.AllocationPolicy.NetworkPolicy.return_value
+    assert net_policy.network_interfaces == [net_iface]
+
+
+@pytest.mark.asyncio
+async def test_create_container_job_without_vpc_network(mock_gcp_modules) -> None:
+    """Test _create_container_job skips VPC config when absent."""
+    from wt_invokers.cloud_batch import CloudBatchInvoker
+
+    matchspec = MatchSpec("test-workflow>=1.0.0")
+    invoker = CloudBatchInvoker(matchspec=matchspec)
+
+    mock_client = MagicMock()
+    mock_job = MagicMock()
+    mock_client.create_job.return_value = mock_job
+    mock_gcp_modules.BatchServiceClient.return_value = mock_client
+
+    with patch("asyncio.to_thread", new=AsyncMock(return_value=mock_job)):
+        result = await invoker._create_container_job(
+            job_name="test-job",
+            docker_image_uri="gcr.io/project/image:latest",
+            cmd=["pixi", "run", "workflow"],
+        )
+
+        assert result == mock_job
+
+    mock_gcp_modules.AllocationPolicy.NetworkInterface.assert_not_called()
+    mock_gcp_modules.AllocationPolicy.NetworkPolicy.assert_not_called()

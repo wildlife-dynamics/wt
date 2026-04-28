@@ -101,6 +101,67 @@ jobs:
           name: "${{ needs.parse.outputs.package }} v${{ needs.parse.outputs.version }}"
           body_path: /tmp/release-notes.md
 
+  publish-docker:
+    needs: [parse, publish-prefix]
+    if: github.event_name == 'push' && needs.parse.outputs.package == 'wt-invokers'
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          pixi-version: v0.63.0
+          run-install: false
+      - name: Wait for prefix.dev propagation
+        run: |
+          for i in $(seq 1 60); do
+            if pixi search \
+              -c https://prefix.dev/ecoscope-workflows -c conda-forge \
+              wt-invokers==${{ needs.parse.outputs.version }} 2>/dev/null | grep -q "wt-invokers"; then
+              echo "Package available on prefix.dev"
+              exit 0
+            fi
+            echo "Attempt $i/60: not yet available, waiting 10s..."
+            sleep 10
+          done
+          echo "::error::Package not available on prefix.dev after 10 minutes."
+          echo "This is usually a prefix.dev propagation delay. Re-run the 'publish-docker' job in a few minutes."
+          exit 1
+      - name: Build image (load locally, don't push yet)
+        uses: docker/build-push-action@v5
+        with:
+          context: wt-invokers/docker/sandbox
+          platforms: linux/amd64
+          load: true
+          tags: ghcr.io/wildlife-dynamics/wt-invokers:sandbox-${{ needs.parse.outputs.version }}
+          build-args: |
+            PIXI_BASE_IMAGE=ghcr.io/prefix-dev/pixi:0.63.0
+            WT_INVOKERS_VERSION=${{ needs.parse.outputs.version }}
+      - name: Smoke test
+        run: |
+          docker run --rm ghcr.io/wildlife-dynamics/wt-invokers:sandbox-${{ needs.parse.outputs.version }} \
+            --help
+      - name: Push image
+        uses: docker/build-push-action@v5
+        with:
+          context: wt-invokers/docker/sandbox
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/wildlife-dynamics/wt-invokers:sandbox-${{ needs.parse.outputs.version }}
+            ghcr.io/wildlife-dynamics/wt-invokers:sandbox-latest
+          build-args: |
+            PIXI_BASE_IMAGE=ghcr.io/prefix-dev/pixi:0.63.0
+            WT_INVOKERS_VERSION=${{ needs.parse.outputs.version }}
+
   publish-pypi:
     needs: [parse, publish-prefix]
     if: github.event_name == 'push' && !contains(needs.parse.outputs.package, '-gcp')
