@@ -182,20 +182,19 @@ class CloudBatchInvoker(AbstractInvoker):
             otel_console_exporter_dst: Optional console exporter destination
             extra_env: Optional extra environment variables to pass
             lithops_config_text: Optional Lithops configuration text (not used)
-
-        Keyword Args:
-            docker_image_uri (required): Docker image URI.
-            project_id: GCP project ID (default: from ``GOOGLE_CLOUD_PROJECT``).
-            region: GCP region (default: from ``CLOUD_RUN_REGION`` or ``us-central1``).
-            cpu_milli: CPU allocation in millicores (default: 8000).
-            memory_mib: Memory allocation in MiB (default: 32768).
-            machine_type: Optional specific machine type.
-            timeout: Optional timeout in seconds.
-            gpu_type: Optional GPU type.
-            gpu_count: Optional GPU count (default: 1).
+            **kwargs: Additional Cloud Batch-specific arguments:
+                - docker_image_uri (required): Docker image URI
+                - project_id: GCP project ID (default: from GOOGLE_CLOUD_PROJECT)
+                - region: GCP region (default: from CLOUD_RUN_REGION or us-central1)
+                - cpu_milli: CPU allocation in millicores (default: 8000)
+                - memory_mib: Memory allocation in MiB (default: 32768)
+                - machine_type: Optional specific machine type
+                - timeout: Optional timeout in seconds
+                - gpu_type: Optional GPU type
+                - gpu_count: Optional GPU count (default: 1)
 
         Raises:
-            ValueError: If ``docker_image_uri`` or ``workflow_run_id`` is missing.
+            ValueError: If docker_image_uri or workflow_run_id is missing
 
         Examples:
             Running a workflow:

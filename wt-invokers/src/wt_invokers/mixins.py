@@ -191,7 +191,7 @@ class PixiUnpackMixin:
         if parsed.scheme == "file":
             shutil.copy2(url2pathname(parsed.path), tar_path)
         elif parsed.scheme in ("http", "https"):
-            await self._download_with_retries(environment_tar_url, tar_path)
+            await _download_with_retries(environment_tar_url, tar_path)
         else:
             raise ValueError(
                 f"Unsupported scheme for environment_tar_url: {parsed.scheme}"
@@ -214,35 +214,36 @@ class PixiUnpackMixin:
 
         self.run_state["activate_path"] = str(Path(self.work_dir) / "activate.sh")
 
-    async def _download_with_retries(self, url: str, dest: Path) -> None:
-        """Download ``url`` to ``dest`` with retries on transient failure."""
 
-        @stamina.retry(
-            on=(httpx.TransportError, RetryableHTTPError),
-            attempts=TRANSFER_MAX_ATTEMPTS,
-            wait_initial=TRANSFER_RETRY_WAIT_INITIAL,
-            wait_max=TRANSFER_RETRY_WAIT_MAX,
-        )
-        async def _do_download() -> None:
-            async with (
-                httpx.AsyncClient(timeout=_timeout()) as client,
-                client.stream("GET", url) as response,
-            ):
-                if 500 <= response.status_code < 600:
-                    raise RetryableHTTPError(
-                        f"Server error {response.status_code} downloading {url}"
-                    )
-                response.raise_for_status()
-                with open(dest, "wb") as f:
-                    async for chunk in response.aiter_bytes(
-                        chunk_size=TRANSFER_CHUNK_SIZE
-                    ):
-                        # Offload blocking file I/O so the event loop stays
-                        # responsive (matters if a concurrent driver ever
-                        # shares the loop with the download).
-                        await asyncio.to_thread(f.write, chunk)
+async def _download_with_retries(url: str, dest: Path) -> None:
+    """Download ``url`` to ``dest`` with retries on transient failure."""
 
-        await _do_download()
+    @stamina.retry(
+        on=(httpx.TransportError, RetryableHTTPError),
+        attempts=TRANSFER_MAX_ATTEMPTS,
+        wait_initial=TRANSFER_RETRY_WAIT_INITIAL,
+        wait_max=TRANSFER_RETRY_WAIT_MAX,
+    )
+    async def _do_download() -> None:
+        async with (
+            httpx.AsyncClient(timeout=_timeout()) as client,
+            client.stream("GET", url) as response,
+        ):
+            if 500 <= response.status_code < 600:
+                raise RetryableHTTPError(
+                    f"Server error {response.status_code} downloading {url}"
+                )
+            response.raise_for_status()
+            with open(dest, "wb") as f:
+                async for chunk in response.aiter_bytes(
+                    chunk_size=TRANSFER_CHUNK_SIZE
+                ):
+                    # Offload blocking file I/O so the event loop stays
+                    # responsive (matters if a concurrent driver ever
+                    # shares the loop with the download).
+                    await asyncio.to_thread(f.write, chunk)
+
+    await _do_download()
 
 
 # ---------------------------------------------------------------------------
@@ -309,7 +310,7 @@ class UploadResultsArchiveMixin:
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(tar_path, dest)
             elif upload_parsed.scheme in ("http", "https"):
-                await self._upload_with_retries(tar_path, results_upload_url)
+                await _upload_with_retries(tar_path, results_upload_url)
             else:
                 raise ValueError(
                     f"Unsupported scheme for results_upload_url: {upload_parsed.scheme}"
@@ -317,48 +318,49 @@ class UploadResultsArchiveMixin:
         finally:
             tar_path.unlink(missing_ok=True)
 
-    async def _upload_with_retries(self, tar_path: Path, url: str) -> None:
-        """Upload ``tar_path`` to ``url`` via ``PUT`` with retries.
 
-        Streams the file in ``TRANSFER_CHUNK_SIZE`` chunks rather than reading
-        the whole archive into memory. The upload includes an explicit
-        ``Content-Length`` header (required by GCS signed-URL uploads) sourced
-        from the file's stat size, so the server can validate the request
-        without the chunked ``Transfer-Encoding`` fallback.
-        """
+async def _upload_with_retries(tar_path: Path, url: str) -> None:
+    """Upload ``tar_path`` to ``url`` via ``PUT`` with retries.
 
-        size = tar_path.stat().st_size
+    Streams the file in ``TRANSFER_CHUNK_SIZE`` chunks rather than reading
+    the whole archive into memory. The upload includes an explicit
+    ``Content-Length`` header (required by GCS signed-URL uploads) sourced
+    from the file's stat size, so the server can validate the request
+    without the chunked ``Transfer-Encoding`` fallback.
+    """
 
-        @stamina.retry(
-            on=(httpx.TransportError, RetryableHTTPError),
-            attempts=TRANSFER_MAX_ATTEMPTS,
-            wait_initial=TRANSFER_RETRY_WAIT_INITIAL,
-            wait_max=TRANSFER_RETRY_WAIT_MAX,
-        )
-        async def _do_upload() -> None:
-            async def _chunks() -> AsyncIterator[bytes]:
-                with open(tar_path, "rb") as f:
-                    while True:
-                        # Offload the blocking read so the event loop can
-                        # service other tasks while we wait on disk.
-                        chunk = await asyncio.to_thread(f.read, TRANSFER_CHUNK_SIZE)
-                        if not chunk:
-                            break
-                        yield chunk
+    size = tar_path.stat().st_size
 
-            async with httpx.AsyncClient(timeout=_timeout()) as client:
-                response = await client.put(
-                    url,
-                    content=_chunks(),
-                    headers={
-                        "Content-Type": "application/gzip",
-                        "Content-Length": str(size),
-                    },
+    @stamina.retry(
+        on=(httpx.TransportError, RetryableHTTPError),
+        attempts=TRANSFER_MAX_ATTEMPTS,
+        wait_initial=TRANSFER_RETRY_WAIT_INITIAL,
+        wait_max=TRANSFER_RETRY_WAIT_MAX,
+    )
+    async def _do_upload() -> None:
+        async def _chunks() -> AsyncIterator[bytes]:
+            with open(tar_path, "rb") as f:
+                while True:
+                    # Offload the blocking read so the event loop can
+                    # service other tasks while we wait on disk.
+                    chunk = await asyncio.to_thread(f.read, TRANSFER_CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    yield chunk
+
+        async with httpx.AsyncClient(timeout=_timeout()) as client:
+            response = await client.put(
+                url,
+                content=_chunks(),
+                headers={
+                    "Content-Type": "application/gzip",
+                    "Content-Length": str(size),
+                },
+            )
+            if 500 <= response.status_code < 600:
+                raise RetryableHTTPError(
+                    f"Server error {response.status_code} uploading to {url}"
                 )
-                if 500 <= response.status_code < 600:
-                    raise RetryableHTTPError(
-                        f"Server error {response.status_code} uploading to {url}"
-                    )
-                response.raise_for_status()
+            response.raise_for_status()
 
-        await _do_upload()
+    await _do_upload()

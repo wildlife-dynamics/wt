@@ -122,11 +122,14 @@ class SandboxInvoker(PixiUnpackMixin, UploadResultsArchiveMixin, AbstractInvoker
             )
 
         mock_flag = "--mock-io" if mock_io else "--no-mock-io"
+        # `sh -c` wrapper: trailing args bind to $1..$N so nothing is spliced
+        # into a shell string. The literal "sh" is the conventional $0 placeholder;
+        # it surfaces as the prefix on wrapper-level error messages.
         cmd = [
             "sh",
             "-c",
             '. "$1" && shift && exec "$@"',
-            "sh",  # $0 placeholder; "$1" below maps to activate_path
+            "sh",
             activate_path,
             workflow_name,
             "run",
