@@ -892,7 +892,11 @@ async def test_upload_streams_content_with_headers(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# httpx mock unit tests for download retry accounting
+# Module-level transfer helpers — retry accounting
+#
+# `_download_with_retries` / `_upload_with_retries` are module-level helpers
+# (not bound methods on the mixins), so we test the retry behaviour by
+# calling them directly rather than going through `_pre_run` scaffolding.
 # ---------------------------------------------------------------------------
 
 
@@ -932,14 +936,11 @@ async def test_download_retries_on_transport_error(tmp_path: Path) -> None:
 
             return _Ok()
 
-    inv = _make_pixi(tmp_path, environment_tar_url="https://example.com/env.tar")
-    with (
-        patch("wt_invokers.mixins.shutil.which", return_value="/usr/bin/pixi-unpack"),
-        patch("wt_invokers.mixins.httpx.AsyncClient", FlakyClient),
-        patch("wt_invokers.mixins.subprocess.run"),
-    ):
-        await inv._pre_run()
+    dest = tmp_path / "env.tar"
+    with patch("wt_invokers.mixins.httpx.AsyncClient", FlakyClient):
+        await mixins._download_with_retries("https://example.com/env.tar", dest)
     assert calls["n"] == 2
+    assert dest.read_bytes() == b"ok"
 
 
 @pytest.mark.asyncio
@@ -960,12 +961,67 @@ async def test_download_gives_up_after_max_attempts(tmp_path: Path) -> None:
             calls["n"] += 1
             raise httpx.ConnectError("refused")
 
-    inv = _make_pixi(tmp_path, environment_tar_url="https://example.com/env.tar")
-    with (
-        patch("wt_invokers.mixins.shutil.which", return_value="/usr/bin/pixi-unpack"),
-        patch("wt_invokers.mixins.httpx.AsyncClient", AlwaysFail),
-    ):
+    dest = tmp_path / "env.tar"
+    with patch("wt_invokers.mixins.httpx.AsyncClient", AlwaysFail):
         with pytest.raises(httpx.ConnectError):
-            await inv._pre_run()
+            await mixins._download_with_retries("https://example.com/env.tar", dest)
+    # fast_stamina sets attempts=3
+    assert calls["n"] == 3
+
+
+@pytest.mark.asyncio
+async def test_upload_retries_on_transport_error(tmp_path: Path) -> None:
+    """Symmetric retry coverage for the upload helper."""
+    payload = tmp_path / "archive.tar.gz"
+    payload.write_bytes(b"payload")
+    calls: dict[str, int] = {"n": 0}
+
+    class FlakyClient:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        async def __aenter__(self) -> FlakyClient:
+            return self
+
+        async def __aexit__(self, *exc: Any) -> None:
+            return None
+
+        async def put(self, url: str, **kwargs: Any) -> httpx.Response:
+            # Drain the streaming body so the client behaves like a real one.
+            async for _ in kwargs["content"]:
+                pass
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise httpx.ConnectError("refused")
+            return httpx.Response(200, request=httpx.Request("PUT", url))
+
+    with patch("wt_invokers.mixins.httpx.AsyncClient", FlakyClient):
+        await mixins._upload_with_retries(payload, "https://example.com/out")
+    assert calls["n"] == 2
+
+
+@pytest.mark.asyncio
+async def test_upload_gives_up_after_max_attempts(tmp_path: Path) -> None:
+    payload = tmp_path / "archive.tar.gz"
+    payload.write_bytes(b"payload")
+    calls: dict[str, int] = {"n": 0}
+
+    class AlwaysFail:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        async def __aenter__(self) -> AlwaysFail:
+            return self
+
+        async def __aexit__(self, *exc: Any) -> None:
+            return None
+
+        async def put(self, url: str, **kwargs: Any) -> httpx.Response:
+            calls["n"] += 1
+            raise httpx.ConnectError("refused")
+
+    with patch("wt_invokers.mixins.httpx.AsyncClient", AlwaysFail):
+        with pytest.raises(httpx.ConnectError):
+            await mixins._upload_with_retries(payload, "https://example.com/out")
     # fast_stamina sets attempts=3
     assert calls["n"] == 3

@@ -235,9 +235,7 @@ async def _download_with_retries(url: str, dest: Path) -> None:
                 )
             response.raise_for_status()
             with open(dest, "wb") as f:
-                async for chunk in response.aiter_bytes(
-                    chunk_size=TRANSFER_CHUNK_SIZE
-                ):
+                async for chunk in response.aiter_bytes(chunk_size=TRANSFER_CHUNK_SIZE):
                     # Offload blocking file I/O so the event loop stays
                     # responsive (matters if a concurrent driver ever
                     # shares the loop with the download).
