@@ -873,7 +873,7 @@ class TestVariableValuesDict:
             known_tasks.clear()
 
     def test_variable_ref_in_dict_in_list_in_dict(self):
-        """Test ${{ }} ref inside dict → list → dict nesting (the create_docx pattern)."""
+        """Test ${{ }} ref inside dict → list → dict nesting."""
         from wt_compiler.spec import known_tasks
 
         mock_task = KnownTask(importable_reference="mod.func")
