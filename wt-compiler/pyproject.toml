@@ -112,7 +112,7 @@ ignore = []
 
 [tool.pixi.package]
 name = "wt-compiler"
-version = "0.5.1"
+version = "0.5.2"
 
 [tool.pixi.package.build]
 backend = { name = "pixi-build-python", version = "*", channels = ["conda-forge", "https://prefix.dev/pixi-build-backends"] }
