@@ -62,33 +62,53 @@ task({{ t.known_task.importable_reference.function }})
 {% endmacro %}
 
 
-{% macro handle_async_partial_arg_aslist(aslist) %}[
-                    {% for v in aslist %}
-                    {% if v["is_inline_value"] %}
-                    {{ v["asstr"] }},
-                    {% elif v["has_variable_values"] %}
-                    {{ v["asstr"] }},
-                    {% else %}
-                    {% if "os.environ" in v["asstr"] %}
-                    {{ v["aslist"][0] }},
-                    {% else %}
-                    DependsOn("{{ v["aslist"][0] }}"),
-                    {% endif %}
-                    {% endif %}
-                    {% endfor %}
-                ]{% endmacro %}
+{% macro handle_async_partial_arg_aslist(value) %}
+    {% if value["has_variable_values"] %}
+    {% if value["aslist"] %}
+    [
+        {% for inner in value["aslist"] %}
+        {{ handle_async_partial_arg_aslist(inner) }}
+        {% endfor %}
+    ],
+    {% endif %}
+    {% if value["asdict"] %}
+    {
+    {% for nested_arg, nested_value in value["asdict"].items() %}
+    {{ handle_async_partial_arg(nested_arg, nested_value) }}
+    {% endfor %}
+    },
+    {% endif %}
+    {% endif %}
+
+    {% if value["is_inline_value"] %}
+    {{ value["asstr"] }},
+    {% endif %}
+
+    {% if not value["has_variable_values"] and not value["is_inline_value"] %}
+    {% if "os.environ" in value["asstr"] %}
+    {{ value["aslist"][0] }},
+    {% else %}
+    DependsOn("{{ value["aslist"][0] }}"),
+    {% endif %}
+    {% endif %}
+{% endmacro %}
 
 
 {% macro handle_async_partial_arg(arg, value) %}
     {% if value["has_variable_values"] %}
+    {% if value["aslist"] %}
+    "{{ arg }}": [
+        {% for inner in value["aslist"] %}
+        {{ handle_async_partial_arg_aslist(inner) }}
+        {% endfor %}
+    ],
+    {% endif %}
     {% if value["asdict"] %}
     "{{ arg }}": {
-        {% for nested_arg, nested_value in value["asdict"].items() %}
-        {{ handle_async_partial_arg(nested_arg, nested_value) }}
-        {% endfor %}
+    {% for nested_arg, nested_value in value["asdict"].items() %}
+    {{ handle_async_partial_arg(nested_arg, nested_value) }}
+    {% endfor %}
     },
-    {% elif value["aslist"] %}
-    "{{ arg }}": {{ handle_async_partial_arg_aslist(value["aslist"]) }},
     {% endif %}
     {% elif value["is_inline_value"] %}
     "{{ arg }}": {{ value["asstr"] }},
