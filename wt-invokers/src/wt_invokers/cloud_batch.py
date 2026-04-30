@@ -157,7 +157,7 @@ class CloudBatchInvoker(AbstractInvoker):
             "Dynamic installation of workflows is not yet supported."
         )
 
-    async def run(
+    async def _run(
         self,
         workflow_run_id: str,
         config_text: str,
@@ -296,7 +296,7 @@ class CloudBatchInvoker(AbstractInvoker):
         # Cloud Batch jobs are not waitable
         return False
 
-    async def wait(
+    async def _wait(
         self,
         timeout: float | None = None,
         error_msg: str | None = None,

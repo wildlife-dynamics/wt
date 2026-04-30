@@ -68,10 +68,6 @@ class LocalSubprocessInvoker(AbstractInvoker):
         )
     )
 
-    def __post_init__(self) -> None:
-        """Initialize the invoker state."""
-        self._process: subprocess.Popen[bytes] | None = None
-
     @property
     def entrypoint(self) -> str:
         """Get the entrypoint command for the workflow.
@@ -141,7 +137,7 @@ class LocalSubprocessInvoker(AbstractInvoker):
             "Dynamic installation of workflows is not yet supported."
         )
 
-    async def run(
+    async def _run(
         self,
         workflow_run_id: str,
         config_text: str,
@@ -236,8 +232,7 @@ class LocalSubprocessInvoker(AbstractInvoker):
             # Merge environment variables
             env = os.environ.copy() | (extra_env or {})
 
-            # Start subprocess
-            self._process = subprocess.Popen(
+            self.run_state["process"] = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -264,7 +259,7 @@ class LocalSubprocessInvoker(AbstractInvoker):
         """
         return True
 
-    async def wait(
+    async def _wait(
         self,
         timeout: float | None = None,
         error_msg: str | None = None,
@@ -295,10 +290,11 @@ class LocalSubprocessInvoker(AbstractInvoker):
             >>> # exit_code
             >>> # 0
         """
-        if self._process is None:
+        process: subprocess.Popen[bytes] | None = self.run_state.get("process")
+        if process is None:
             raise RuntimeError("Process not started. Call run() first.")
         try:
-            return self._process.wait(timeout=timeout)
+            return process.wait(timeout=timeout)
         except TimeoutExpired as e:
             raise InvocationTimeoutError(error_msg or str(e)) from e
 

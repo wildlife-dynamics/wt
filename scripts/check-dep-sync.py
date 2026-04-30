@@ -38,6 +38,13 @@ PACKAGES = [
     "wt-runner-gcp",
 ]
 
+# Conda-only dependencies — available as conda packages but not as pip
+# packages. These are allowed to appear in `[tool.pixi.package.run-dependencies]`
+# without a matching entry in `[project.dependencies]`.
+CONDA_ONLY_DEPS: dict[str, set[str]] = {
+    "wt-invokers": {"pixi-unpack"},
+}
+
 
 def normalize_name(name: str) -> str:
     """Normalize a package name: lowercase, underscores to hyphens."""
@@ -83,6 +90,7 @@ def check_package(pkg_dir: Path) -> list[str]:
 
     Returns a list of issue strings (empty if in sync).
     """
+    conda_only = CONDA_ONLY_DEPS.get(pkg_dir.name, set())
     pyproject_path = pkg_dir / "pyproject.toml"
     if not pyproject_path.exists():
         return [f"  pyproject.toml not found"]
@@ -143,6 +151,9 @@ def check_package(pkg_dir: Path) -> list[str]:
     # Check for deps in pixi but not pip
     for name in pixi_deps:
         if name not in pip_deps:
+            if name in conda_only:
+                # Conda-only deps are whitelisted; skip silently.
+                continue
             issues.append(f"  MISMATCH: {name} in pixi but not pip")
 
     # Check version range mismatches for shared deps
