@@ -17,7 +17,10 @@ import warnings  # 🧪
 from wt_task.testing import create_func_magicmock  # 🧪
 {% endif %}
 
+from wt_contracts import validate as _validate
 from wt_task import task
+
+from .. import metadata as _metadata
 
 {% for t in spec.flat_workflow -%}
 {{ t.known_task.importable_reference.statement }}
@@ -29,10 +32,12 @@ from wt_task import task
 {% endfor -%}
 
 
-def main(params: dict[str, Any]):
+def main(params: dict[str, Any], validate_params_schema: bool = True):
     {%- if testing %}
     warnings.warn("This test script should not be used in production!")  # 🧪
     {% endif %}
+    if validate_params_schema:
+        _validate(params, _metadata.load_params_schema())
     {% for t in spec.flat_workflow %}
     {% set validate = not t.known_task.importable_reference.is_mocked %}
     {% set params = '(params.get("' ~ t.id ~ '") or {})' %}

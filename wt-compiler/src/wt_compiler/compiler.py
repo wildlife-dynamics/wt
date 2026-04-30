@@ -467,9 +467,6 @@ class DagCompiler(BaseModel):
             "opentelemetry-api": NamelessMatchSpec.from_match_spec(
                 MatchSpec("conda-forge::opentelemetry-api >=1.20.0,<2.0.0")
             ),
-            "jsonschema": NamelessMatchSpec.from_match_spec(
-                MatchSpec("conda-forge::jsonschema >=4.0.0,<5.0.0")
-            ),
         }
         # Only add wt-task to conda deps when not using PyPI mode
         if self.wt_pypi_deps is None:

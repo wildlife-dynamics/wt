@@ -1,6 +1,4 @@
 {{ file_header }}
-import json
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -10,21 +8,7 @@ from fastapi.testclient import TestClient
 from wt_runner.testing import Case
 from wt_runner.app import app
 from wt_contracts import params_to_formdata as _params_to_formdata
-
-
-def _pkg_dir() -> Path:
-    import {{ package_name }} as _pkg
-    return Path(_pkg.__file__).parent
-
-
-def _load_rjsf() -> dict:
-    with _pkg_dir().joinpath("rjsf.json").open() as f:
-        return json.load(f)
-
-
-def _load_params_schema() -> dict:
-    with _pkg_dir().joinpath("params.json").open() as f:
-        return json.load(f)
+from {{ package_name }}.metadata import load_params_schema, load_rjsf
 
 
 @pytest.fixture
@@ -44,7 +28,7 @@ def formdata(success_case: Case) -> dict:
     Walks the rjsf schema's top-level properties to discriminate flat keys
     (kept as-is) from task-group keys (used to nest the matching members).
     """
-    return _params_to_formdata(success_case.params, _load_rjsf(), _load_params_schema())
+    return _params_to_formdata(success_case.params, load_rjsf(), load_params_schema())
 
 
 def test_get_params(client: TestClient):
@@ -82,7 +66,7 @@ def test_validate_formdata(client: TestClient, success_case: Case, formdata: dic
         # this workflow uses task groups, so verify formdata fails the flat
         # params schema (since task groups aren't valid top-level params keys)
         with pytest.raises(jsonschema.ValidationError):
-            jsonschema.validate(formdata, _load_params_schema())
+            jsonschema.validate(formdata, load_params_schema())
 
     assert response.json() == success_case.params
 

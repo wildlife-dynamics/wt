@@ -44,7 +44,18 @@ def _serialize_errors(errors: list[jsonschema.ValidationError]) -> list[dict[str
     ]
 
 
-def _validate(instance: dict[str, Any], schema: dict[str, Any]) -> None:
+def validate(instance: dict[str, Any], schema: dict[str, Any]) -> None:
+    """Validate ``instance`` against ``schema`` using JSON Schema Draft 2020-12.
+
+    Args:
+        instance: The dict to validate.
+        schema: The JSON schema to validate against.
+
+    Raises:
+        ValidationError: If ``instance`` does not validate against ``schema``.
+            The exception's ``errors`` attribute contains a list of serialized
+            validation errors with stable, JSON-serializable shape.
+    """
     validator = jsonschema.Draft202012Validator(schema)
     errors = sorted(validator.iter_errors(instance), key=lambda e: list(e.absolute_path))
     if errors:
@@ -74,7 +85,7 @@ def formdata_to_params(
     Raises:
         ValidationError: If ``formdata`` does not validate against ``rjsf_schema``.
     """
-    _validate(formdata, rjsf_schema)
+    validate(formdata, rjsf_schema)
     flat_keys = set(params_schema.get("properties", {}).keys())
     out: dict[str, Any] = {}
     for k, v in formdata.items():
@@ -110,7 +121,7 @@ def params_to_formdata(
         ValidationError: If ``params`` does not validate against ``params_schema``.
         KeyError: If a key in ``params`` cannot be located in ``rjsf_schema``.
     """
-    _validate(params, params_schema)
+    validate(params, params_schema)
     rjsf_props: dict[str, Any] = rjsf_schema.get("properties", {})
     task_groups: dict[str, list[str]] = {}
     for name, sub in rjsf_props.items():

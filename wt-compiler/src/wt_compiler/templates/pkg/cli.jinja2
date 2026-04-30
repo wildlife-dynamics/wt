@@ -11,6 +11,8 @@ from urllib.parse import urlparse
 
 import click
 
+from .metadata import load_params_schema, load_rjsf
+
 RELEASE_NAME = "{{ release_name }}"
 
 
@@ -24,18 +26,6 @@ def to_windows_safe_path(path: str) -> str:
         return path
     abs_path = os.path.abspath(path)
     return f"\\\\?\\{abs_path}"
-
-
-def _load_params_schema() -> dict[str, Any]:
-    with Path(__file__).parent.joinpath("params.json").open() as f:
-        result: dict[str, Any] = json.load(f)
-        return result
-
-
-def _load_rjsf_schema() -> dict[str, Any]:
-    with Path(__file__).parent.joinpath("rjsf.json").open() as f:
-        result: dict[str, Any] = json.load(f)
-        return result
 
 
 @click.group()
@@ -96,9 +86,9 @@ def run(
         otel_exporter: Optional[str],
         otel_console_exporter_dst: str,
 ) -> None:
-    import jsonschema
     import obstore
     import ruamel.yaml
+    from wt_contracts import ValidationError, validate
     from wt_task.tracing import (
         attach_context,
         configure_tracer,
@@ -119,18 +109,18 @@ def run(
     # Load configuration based on which option is provided
     if config_file is not None:
         yaml = ruamel.yaml.YAML(typ="safe")
-        config_dict = yaml.load(config_file) or {}
+        params = yaml.load(config_file) or {}
     else:  # config_json is not None
         try:
-            config_dict = json.loads(config_json)
+            params = json.loads(config_json)
         except json.JSONDecodeError as e:
             raise click.BadParameter("Invalid JSON string for --config-json", param_hint="--config-json") from e
 
-    params_schema = _load_params_schema()
+    params_schema = load_params_schema()
     try:
-        jsonschema.validate(config_dict, params_schema)
-    except jsonschema.ValidationError as e:
-        raise click.BadParameter(f"Invalid configuration: {e.message}", param_hint="config") from e
+        validate(params, params_schema)
+    except ValidationError as e:
+        raise click.BadParameter(f"Invalid configuration: {e}", param_hint="config") from e
 
     results_url = os.environ.get("{{ results_env_var }}")
     if not results_url:
@@ -160,19 +150,19 @@ def run(
         tracer_attributes = {
             "execution_mode": execution_mode,
             "mock_io": mock_io,
-            "config.time_range": json.dumps(config_dict["time_range"]) if "time_range" in config_dict else "",
-            "config.groupers": json.dumps(config_dict["groupers"]) if "groupers" in config_dict else "",
+            "config.time_range": json.dumps(params.get("time_range", "")),
+            "config.groupers": json.dumps(params.get("groupers", "")),
             "version": _version,
         }
         with tracer.start_as_current_span(f"{RELEASE_NAME}.cli", attributes=tracer_attributes):
-            response = dispatch(execution_mode, mock_io, config_dict)
+            response = dispatch(execution_mode, mock_io, params, validate_params_schema=False)
             result_store = obstore.store.from_url(results_url)
             result_bytes = response.model_dump_json().encode("utf-8")
             put_result = result_store.put("result.json", result_bytes)
             if not put_result:
                 raise RuntimeError("Failed to put result json in result store.")
     else:
-        response = dispatch(execution_mode, mock_io, config_dict)
+        response = dispatch(execution_mode, mock_io, params, validate_params_schema=False)
         result_store = obstore.store.from_url(results_url)
         result_bytes = response.model_dump_json().encode("utf-8")
         put_result = result_store.put("result.json", result_bytes)
@@ -188,13 +178,10 @@ def run(
 )
 def get(metadata_attribute: str) -> None:
     """Get the metadata for the workflow."""
-    from .metadata import (
-        get_data_connection_property_names,
-        get_rjsf,
-    )
+    from .metadata import get_data_connection_property_names
 
     getter = {
-        "rjsf": get_rjsf,
+        "rjsf": load_rjsf,
         "data-connection-property-names": get_data_connection_property_names,
     }.get(metadata_attribute)
     if getter is None:
@@ -250,8 +237,8 @@ def convert(
     except json.JSONDecodeError as e:
         raise ValueError(f"Failed to parse JSON string: {json_txt}") from e
 
-    rjsf_schema = _load_rjsf_schema()
-    params_schema = _load_params_schema()
+    rjsf_schema = load_rjsf()
+    params_schema = load_params_schema()
     try:
         match from_, to:
             case ("params", "formdata"):

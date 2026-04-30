@@ -15,6 +15,7 @@ from wt_contracts.formdata import (
     ValidationError,
     formdata_to_params,
     params_to_formdata,
+    validate,
 )
 from wt_contracts.registry import RegistryEntry, RegistryMetadata, RegistryOutput
 from wt_contracts.task import TaskProtocol
@@ -38,6 +39,7 @@ __all__ = [
     # Formdata conversion
     "formdata_to_params",
     "params_to_formdata",
+    "validate",
     "ValidationError",
     # Version
     "__version__",

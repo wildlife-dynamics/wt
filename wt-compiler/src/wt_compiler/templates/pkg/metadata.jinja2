@@ -1,7 +1,7 @@
 {{ file_header }}
 
 import json
-from pathlib import Path
+from importlib.resources import files
 from typing import Any
 
 from wt_contracts import (
@@ -10,24 +10,22 @@ from wt_contracts import (
 )
 
 
-def _load_rjsf() -> dict[str, Any]:
-    with Path(__file__).parent.joinpath("rjsf.json").open() as f:
+def load_rjsf() -> dict[str, Any]:
+    """Load the RJSF (grouped) JSON schema bundled with this package."""
+    with files(__package__).joinpath("rjsf.json").open() as f:
         result: dict[str, Any] = json.load(f)
         return result
 
 
-def _load_params_schema() -> dict[str, Any]:
-    with Path(__file__).parent.joinpath("params.json").open() as f:
+def load_params_schema() -> dict[str, Any]:
+    """Load the flat params JSON schema bundled with this package."""
+    with files(__package__).joinpath("params.json").open() as f:
         result: dict[str, Any] = json.load(f)
         return result
-
-
-def get_rjsf() -> dict[str, Any]:
-    return _load_rjsf()
 
 
 def get_data_connection_property_names() -> dict[str, list[str]]:
-    params = _load_params_schema()
+    params = load_params_schema()
     data_connections: dict[str, list[str]] = {}
     for k, v in params["properties"].items():
         if isinstance(v, dict) and v.get("properties"):
@@ -48,8 +46,8 @@ def get_data_connection_property_names() -> dict[str, list[str]]:
 
 
 def formdata_to_params(formdata: dict[str, Any]) -> dict[str, Any]:
-    return _formdata_to_params(formdata, _load_rjsf(), _load_params_schema())
+    return _formdata_to_params(formdata, load_rjsf(), load_params_schema())
 
 
 def params_to_formdata(params: dict[str, Any]) -> dict[str, Any]:
-    return _params_to_formdata(params, _load_rjsf(), _load_params_schema())
+    return _params_to_formdata(params, load_rjsf(), load_params_schema())

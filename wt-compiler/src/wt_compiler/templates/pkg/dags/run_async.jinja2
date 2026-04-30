@@ -17,8 +17,11 @@ import warnings  # 🧪
 from wt_task.testing import create_func_magicmock  # 🧪
 {% endif %}
 
+from wt_contracts import validate as _validate
 from wt_task import task
 from ecoscope_workflows_core.graph import DependsOn, DependsOnSequence, Graph, Node
+
+from .. import metadata as _metadata
 
 {% for t in spec.flat_workflow -%}
 {{ t.known_task.importable_reference.statement }}
@@ -30,10 +33,12 @@ from ecoscope_workflows_core.graph import DependsOn, DependsOnSequence, Graph, N
 {% endfor -%}
 
 
-def main(params: dict[str, Any]):
+def main(params: dict[str, Any], validate_params_schema: bool = True):
     {%- if testing %}
     warnings.warn("This test script should not be used in production!")  # 🧪
     {% endif %}
+    if validate_params_schema:
+        _validate(params, _metadata.load_params_schema())
 
     dependencies = {{ spec.task_instance_dependencies }}
 
