@@ -271,7 +271,11 @@ class SerializedVariableValuesDict(TypedDict):
     """Serialized shape of a VariableValuesDict."""
 
     asstr: str
-    asdict: dict[str, "SerializedInlineValue | SerializedVars"]
+    asdict: dict[
+        str,
+        "SerializedInlineValue | SerializedVars"
+        " | SerializedVariableValuesDict | SerializedVariableValuesList",
+    ]
     has_variable_values: bool
 
 
@@ -463,7 +467,7 @@ VarsOrInlineValue = Annotated[
 class VariableValuesDict(BaseModel):
     """A dictionary with variable values."""
 
-    value: dict[str, VarsOrInlineValue]
+    value: dict[str, "DictOrVarsOrInlineValue"]
 
     @model_serializer
     def serialize(self) -> SerializedVariableValuesDict:
@@ -472,12 +476,14 @@ class VariableValuesDict(BaseModel):
             "asstr": (
                 "{"
                 + ", ".join(
-                    f"'{k}': {_serialize_variables_or_inline_value(v).get('asstr')}"
+                    f"'{k}': {_serialize_dict_or_variables_or_inline_value(v).get('asstr')}"
                     for k, v in self.value.items()
                 )
                 + "}"
             ),
-            "asdict": ({k: _serialize_variables_or_inline_value(v) for k, v in self.value.items()}),
+            "asdict": (
+                {k: _serialize_dict_or_variables_or_inline_value(v) for k, v in self.value.items()}
+            ),
             "has_variable_values": True,
         }
 

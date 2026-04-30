@@ -14,6 +14,7 @@ from wt_compiler.spec import (
     TaskIdVariable,
     TaskInstance,
     TaskTag,
+    VariableValuesDict,
     VariableValuesList,
     _conda_or_pypi,
     _find_task_id_vars,
@@ -836,6 +837,111 @@ class TestFindTaskIdVars:
         assert len(result) == 2
         assert result[0].value == "task1"
         assert result[1].value == "task2"
+
+
+class TestVariableValuesDict:
+    """Tests for VariableValuesDict with nested dicts and lists containing variable refs."""
+
+    def test_nested_dict_with_variable_ref(self):
+        """Test that a variable ref inside a nested dict is parsed as TaskIdVariable."""
+        from wt_compiler.spec import known_tasks
+
+        mock_task = KnownTask(importable_reference="mod.func")
+        known_tasks["func"] = {"mod": mock_task}
+
+        try:
+            ti = TaskInstance(
+                id="task2",
+                name="Nested Dict Task",
+                task="mod.func",
+                partial={
+                    "context": {
+                        "key": "value",
+                        "ref": "${{ workflow.task1.return }}",
+                    }
+                },
+            )
+            dep = ti.partial["context"]
+            assert isinstance(dep, VariableValuesDict)
+            serialized = ti.model_dump()
+            context = serialized["partial"]["context"]
+            assert context["has_variable_values"] is True
+            assert "task1" in context["asstr"]
+            assert "'ref': task1" in context["asstr"]
+            assert "'key': 'value'" in context["asstr"]
+        finally:
+            known_tasks.clear()
+
+    def test_variable_ref_in_dict_in_list_in_dict(self):
+        """Test ${{ }} ref inside dict → list → dict nesting."""
+        from wt_compiler.spec import known_tasks
+
+        mock_task = KnownTask(importable_reference="mod.func")
+        known_tasks["func"] = {"mod": mock_task}
+
+        try:
+            ti = TaskInstance(
+                id="report_task",
+                name="Report Task",
+                task="mod.func",
+                partial={
+                    "context": {
+                        "items": [
+                            {
+                                "item_type": "timerange",
+                                "key": "report_date",
+                                "value": "${{ workflow.time_range.return }}",
+                            },
+                            {
+                                "item_type": "table",
+                                "key": "stats",
+                                "value": "${{ workflow.stats_sql.return }}",
+                            },
+                        ]
+                    }
+                },
+            )
+            serialized = ti.model_dump()
+            context = serialized["partial"]["context"]
+            assert context["has_variable_values"] is True
+            # The asstr should contain resolved variable names, not ${{ }} strings
+            assert "time_range" in context["asstr"]
+            assert "stats_sql" in context["asstr"]
+            assert "${{" not in context["asstr"]
+        finally:
+            known_tasks.clear()
+
+    def test_nested_variable_ref_in_asdict(self):
+        """Test that asdict contains properly serialized nested variable refs."""
+        from wt_compiler.spec import known_tasks
+
+        mock_task = KnownTask(importable_reference="mod.func")
+        known_tasks["func"] = {"mod": mock_task}
+
+        try:
+            ti = TaskInstance(
+                id="task2",
+                name="Nested Task",
+                task="mod.func",
+                partial={
+                    "outer": {
+                        "inner_list": [
+                            {"ref": "${{ workflow.task1.return }}", "literal": "hello"},
+                        ]
+                    }
+                },
+            )
+            serialized = ti.model_dump()
+            outer = serialized["partial"]["outer"]
+            # Walk into asdict → inner_list → aslist → first item → asdict → ref
+            inner_list = outer["asdict"]["inner_list"]
+            assert inner_list["has_variable_values"] is True
+            first_item = inner_list["aslist"][0]
+            assert first_item["has_variable_values"] is True
+            ref_val = first_item["asdict"]["ref"]
+            assert ref_val["asstr"] == "task1"
+        finally:
+            known_tasks.clear()
 
 
 class TestSpec:

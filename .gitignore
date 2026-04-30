@@ -212,6 +212,7 @@ __marimo__/
 
 
 .vscode
+.DS_Store
 
 # generated outputs from our docs examples
 docs/examples/**/wt-*-workflow
