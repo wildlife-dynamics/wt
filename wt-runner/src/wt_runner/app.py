@@ -35,7 +35,9 @@ from rattler import MatchSpec
 from wt_invokers import (
     AbstractInvoker,
     CloudBatchInvoker,
+    CloudRunJobsSandboxInvoker,
     LocalSubprocessInvoker,
+    SandboxInvoker,
 )
 
 from wt_runner.tracing import (
@@ -80,6 +82,8 @@ INVOKERS: dict[str, type[AbstractInvoker]] = {
     "BlockingLocalSubprocessInvoker": LocalSubprocessInvoker,
     "AsyncLocalSubprocessInvoker": LocalSubprocessInvoker,
     "CloudBatchInvoker": CloudBatchInvoker,
+    "SandboxInvoker": SandboxInvoker,
+    "CloudRunJobsSandboxInvoker": CloudRunJobsSandboxInvoker,
 }
 
 TITLE = "wt-runner"

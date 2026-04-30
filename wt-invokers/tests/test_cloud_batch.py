@@ -321,8 +321,7 @@ async def test_run_generates_unique_job_name(mock_gcp_modules) -> None:
     job_names = []
 
     with patch.object(invoker, "_create_container_job", new=AsyncMock()) as mock_create:
-        # Run multiple times
-        for i in range(3):
+        for _ in range(3):
             await invoker.run(
                 workflow_run_id="test-run",
                 config_text="param: value",
