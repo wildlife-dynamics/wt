@@ -162,30 +162,34 @@ async def test_extract_payload_from_pubsub_request():
     assert result.invoker_type == "BlockingLocalSubprocessInvoker"
 
 
-def test_is_422_with_valid_error():
-    """Test _is_422 identifies validation errors correctly."""
-    from wt_runner.app import _is_422
+def test_to_fastapi_422_translates_jsonschema_errors():
+    """Test _to_fastapi_422 maps jsonschema-native errors to FastAPI shape."""
+    from wt_runner.app import _to_fastapi_422
 
-    error_data = [
+    errors = [
         {
-            "type": "missing",
-            "loc": ["body", "params"],
-            "msg": "Field required",
-            "input": {},
-            "url": "https://errors.pydantic.dev/...",
+            "message": "42 is not of type 'string'",
+            "path": ["fetch_data", "since"],
+            "schema_path": ["properties", "fetch_data", "properties", "since", "type"],
+            "validator": "type",
+        }
+    ]
+    out = _to_fastapi_422(errors)
+    assert out == [
+        {
+            "loc": ["fetch_data", "since"],
+            "msg": "42 is not of type 'string'",
+            "type": "type",
         }
     ]
 
-    assert _is_422(error_data) is True
 
+def test_to_fastapi_422_handles_empty_path():
+    """Test _to_fastapi_422 with no path."""
+    from wt_runner.app import _to_fastapi_422
 
-def test_is_422_with_invalid_data():
-    """Test _is_422 returns False for non-error data."""
-    from wt_runner.app import _is_422
-
-    assert _is_422([{"result": "success"}]) == False
-    assert _is_422({"error": "message"}) == False
-    assert _is_422([]) == False
+    out = _to_fastapi_422([{"message": "boom", "path": [], "validator": "required"}])
+    assert out == [{"loc": [], "msg": "boom", "type": "required"}]
 
 
 @pytest.mark.asyncio
@@ -256,11 +260,11 @@ async def test_get_metadata_attribute_invalid_json():
 
 @pytest.mark.asyncio
 async def test_convert_success():
-    """Test successful conversion between formats."""
+    """Test successful conversion: envelope ``{"result": ...}`` is unwrapped."""
     from wt_runner.app import _convert
 
     mock_invoker = AsyncMock()
-    mock_invoker.check_output = AsyncMock(return_value='{"converted": "data"}')
+    mock_invoker.check_output = AsyncMock(return_value='{"result": {"converted": "data"}}')
 
     result = await _convert("formdata", "params", '{"input": "data"}', mock_invoker)
 
@@ -268,6 +272,24 @@ async def test_convert_success():
     mock_invoker.check_output.assert_called_once_with(
         ["convert", "--from", "formdata", "--to", "params"], stdin='{"input": "data"}'
     )
+
+
+@pytest.mark.asyncio
+async def test_convert_validation_error_envelope():
+    """Test ``{"validation_errors": [...]}`` envelope raises _ConvertValidationError."""
+    from wt_runner.app import _convert, _ConvertValidationError
+
+    payload = {
+        "validation_errors": [
+            {"message": "boom", "path": ["x"], "schema_path": [], "validator": "type"}
+        ]
+    }
+    mock_invoker = AsyncMock()
+    mock_invoker.check_output = AsyncMock(return_value=json.dumps(payload))
+
+    with pytest.raises(_ConvertValidationError) as exc_info:
+        await _convert("formdata", "params", '{"input": "data"}', mock_invoker)
+    assert exc_info.value.errors == payload["validation_errors"]
 
 
 @pytest.mark.asyncio
@@ -291,4 +313,16 @@ async def test_convert_invalid_json():
     mock_invoker.check_output = AsyncMock(return_value="not json")
 
     with pytest.raises(RuntimeError, match="Failed to parse"):
+        await _convert("formdata", "params", '{"input": "data"}', mock_invoker)
+
+
+@pytest.mark.asyncio
+async def test_convert_unexpected_envelope():
+    """Test envelope missing both keys raises."""
+    from wt_runner.app import _convert
+
+    mock_invoker = AsyncMock()
+    mock_invoker.check_output = AsyncMock(return_value='{"unknown": "key"}')
+
+    with pytest.raises(RuntimeError, match="Unexpected convert envelope"):
         await _convert("formdata", "params", '{"input": "data"}', mock_invoker)

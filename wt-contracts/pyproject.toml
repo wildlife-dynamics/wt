@@ -26,6 +26,7 @@ classifiers = [
 
 dependencies = [
     "pydantic>=2.0.0,<3.0.0",
+    "jsonschema>=4.0.0,<5.0.0",
 ]
 
 [project.urls]
@@ -121,3 +122,4 @@ pip = "*"
 [tool.pixi.package.run-dependencies]
 python = ">=3.10,<3.16"
 pydantic = ">=2.0.0,<3.0.0"
+jsonschema = ">=4.0.0,<5.0.0"

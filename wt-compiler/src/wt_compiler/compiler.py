@@ -467,6 +467,9 @@ class DagCompiler(BaseModel):
             "opentelemetry-api": NamelessMatchSpec.from_match_spec(
                 MatchSpec("conda-forge::opentelemetry-api >=1.20.0,<2.0.0")
             ),
+            "jsonschema": NamelessMatchSpec.from_match_spec(
+                MatchSpec("conda-forge::jsonschema >=4.0.0,<5.0.0")
+            ),
         }
         # Only add wt-task to conda deps when not using PyPI mode
         if self.wt_pypi_deps is None:
@@ -649,49 +652,6 @@ class DagCompiler(BaseModel):
         )
 
     @ruff_formatted
-    def generate_params_model(self, params_jsonschema: dict[str, Any], file_header: str) -> str:
-        """Generate Pydantic model from parameters JSON schema.
-
-        Uses datamodel-code-generator to create a Pydantic V2 BaseModel
-        from the JSON schema.
-
-        Args:
-            params_jsonschema: JSON schema for parameters
-            file_header: File header comment
-
-        Returns:
-            Formatted Python code for Pydantic model
-
-        Examples:
-            >>> compiler = DagCompiler(spec=Spec(...))  # doctest: +SKIP
-            >>> schema = {"properties": {"x": {"type": "integer"}}}  # doctest: +SKIP
-            >>> model = compiler.generate_params_model(schema, "# Header")  # doctest: +SKIP
-            >>> "class" in model  # doctest: +SKIP
-            True
-        """
-        import tempfile
-
-        import datamodel_code_generator as dcg
-        import datamodel_code_generator.format as dcg_format
-
-        with tempfile.NamedTemporaryFile(suffix=".py", mode="w+", delete=False) as tmp:
-            output = Path(tmp.name)
-            try:
-                dcg.generate(
-                    json.dumps(params_jsonschema),
-                    input_file_type=dcg.InputFileType.JsonSchema,
-                    output=output,
-                    output_model_type=dcg.DataModelType.PydanticV2BaseModel,
-                    output_datetime_class=dcg_format.DatetimeClassType.Datetime,
-                    use_subclass_enum=True,
-                    custom_file_header=file_header,
-                )
-                model: str = output.read_text()
-            finally:
-                output.unlink()  # Clean up temp file
-        return model
-
-    @ruff_formatted
     def ruffrender(self, template: str, **kws: Any) -> str:
         """Render a template and format with ruff.
 
@@ -809,10 +769,6 @@ class DagCompiler(BaseModel):
                 params_schema_hierarchical
             )
 
-        # Create titled versions for model generation
-        params_mod = params_schema_flat.model_copy(update={"title": "Params"})
-        formdata_mod = params_schema_hierarchical.model_copy(update={"title": "FormData"})
-
         def _mdump(j: Any) -> dict[str, Any]:
             result: dict[str, Any] = j.model_dump(by_alias=True, exclude_none=True)
             return result
@@ -836,8 +792,6 @@ class DagCompiler(BaseModel):
             **{  # type: ignore[arg-type]
                 "rjsf.json": _mdump(params_schema_hierarchical),
                 "params.json": _mdump(params_schema_flat),
-                "params.py": self.generate_params_model(_mdump(params_mod), self.file_header),
-                "formdata.py": self.generate_params_model(_mdump(formdata_mod), self.file_header),
                 "cli.py": self.ruffrender(
                     "pkg/cli.jinja2",
                     release_name=self.release_name,

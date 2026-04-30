@@ -652,13 +652,51 @@ async def data_connection_property_names(
     return await _get_metadata_attribute("data-connection-property-names", invoker)
 
 
+class _ConvertValidationError(Exception):
+    """Raised when the compiled CLI's ``convert`` returns ``validation_errors``.
+
+    Attributes:
+        errors: List of jsonschema-native error dicts emitted by the CLI.
+    """
+
+    def __init__(self, errors: list[dict[str, Any]]):
+        self.errors = errors
+        super().__init__(f"{len(errors)} validation error(s)")
+
+
+def _to_fastapi_422(errors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Translate jsonschema-native errors into FastAPI's canonical 422 shape.
+
+    Each entry has ``loc``, ``msg``, and ``type`` keys, matching what existing
+    HTTP clients have always seen for pydantic-derived 422 responses.
+
+    Args:
+        errors: List of serialized ``jsonschema`` errors.
+
+    Returns:
+        List of FastAPI-shaped error dicts.
+    """
+    return [
+        {
+            "loc": list(e.get("path", [])),
+            "msg": e.get("message", ""),
+            "type": e.get("validator", "value_error"),
+        }
+        for e in errors
+    ]
+
+
 async def _convert(
     from_: str,
     to: str,
     json_: str,
     invoker: AbstractInvoker,
-) -> dict[str, Any] | list[dict[str, Any]]:
-    """Convert between params and formdata, and visa-versa.
+) -> dict[str, Any]:
+    """Convert between params and formdata via the compiled CLI.
+
+    The CLI emits a single-key envelope: either ``{"result": ...}`` on success
+    or ``{"validation_errors": [...]}`` on schema-validation failure. Exit
+    code is ``0`` for both — the discriminator is the envelope key.
 
     Args:
         from_: Source format
@@ -667,37 +705,26 @@ async def _convert(
         invoker: Invoker instance
 
     Returns:
-        Converted data as dictionary, or list of dicts for validation errors
+        Converted data dictionary (the ``result`` payload).
 
     Raises:
-        RuntimeError: If conversion or parsing fails
+        RuntimeError: If conversion or parsing fails.
+        _ConvertValidationError: If the CLI returned ``validation_errors``.
     """
     cmd = f"convert --from {from_} --to {to}"
     out = await invoker.check_output(cmd.split(), stdin=json_)
     if not out:
         raise RuntimeError(f"Failed to convert {from_} to {to} for '{json_}'.")
     try:
-        as_json: dict[str, Any] | list[dict[str, Any]] = json.loads(out)
+        envelope: dict[str, Any] = json.loads(out)
     except json.JSONDecodeError as e:
-        raise RuntimeError(f"Failed to parse rjsf from str: {out}") from e
-    return as_json
-
-
-def _is_422(json_: dict[str, Any] | list[dict[str, Any]]) -> bool:
-    """Check if the json is a 422 validation error.
-
-    Args:
-        json_: JSON data to check
-
-    Returns:
-        True if data represents a 422 error
-    """
-    return (
-        isinstance(json_, list)
-        and len(json_) > 0
-        and all(isinstance(e, dict) for e in json_)
-        and all(set(e) == {"type", "loc", "msg", "input", "url"} for e in json_)
-    )
+        raise RuntimeError(f"Failed to parse convert envelope from str: {out}") from e
+    if "validation_errors" in envelope:
+        raise _ConvertValidationError(errors=envelope["validation_errors"])
+    if "result" in envelope:
+        result: dict[str, Any] = envelope["result"]
+        return result
+    raise RuntimeError(f"Unexpected convert envelope (missing result/validation_errors): {out}")
 
 
 @app.post("/formdata-to-params", status_code=200)
@@ -716,17 +743,15 @@ async def validate_formdata(
     Raises:
         HTTPException: If validation fails (422 error)
     """
-    outjson = await _convert(
-        from_="formdata",
-        to="params",
-        json_=json.dumps(formdata),
-        invoker=invoker,
-    )
-    if _is_422(outjson):
-        raise HTTPException(status_code=422, detail=outjson)
-    # At this point, outjson is not a 422 error list, so it's a dict
-    assert isinstance(outjson, dict)
-    return outjson
+    try:
+        return await _convert(
+            from_="formdata",
+            to="params",
+            json_=json.dumps(formdata),
+            invoker=invoker,
+        )
+    except _ConvertValidationError as e:
+        raise HTTPException(status_code=422, detail=_to_fastapi_422(e.errors)) from e
 
 
 @app.post("/params-to-formdata", status_code=200)
@@ -745,14 +770,12 @@ async def generate_nested_params(
     Raises:
         HTTPException: If conversion fails (422 error)
     """
-    outjson = await _convert(
-        from_="params",
-        to="formdata",
-        json_=json.dumps(params),
-        invoker=invoker,
-    )
-    if _is_422(outjson):
-        raise HTTPException(status_code=422, detail=outjson)
-    # At this point, outjson is not a 422 error list, so it's a dict
-    assert isinstance(outjson, dict)
-    return outjson
+    try:
+        return await _convert(
+            from_="params",
+            to="formdata",
+            json_=json.dumps(params),
+            invoker=invoker,
+        )
+    except _ConvertValidationError as e:
+        raise HTTPException(status_code=422, detail=_to_fastapi_422(e.errors)) from e

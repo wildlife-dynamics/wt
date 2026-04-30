@@ -10,8 +10,8 @@ that they would not be included (or would be different) in the production versio
 """
 {% endif -%}
 
-import json
 import os
+from typing import Any
 {%- if testing %}
 import warnings  # 🧪
 from wt_task.testing import create_func_magicmock  # 🧪
@@ -28,17 +28,14 @@ from wt_task import task
 {% endif -%}
 {% endfor -%}
 
-from ..params import Params
 
-
-def main(params: Params):
+def main(params: dict[str, Any]):
     {%- if testing %}
     warnings.warn("This test script should not be used in production!")  # 🧪
     {% endif %}
-    params_dict = json.loads(params.model_dump_json(exclude_unset=True))
     {% for t in spec.flat_workflow %}
     {% set validate = not t.known_task.importable_reference.is_mocked %}
-    {% set params = '(params_dict.get("' ~ t.id ~ '") or {})' %}
+    {% set params = '(params.get("' ~ t.id ~ '") or {})' %}
     {% set indent = '    ' %}
     {{ call_task_macros.call_task(t, validate, params, indent) }}
     {% if loop.last %}

@@ -509,8 +509,6 @@ class TestFingerprint:
             **{
                 "rjsf.json": {},
                 "params.json": {},
-                "params.py": "",
-                "formdata.py": "",
                 "cli.py": "",
                 "dispatch.py": "",
                 "metadata.py": "",
@@ -575,8 +573,6 @@ class TestFingerprint:
             **{
                 "rjsf.json": {},
                 "params.json": {},
-                "params.py": "",
-                "formdata.py": "",
                 "cli.py": "",
                 "dispatch.py": "",
                 "metadata.py": "",
@@ -644,8 +640,6 @@ class TestFingerprint:
             **{
                 "rjsf.json": {},
                 "params.json": {},
-                "params.py": "",
-                "formdata.py": "",
                 "cli.py": "",
                 "dispatch.py": "",
                 "metadata.py": "",
@@ -724,8 +718,6 @@ class TestFingerprint:
             **{
                 "rjsf.json": {},
                 "params.json": {},
-                "params.py": "",
-                "formdata.py": "",
                 "cli.py": "",
                 "dispatch.py": "",
                 "metadata.py": "",

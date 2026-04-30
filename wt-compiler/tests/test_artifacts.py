@@ -156,8 +156,6 @@ class TestWorkflowArtifacts:
             **{
                 "rjsf.json": {},
                 "params.json": {},
-                "params.py": "# Params",
-                "formdata.py": "# FormData",
                 "cli.py": "# CLI",
                 "dispatch.py": "# Dispatch",
                 "metadata.py": "# Metadata",
@@ -207,8 +205,6 @@ class TestWorkflowArtifacts:
             **{
                 "rjsf.json": {"title": "Test"},
                 "params.json": {"properties": {}},
-                "params.py": "# Params",
-                "formdata.py": "# FormData",
                 "cli.py": "# CLI",
                 "dispatch.py": "# Dispatch",
                 "metadata.py": "# Metadata",
@@ -266,8 +262,6 @@ class TestWorkflowArtifactsDump:
             **{
                 "rjsf.json": {},
                 "params.json": {},
-                "params.py": "# Params",
-                "formdata.py": "# FormData",
                 "cli.py": "# CLI",
                 "dispatch.py": "# Dispatch",
                 "metadata.py": "# Metadata",

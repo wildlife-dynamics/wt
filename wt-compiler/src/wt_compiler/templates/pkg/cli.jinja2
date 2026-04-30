@@ -6,7 +6,7 @@ import sys
 from importlib.metadata import PackageNotFoundError, version
 from io import TextIOWrapper
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from urllib.parse import urlparse
 
 import click
@@ -24,6 +24,18 @@ def to_windows_safe_path(path: str) -> str:
         return path
     abs_path = os.path.abspath(path)
     return f"\\\\?\\{abs_path}"
+
+
+def _load_params_schema() -> dict[str, Any]:
+    with Path(__file__).parent.joinpath("params.json").open() as f:
+        result: dict[str, Any] = json.load(f)
+        return result
+
+
+def _load_rjsf_schema() -> dict[str, Any]:
+    with Path(__file__).parent.joinpath("rjsf.json").open() as f:
+        result: dict[str, Any] = json.load(f)
+        return result
 
 
 @click.group()
@@ -84,8 +96,8 @@ def run(
         otel_exporter: Optional[str],
         otel_console_exporter_dst: str,
 ) -> None:
+    import jsonschema
     import obstore
-    import pydantic
     import ruamel.yaml
     from wt_task.tracing import (
         attach_context,
@@ -99,7 +111,6 @@ def run(
         _HAS_OTEL = False
 
     from .dispatch import dispatch
-    from .params import Params
 
     # Validate that exactly one of --config-file or --config-json is provided
     if (config_file is not None and config_json is not None) or (config_file is None and config_json is None):
@@ -108,17 +119,19 @@ def run(
     # Load configuration based on which option is provided
     if config_file is not None:
         yaml = ruamel.yaml.YAML(typ="safe")
-        params = Params(**yaml.load(config_file))
+        config_dict = yaml.load(config_file) or {}
     else:  # config_json is not None
         try:
             config_dict = json.loads(config_json)
-            params = Params(**config_dict)
         except json.JSONDecodeError as e:
             raise click.BadParameter("Invalid JSON string for --config-json", param_hint="--config-json") from e
-        except pydantic.ValidationError as e:
-            raise click.BadParameter(f"Invalid configuration: {e}", param_hint="--config-json") from e
 
-    # Rest of the function remains unchanged
+    params_schema = _load_params_schema()
+    try:
+        jsonschema.validate(config_dict, params_schema)
+    except jsonschema.ValidationError as e:
+        raise click.BadParameter(f"Invalid configuration: {e.message}", param_hint="config") from e
+
     results_url = os.environ.get("{{ results_env_var }}")
     if not results_url:
         raise ValueError("Environment variable {{ results_env_var }} is required.")
@@ -147,19 +160,19 @@ def run(
         tracer_attributes = {
             "execution_mode": execution_mode,
             "mock_io": mock_io,
-            "config.time_range": params.time_range.model_dump_json() if 'time_range' in params.model_fields_set else "",
-            "config.groupers": params.groupers.model_dump_json() if 'groupers' in params.model_fields_set else "",
+            "config.time_range": json.dumps(config_dict["time_range"]) if "time_range" in config_dict else "",
+            "config.groupers": json.dumps(config_dict["groupers"]) if "groupers" in config_dict else "",
             "version": _version,
         }
         with tracer.start_as_current_span(f"{RELEASE_NAME}.cli", attributes=tracer_attributes):
-            response = dispatch(execution_mode, mock_io, params)
+            response = dispatch(execution_mode, mock_io, config_dict)
             result_store = obstore.store.from_url(results_url)
             result_bytes = response.model_dump_json().encode("utf-8")
             put_result = result_store.put("result.json", result_bytes)
             if not put_result:
                 raise RuntimeError("Failed to put result json in result store.")
     else:
-        response = dispatch(execution_mode, mock_io, params)
+        response = dispatch(execution_mode, mock_io, config_dict)
         result_store = obstore.store.from_url(results_url)
         result_bytes = response.model_dump_json().encode("utf-8")
         put_result = result_store.put("result.json", result_bytes)
@@ -215,11 +228,18 @@ def convert(
     to: str,
     json_: TextIOWrapper,
 ) -> None:
-    """Get the metadata for the workflow."""
-    import pydantic
+    """Convert between params and formdata representations.
 
-    from .formdata import FormData
-    from .metadata import (
+    Emits a single-key JSON envelope on stdout:
+
+    - ``{"result": {...}}`` on success
+    - ``{"validation_errors": [...]}`` on schema-validation failure
+
+    Exit code is ``0`` for both outcomes; non-zero is reserved for genuine
+    CLI failures (bad args, missing schema files, ...).
+    """
+    from wt_contracts import (
+        ValidationError,
         formdata_to_params,
         params_to_formdata,
     )
@@ -229,21 +249,22 @@ def convert(
         loaded = json.loads(json_txt)
     except json.JSONDecodeError as e:
         raise ValueError(f"Failed to parse JSON string: {json_txt}") from e
+
+    rjsf_schema = _load_rjsf_schema()
+    params_schema = _load_params_schema()
     try:
         match from_, to:
             case ("params", "formdata"):
-                result = params_to_formdata(loaded)
-                as_json = json.dumps(result)
+                result = params_to_formdata(loaded, rjsf_schema, params_schema)
             case ("formdata", "params"):
-                formdata = FormData(**loaded)
-                result = formdata_to_params(formdata)
-                as_json = result.model_dump_json()
+                result = formdata_to_params(loaded, rjsf_schema, params_schema)
             case _:
                 raise ValueError(f"Unknown conversion: {from_} -> {to}")
-    except pydantic.ValidationError as e:
-        as_json = e.json(include_url=True)
+        envelope: dict[str, Any] = {"result": result}
+    except ValidationError as e:
+        envelope = {"validation_errors": e.errors}
 
-    print(as_json)
+    print(json.dumps(envelope))
 
 
 if __name__ == "__main__":

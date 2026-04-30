@@ -1,15 +1,15 @@
 {{ file_header }}
 
 import traceback
+from typing import Any
 
-from .params import Params
 from .response import ResponseModel
 
 
 def dispatch(
     execution_mode: str,  # TODO: literal type
     mock_io: bool,
-    params: Params,
+    params: dict[str, Any],
 ) -> ResponseModel:
     match execution_mode, mock_io:
         case ("sequential", True):
