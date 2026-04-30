@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from wt_runner.testing import Case
 from wt_runner.app import app
 from wt_contracts import params_to_formdata as _params_to_formdata
-from {{ package_name }}.metadata import load_params_schema, load_rjsf
+from {{ package_name }}.metadata import load_params_schema, load_rjsf_schema
 
 
 @pytest.fixture
@@ -28,7 +28,7 @@ def formdata(success_case: Case) -> dict:
     Walks the rjsf schema's top-level properties to discriminate flat keys
     (kept as-is) from task-group keys (used to nest the matching members).
     """
-    return _params_to_formdata(success_case.params, load_rjsf(), load_params_schema())
+    return _params_to_formdata(success_case.params, load_rjsf_schema(), load_params_schema())
 
 
 def test_get_params(client: TestClient):

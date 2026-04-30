@@ -10,7 +10,7 @@ from wt_contracts import (
 )
 
 
-def load_rjsf() -> dict[str, Any]:
+def load_rjsf_schema() -> dict[str, Any]:
     """Load the RJSF (grouped) JSON schema bundled with this package."""
     with files(__package__).joinpath("rjsf.json").open() as f:
         result: dict[str, Any] = json.load(f)
@@ -46,8 +46,8 @@ def get_data_connection_property_names() -> dict[str, list[str]]:
 
 
 def formdata_to_params(formdata: dict[str, Any]) -> dict[str, Any]:
-    return _formdata_to_params(formdata, load_rjsf(), load_params_schema())
+    return _formdata_to_params(formdata, load_rjsf_schema(), load_params_schema())
 
 
 def params_to_formdata(params: dict[str, Any]) -> dict[str, Any]:
-    return _params_to_formdata(params, load_rjsf(), load_params_schema())
+    return _params_to_formdata(params, load_rjsf_schema(), load_params_schema())

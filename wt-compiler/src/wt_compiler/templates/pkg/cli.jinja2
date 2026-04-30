@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 
 import click
 
-from .metadata import load_params_schema, load_rjsf
+from .metadata import load_params_schema, load_rjsf_schema
 
 RELEASE_NAME = "{{ release_name }}"
 
@@ -181,7 +181,7 @@ def get(metadata_attribute: str) -> None:
     from .metadata import get_data_connection_property_names
 
     getter = {
-        "rjsf": load_rjsf,
+        "rjsf": load_rjsf_schema,
         "data-connection-property-names": get_data_connection_property_names,
     }.get(metadata_attribute)
     if getter is None:
@@ -237,7 +237,7 @@ def convert(
     except json.JSONDecodeError as e:
         raise ValueError(f"Failed to parse JSON string: {json_txt}") from e
 
-    rjsf_schema = load_rjsf()
+    rjsf_schema = load_rjsf_schema()
     params_schema = load_params_schema()
     try:
         match from_, to:
