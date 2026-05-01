@@ -120,7 +120,8 @@ def run(
     try:
         validate(params, params_schema)
     except ValidationError as e:
-        raise click.BadParameter(f"Invalid configuration: {e}", param_hint="config") from e
+        param_hint = "--config-file" if config_file is not None else "--config-json"
+        raise click.BadParameter(f"Invalid configuration: {e}", param_hint=param_hint) from e
 
     results_url = os.environ.get("{{ results_env_var }}")
     if not results_url:
