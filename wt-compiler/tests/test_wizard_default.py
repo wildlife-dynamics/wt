@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 
 import pytest
-import yaml
+import ruamel.yaml
 
 from wt_compiler.requirements import CHANNELS, _serialize_channel
 from conftest import drive_wizard
@@ -24,6 +24,8 @@ from wt_compiler.wizard.default import (
     requirement_version_type,
     workflow_id_type,
 )
+
+yaml = ruamel.yaml.YAML(typ="safe")
 
 
 class TestWorkflowIdValidation:
@@ -638,7 +640,7 @@ class TestDump:
         """Parse generated spec.yaml, verify id, requirements, workflow keys."""
         provider = self._make_provider_with_answers()
         provider.dump(tmp_path)
-        content = yaml.safe_load((tmp_path / "spec.yaml").read_text())
+        content = yaml.load((tmp_path / "spec.yaml").read_text())
         assert content["id"] == "my_workflow"
         assert content["workflow"] == []
         assert len(content["requirements"]) == 1
@@ -656,7 +658,7 @@ class TestDump:
         ]
         drive_wizard(provider, answers)
         provider.dump(tmp_path)
-        content = yaml.safe_load((tmp_path / "spec.yaml").read_text())
+        content = yaml.load((tmp_path / "spec.yaml").read_text())
         req = content["requirements"][0]
         assert req["name"] == "mypkg"
         assert req["path"] == "/home/user/mypkg"
@@ -671,7 +673,7 @@ class TestDump:
         ]
         drive_wizard(provider, answers)
         provider.dump(tmp_path)
-        content = yaml.safe_load((tmp_path / "spec.yaml").read_text())
+        content = yaml.load((tmp_path / "spec.yaml").read_text())
         req = content["requirements"][0]
         assert req["editable"] is True
 
@@ -684,7 +686,7 @@ class TestDump:
         ]
         drive_wizard(provider, answers)
         provider.dump(tmp_path)
-        content = yaml.safe_load((tmp_path / "spec.yaml").read_text())
+        content = yaml.load((tmp_path / "spec.yaml").read_text())
         req = content["requirements"][0]
         assert req["url"] == "https://example.com/pkg.whl"
 
@@ -697,7 +699,7 @@ class TestDump:
         ]
         drive_wizard(provider, answers)
         provider.dump(tmp_path)
-        content = yaml.safe_load((tmp_path / "spec.yaml").read_text())
+        content = yaml.load((tmp_path / "spec.yaml").read_text())
         req = content["requirements"][0]
         assert req["git"] == "https://github.com/org/pkg.git"
         assert req["branch"] == "main"
@@ -711,7 +713,7 @@ class TestDump:
         ]
         drive_wizard(provider, answers)
         provider.dump(tmp_path)
-        content = yaml.safe_load((tmp_path / "spec.yaml").read_text())
+        content = yaml.load((tmp_path / "spec.yaml").read_text())
         req = content["requirements"][0]
         assert req["git"] == "https://github.com/org/pkg.git"
         assert "branch" not in req
@@ -725,7 +727,7 @@ class TestDump:
         text = (tmp_path / "test-cases.yaml").read_text()
         assert "my_workflow" in text
         # Should be parseable (even if empty/None)
-        content = yaml.safe_load(text)
+        content = yaml.load(text)
         assert content is None  # all comments, no data
 
     def test_dump_readme_contains_metadata(self, tmp_path: Path) -> None:
