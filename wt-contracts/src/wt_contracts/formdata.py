@@ -101,6 +101,7 @@ def _serialize_errors(
             "message": e.message,
             "path": list(e.absolute_path),
             "schema_path": list(e.absolute_schema_path),
+            # jsonschema's e.validator is `str | Unset`; coerce Unset to None for the wire shape.
             "validator": e.validator if isinstance(e.validator, str) else None,
             "input": e.instance,
         }
