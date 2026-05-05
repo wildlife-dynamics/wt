@@ -32,6 +32,7 @@ from fastapi.responses import JSONResponse
 from opentelemetry import trace as otel_trace
 from pydantic import BaseModel, Field, SecretStr
 from rattler import MatchSpec
+from wt_contracts import ValidationErrorResponse
 from wt_invokers import (
     AbstractInvoker,
     CloudBatchInvoker,
@@ -668,28 +669,6 @@ class _ConvertValidationError(Exception):
         super().__init__(f"{len(errors)} validation error(s)")
 
 
-def _to_fastapi_422(errors: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Translate jsonschema-native errors into FastAPI's canonical 422 shape.
-
-    Each entry has ``loc``, ``msg``, and ``type`` keys, matching what existing
-    HTTP clients have always seen for pydantic-derived 422 responses.
-
-    Args:
-        errors: List of serialized ``jsonschema`` errors.
-
-    Returns:
-        List of FastAPI-shaped error dicts.
-    """
-    return [
-        {
-            "loc": list(e.get("path", [])),
-            "msg": e.get("message", ""),
-            "type": e.get("validator", "value_error"),
-        }
-        for e in errors
-    ]
-
-
 async def _convert(
     from_: str,
     to: str,
@@ -731,7 +710,11 @@ async def _convert(
     raise RuntimeError(f"Unexpected convert envelope (missing result/validation_errors): {out}")
 
 
-@app.post("/formdata-to-params", status_code=200)
+@app.post(
+    "/formdata-to-params",
+    status_code=200,
+    responses={422: {"model": ValidationErrorResponse}},
+)
 async def validate_formdata(
     formdata: dict[str, Any], invoker: AbstractInvoker = Depends(resolve_invoker)
 ) -> dict[str, Any]:
@@ -745,7 +728,8 @@ async def validate_formdata(
         Validated parameters dictionary
 
     Raises:
-        HTTPException: If validation fails (422 error)
+        HTTPException: 422 with a :class:`ValidationErrorResponse` body if the
+            compiled CLI rejects ``formdata`` against the rjsf schema.
     """
     try:
         return await _convert(
@@ -755,10 +739,14 @@ async def validate_formdata(
             invoker=invoker,
         )
     except _ConvertValidationError as e:
-        raise HTTPException(status_code=422, detail=_to_fastapi_422(e.errors)) from e
+        raise HTTPException(status_code=422, detail=e.errors) from e
 
 
-@app.post("/params-to-formdata", status_code=200)
+@app.post(
+    "/params-to-formdata",
+    status_code=200,
+    responses={422: {"model": ValidationErrorResponse}},
+)
 async def generate_nested_params(
     params: dict[str, Any], invoker: AbstractInvoker = Depends(resolve_invoker)
 ) -> dict[str, Any]:
@@ -772,7 +760,8 @@ async def generate_nested_params(
         Form data dictionary
 
     Raises:
-        HTTPException: If conversion fails (422 error)
+        HTTPException: 422 with a :class:`ValidationErrorResponse` body if the
+            compiled CLI rejects ``params`` against the params schema.
     """
     try:
         return await _convert(
@@ -782,4 +771,4 @@ async def generate_nested_params(
             invoker=invoker,
         )
     except _ConvertValidationError as e:
-        raise HTTPException(status_code=422, detail=_to_fastapi_422(e.errors)) from e
+        raise HTTPException(status_code=422, detail=e.errors) from e

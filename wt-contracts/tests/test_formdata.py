@@ -6,6 +6,7 @@ import pytest
 
 from wt_contracts.formdata import (
     ValidationError,
+    ValidationErrorItem,
     formdata_to_params,
     params_to_formdata,
     validate,
@@ -92,6 +93,7 @@ class TestFormdataToParams:
         assert errors and isinstance(errors[0], dict)
         assert "message" in errors[0]
         assert "path" in errors[0]
+        assert "input" in errors[0]
 
 
 class TestParamsToFormdata:
@@ -126,12 +128,11 @@ class TestParamsToFormdata:
 class TestValidationErrorShape:
     """Lock down the ValidationError.errors serialization contract.
 
-    wt-runner translates these entries into FastAPI 422 responses (each
-    error's ``path`` is placed directly into ``loc``), so the shape and
-    JSON-safety of every entry must remain stable.
+    wt-runner surfaces these entries directly in 422 response bodies, so the
+    shape and JSON-safety of every entry must remain stable.
     """
 
-    EXPECTED_KEYS = {"message", "path", "schema_path", "validator"}
+    EXPECTED_KEYS = {"message", "path", "schema_path", "validator", "input"}
 
     def _trigger_errors(self) -> list[dict]:
         bad = {"fetch_data": {"since": 42}, "summarize": {"name": 7}, "render": {}}
@@ -154,10 +155,17 @@ class TestValidationErrorShape:
             assert isinstance(entry["schema_path"], list)
             assert isinstance(entry["validator"], str)
 
+    def test_input_carries_failing_instance(self):
+        errors = self._trigger_errors()
+        # The failing values in ``bad`` were 42 and 7; both should appear as
+        # ``input`` on at least one error entry.
+        inputs = [entry["input"] for entry in errors]
+        assert 42 in inputs
+        assert 7 in inputs
+
     def test_path_components_are_json_primitives(self):
-        # FastAPI puts ``path`` directly into the response ``loc`` and
-        # serializes the response to JSON, so each component must be a
-        # JSON-safe primitive (str/int).
+        # FastAPI serializes the response body to JSON, so each path
+        # component must be a JSON-safe primitive (str/int).
         errors = self._trigger_errors()
         for entry in errors:
             for component in entry["path"]:
@@ -170,3 +178,9 @@ class TestValidationErrorShape:
         # Should be losslessly JSON-serializable as-is.
         round_tripped = json.loads(json.dumps(errors))
         assert round_tripped == errors
+
+    def test_serialized_errors_validate_against_pydantic_model(self):
+        # Catches drift between ValidationErrorItemDict and ValidationErrorItem.
+        errors = self._trigger_errors()
+        for entry in errors:
+            ValidationErrorItem(**entry)

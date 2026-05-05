@@ -14,9 +14,41 @@ The helpers do not read RJSF custom keywords (e.g. ``ecoscope:task_group``);
 group membership is inferred from schema structure alone.
 """
 
-from typing import Any
+from typing import Any, TypedDict
 
 import jsonschema  # type: ignore[import-untyped]
+from pydantic import BaseModel
+
+
+class ValidationErrorItemDict(TypedDict):
+    """JSON-serializable shape of a single jsonschema validation error.
+
+    This is the wire shape emitted by :func:`_serialize_errors` and carried in
+    :attr:`ValidationError.errors`. The :class:`ValidationErrorItem` Pydantic
+    model below mirrors this shape for FastAPI/OpenAPI declarations.
+    """
+
+    message: str
+    path: list[str | int]
+    schema_path: list[str | int]
+    validator: str
+    input: Any
+
+
+class ValidationErrorItem(BaseModel):
+    """Pydantic mirror of :class:`ValidationErrorItemDict` for OpenAPI."""
+
+    message: str
+    path: list[str | int]
+    schema_path: list[str | int]
+    validator: str
+    input: Any
+
+
+class ValidationErrorResponse(BaseModel):
+    """422 response body shape for endpoints that surface jsonschema errors."""
+
+    detail: list[ValidationErrorItem]
 
 
 class ValidationError(Exception):
@@ -24,21 +56,25 @@ class ValidationError(Exception):
 
     Attributes:
         errors: List of serialized ``jsonschema`` errors. Each entry has
-            ``message``, ``path``, ``schema_path``, and ``validator`` keys.
+            ``message``, ``path``, ``schema_path``, ``validator``, and
+            ``input`` keys (see :class:`ValidationErrorItemDict`).
     """
 
-    def __init__(self, errors: list[dict[str, Any]]):
+    def __init__(self, errors: list[ValidationErrorItemDict]):
         self.errors = errors
         super().__init__(f"{len(errors)} validation error(s): {errors}")
 
 
-def _serialize_errors(errors: list[jsonschema.ValidationError]) -> list[dict[str, Any]]:
+def _serialize_errors(
+    errors: list[jsonschema.ValidationError],
+) -> list[ValidationErrorItemDict]:
     return [
         {
             "message": e.message,
             "path": list(e.absolute_path),
             "schema_path": list(e.absolute_schema_path),
             "validator": e.validator,
+            "input": e.instance,
         }
         for e in errors
     ]

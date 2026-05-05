@@ -13,6 +13,9 @@ Submodules:
 from wt_contracts.cli import WorkflowCLIArgs, WorkflowCLIEnv
 from wt_contracts.formdata import (
     ValidationError,
+    ValidationErrorItem,
+    ValidationErrorItemDict,
+    ValidationErrorResponse,
     formdata_to_params,
     params_to_formdata,
     validate,
@@ -41,6 +44,9 @@ __all__ = [
     "params_to_formdata",
     "validate",
     "ValidationError",
+    "ValidationErrorItem",
+    "ValidationErrorItemDict",
+    "ValidationErrorResponse",
     # Version
     "__version__",
 ]

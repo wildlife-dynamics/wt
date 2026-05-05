@@ -162,36 +162,6 @@ async def test_extract_payload_from_pubsub_request():
     assert result.invoker_type == "BlockingLocalSubprocessInvoker"
 
 
-def test_to_fastapi_422_translates_jsonschema_errors():
-    """Test _to_fastapi_422 maps jsonschema-native errors to FastAPI shape."""
-    from wt_runner.app import _to_fastapi_422
-
-    errors = [
-        {
-            "message": "42 is not of type 'string'",
-            "path": ["fetch_data", "since"],
-            "schema_path": ["properties", "fetch_data", "properties", "since", "type"],
-            "validator": "type",
-        }
-    ]
-    out = _to_fastapi_422(errors)
-    assert out == [
-        {
-            "loc": ["fetch_data", "since"],
-            "msg": "42 is not of type 'string'",
-            "type": "type",
-        }
-    ]
-
-
-def test_to_fastapi_422_handles_empty_path():
-    """Test _to_fastapi_422 with no path."""
-    from wt_runner.app import _to_fastapi_422
-
-    out = _to_fastapi_422([{"message": "boom", "path": [], "validator": "required"}])
-    assert out == [{"loc": [], "msg": "boom", "type": "required"}]
-
-
 @pytest.mark.asyncio
 async def test_upload_error_to_gcs():
     """Test error upload to GCS."""
