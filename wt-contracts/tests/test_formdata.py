@@ -204,7 +204,7 @@ class TestValidationErrorShape:
             assert isinstance(entry["message"], str)
             assert isinstance(entry["path"], list)
             assert isinstance(entry["schema_path"], list)
-            assert isinstance(entry["validator"], str)
+            assert entry["validator"] is None or isinstance(entry["validator"], str)
 
     def test_input_carries_failing_instance(self):
         errors = self._trigger_errors()

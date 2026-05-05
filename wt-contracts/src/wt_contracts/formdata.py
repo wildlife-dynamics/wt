@@ -33,7 +33,7 @@ class ValidationErrorItemDict(TypedDict):
     message: str
     path: list[str | int]
     schema_path: list[str | int]
-    validator: str
+    validator: str | None
     input: Any
 
 
@@ -44,22 +44,6 @@ class ValidationErrorItem(BaseModel):
     :class:`ValidationErrorItemDict` (the wire dict produced by
     :func:`_serialize_errors`); see the ``Field(description=...)`` entries
     below for per-field semantics that also flow through to OpenAPI.
-
-    Example:
-        Validating ``{"age": "old"}`` against a schema that requires
-        ``{"age": {"type": "integer"}}`` produces a single error:
-
-        >>> from wt_contracts import ValidationError, validate
-        >>> try:
-        ...     validate({"age": "old"}, {"properties": {"age": {"type": "integer"}}})
-        ... except ValidationError as e:
-        ...     err = e.errors[0]
-        >>> err["message"]
-        "'old' is not of type 'integer'"
-        >>> err["path"], err["schema_path"]
-        (['age'], ['properties', 'age', 'type'])
-        >>> err["validator"], err["input"]
-        ('type', 'old')
     """
 
     message: str = Field(description="Human-readable description of why validation failed.")
@@ -75,10 +59,11 @@ class ValidationErrorItem(BaseModel):
             "sequence of keys / indices from the schema root."
         )
     )
-    validator: str = Field(
+    validator: str | None = Field(
         description=(
             "Name of the JSON Schema keyword that produced the error "
-            "(e.g. ``type``, ``required``, ``enum``)."
+            "(e.g. ``type``, ``required``, ``enum``). May be ``None`` when "
+            "jsonschema cannot attribute the failure to a specific keyword."
         )
     )
     input: Any = Field(description="The failing value from the validated document at ``path``.")
@@ -116,7 +101,7 @@ def _serialize_errors(
             "message": e.message,
             "path": list(e.absolute_path),
             "schema_path": list(e.absolute_schema_path),
-            "validator": e.validator if isinstance(e.validator, str) else "",
+            "validator": e.validator if isinstance(e.validator, str) else None,
             "input": e.instance,
         }
         for e in errors
@@ -140,6 +125,36 @@ def validate(instance: Any, schema: dict[str, Any]) -> None:
             against ``schema``. The exception's ``errors`` attribute contains
             a list of serialized validation errors with stable,
             JSON-serializable shape.
+
+    Examples:
+        Validating ``{"age": "old"}`` against a schema that requires an
+        integer ``age`` raises :class:`ValidationError`; ``e.errors`` is the
+        wire ``list[ValidationErrorItemDict]`` and round-trips cleanly through
+        :class:`ValidationErrorItem`:
+
+        >>> import json
+        >>> from wt_contracts import ValidationError, ValidationErrorItem, validate
+        >>> try:
+        ...     validate({"age": "old"}, {"properties": {"age": {"type": "integer"}}})
+        ... except ValidationError as e:
+        ...     err = e.errors[0]
+        >>> print(json.dumps(err, indent=2))
+        {
+          "message": "'old' is not of type 'integer'",
+          "path": [
+            "age"
+          ],
+          "schema_path": [
+            "properties",
+            "age",
+            "type"
+          ],
+          "validator": "type",
+          "input": "old"
+        }
+        >>> item = ValidationErrorItem(**err)
+        >>> item.model_dump() == err
+        True
     """
     if not isinstance(instance, dict):
         raise ValidationError(
