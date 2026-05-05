@@ -296,3 +296,36 @@ async def test_convert_unexpected_envelope():
 
     with pytest.raises(RuntimeError, match="Unexpected convert envelope"):
         await _convert("formdata", "params", '{"input": "data"}', mock_invoker)
+
+
+@pytest.mark.parametrize("endpoint", ["/formdata-to-params", "/params-to-formdata"])
+def test_convert_endpoint_422_body_matches_validation_error_response(
+    client: TestClient, endpoint: str
+):
+    """422 body from convert endpoints conforms to ``ValidationErrorResponse``."""
+    from wt_contracts import ValidationErrorResponse
+
+    from wt_runner.app import resolve_invoker
+
+    error_item = {
+        "message": "'old' is not of type 'integer'",
+        "path": ["age"],
+        "schema_path": ["properties", "age", "type"],
+        "validator": "type",
+        "input": "old",
+    }
+    mock_invoker = AsyncMock()
+    mock_invoker.check_output = AsyncMock(
+        return_value=json.dumps({"validation_errors": [error_item]})
+    )
+
+    app.dependency_overrides[resolve_invoker] = lambda: mock_invoker
+    try:
+        response = client.post(endpoint, json={"any": "payload"})
+    finally:
+        app.dependency_overrides.pop(resolve_invoker, None)
+
+    assert response.status_code == 422
+    parsed = ValidationErrorResponse(**response.json())
+    assert len(parsed.detail) == 1
+    assert parsed.detail[0].model_dump() == error_item

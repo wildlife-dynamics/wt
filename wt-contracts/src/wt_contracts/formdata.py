@@ -17,7 +17,7 @@ group membership is inferred from schema structure alone.
 from typing import Any, TypedDict
 
 import jsonschema  # type: ignore[import-untyped]
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ValidationErrorItemDict(TypedDict):
@@ -25,7 +25,9 @@ class ValidationErrorItemDict(TypedDict):
 
     This is the wire shape emitted by :func:`_serialize_errors` and carried in
     :attr:`ValidationError.errors`. The :class:`ValidationErrorItem` Pydantic
-    model below mirrors this shape for FastAPI/OpenAPI declarations.
+    model below mirrors this shape for FastAPI/OpenAPI declarations. Field
+    semantics and a worked example are documented on
+    :class:`ValidationErrorItem`.
     """
 
     message: str
@@ -36,19 +38,56 @@ class ValidationErrorItemDict(TypedDict):
 
 
 class ValidationErrorItem(BaseModel):
-    """Pydantic mirror of :class:`ValidationErrorItemDict` for OpenAPI."""
+    """One serialized jsonschema validation error, as carried in 422 responses.
 
-    message: str
-    path: list[str | int]
-    schema_path: list[str | int]
-    validator: str
-    input: Any
+    Each field corresponds 1:1 with the same key on
+    :class:`ValidationErrorItemDict` (the wire dict produced by
+    :func:`_serialize_errors`); see the ``Field(description=...)`` entries
+    below for per-field semantics that also flow through to OpenAPI.
+
+    Example:
+        Validating ``{"age": "old"}`` against a schema that requires
+        ``{"age": {"type": "integer"}}`` produces a single error of the form::
+
+            {
+                "message": "'old' is not of type 'integer'",
+                "path": ["age"],
+                "schema_path": ["properties", "age", "type"],
+                "validator": "type",
+                "input": "old",
+            }
+    """
+
+    message: str = Field(description="Human-readable description of why validation failed.")
+    path: list[str | int] = Field(
+        description=(
+            "Location of the failing instance, as a sequence of object keys / "
+            "array indices from the root of the validated document."
+        )
+    )
+    schema_path: list[str | int] = Field(
+        description=(
+            "Location of the failed keyword inside the JSON schema, as a "
+            "sequence of keys / indices from the schema root."
+        )
+    )
+    validator: str = Field(
+        description=(
+            "Name of the JSON Schema keyword that produced the error "
+            "(e.g. ``type``, ``required``, ``enum``)."
+        )
+    )
+    input: Any = Field(description="The failing value from the validated document at ``path``.")
 
 
 class ValidationErrorResponse(BaseModel):
     """422 response body shape for endpoints that surface jsonschema errors."""
 
-    detail: list[ValidationErrorItem]
+    detail: list[ValidationErrorItem] = Field(
+        description=(
+            "List of jsonschema validation errors describing why the request body was rejected."
+        )
+    )
 
 
 class ValidationError(Exception):
