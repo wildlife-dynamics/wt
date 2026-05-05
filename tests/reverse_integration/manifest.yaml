@@ -13,7 +13,7 @@ repos:
 
   - url: https://github.com/ecoscope-platform-workflows-releases/events
 #   ref: main  # Default: main branch
-    ref: add-pyproject-toml
+    ref: drop-dcg
     spec_path: spec.yaml  # Default: spec.yaml at repo root
     generated_path: ecoscope-workflows-events-workflow
     compile_flags:
