@@ -184,3 +184,52 @@ class TestValidationErrorShape:
         errors = self._trigger_errors()
         for entry in errors:
             ValidationErrorItem(**entry)
+
+
+class TestValidateNonDictInstance:
+    """Guard against non-dict instances slipping through to ``.items()`` / ``.get()``.
+
+    wt-compiler emits schemas without a root ``"type": "object"``, so jsonschema
+    alone will not reject a non-dict instance. The compiled CLI feeds raw
+    ``json.loads`` output into :func:`validate`, so the guard must raise a
+    ``ValidationError`` (not crash later inside ``formdata_to_params`` /
+    ``params_to_formdata``).
+    """
+
+    # Schema modeled on what wt-compiler emits: no root ``type`` keyword.
+    SCHEMA_WITHOUT_ROOT_TYPE: dict = {
+        "title": "params",
+        "properties": PARAMS_SCHEMA["properties"],
+    }
+
+    @pytest.mark.parametrize(
+        "instance",
+        [
+            [],
+            ["not", "a", "dict"],
+            "string",
+            42,
+            None,
+            True,
+        ],
+    )
+    def test_non_dict_raises_validation_error(self, instance):
+        with pytest.raises(ValidationError) as exc_info:
+            validate(instance, self.SCHEMA_WITHOUT_ROOT_TYPE)
+        errors = exc_info.value.errors
+        assert len(errors) == 1
+        entry = errors[0]
+        assert entry["validator"] == "type"
+        assert "is not of type 'object'" in entry["message"]
+        assert entry["input"] == instance
+        # Shape stays consistent with jsonschema-sourced entries so wt-runner
+        # can serialize it through the same 422 envelope.
+        ValidationErrorItem(**entry)
+
+    def test_formdata_to_params_rejects_list_instance(self):
+        with pytest.raises(ValidationError):
+            formdata_to_params([], RJSF_SCHEMA, PARAMS_SCHEMA)  # type: ignore[arg-type]
+
+    def test_params_to_formdata_rejects_string_instance(self):
+        with pytest.raises(ValidationError):
+            params_to_formdata("oops", RJSF_SCHEMA, PARAMS_SCHEMA)  # type: ignore[arg-type]

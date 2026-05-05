@@ -119,18 +119,36 @@ def _serialize_errors(
     ]
 
 
-def validate(instance: dict[str, Any], schema: dict[str, Any]) -> None:
+def validate(instance: Any, schema: dict[str, Any]) -> None:
     """Validate ``instance`` against ``schema`` using JSON Schema Draft 2020-12.
 
     Args:
-        instance: The dict to validate.
+        instance: The value to validate. Callers (e.g. the compiled CLI that
+            pipes ``json.loads`` output straight in) may pass non-dict values;
+            since wt-compiler-emitted schemas omit a root ``"type": "object"``,
+            an explicit ``isinstance`` check guards downstream consumers
+            (``formdata_to_params`` / ``params_to_formdata``) that assume a
+            mapping.
         schema: The JSON schema to validate against.
 
     Raises:
-        ValidationError: If ``instance`` does not validate against ``schema``.
-            The exception's ``errors`` attribute contains a list of serialized
-            validation errors with stable, JSON-serializable shape.
+        ValidationError: If ``instance`` is not a dict, or does not validate
+            against ``schema``. The exception's ``errors`` attribute contains
+            a list of serialized validation errors with stable,
+            JSON-serializable shape.
     """
+    if not isinstance(instance, dict):
+        raise ValidationError(
+            [
+                {
+                    "message": f"{instance!r} is not of type 'object'",
+                    "path": [],
+                    "schema_path": ["type"],
+                    "validator": "type",
+                    "input": instance,
+                }
+            ]
+        )
     validator = jsonschema.Draft202012Validator(schema)
     errors = sorted(validator.iter_errors(instance), key=lambda e: list(e.absolute_path))
     if errors:
