@@ -96,9 +96,60 @@ class TestFormdataToParams:
         assert "input" in errors[0]
 
 
+class TestFormdataInvariant:
+    """Pin the two-level group invariant of ``formdata_to_params``.
+
+    The rjsf schema model is strictly two-level: a top-level key is either a
+    flat task ID or a group of flat task IDs. Groups never contain groups.
+    Inner-key membership is guaranteed by the preceding ``validate()`` call,
+    so ``formdata_to_params`` does not need to (and does not) recurse.
+    """
+
+    def test_grouped_formdata_inner_keys_flatten_one_level(self):
+        formdata = {
+            "Data": {
+                "fetch_data": {"since": "2024-01-01"},
+                "summarize": {"name": "team-A"},
+            },
+            "render": {"title": "Report"},
+        }
+        flat = formdata_to_params(formdata, RJSF_SCHEMA, PARAMS_SCHEMA)
+        # All inner keys land at the top level; group name "Data" disappears.
+        assert set(flat.keys()) == {"fetch_data", "summarize", "render"}
+        assert flat["fetch_data"] == {"since": "2024-01-01"}
+        assert flat["summarize"] == {"name": "team-A"}
+
+
 class TestParamsToFormdata:
     def test_flat_to_grouped(self):
         assert params_to_formdata(VALID_PARAMS, RJSF_SCHEMA, PARAMS_SCHEMA) == VALID_FORMDATA
+
+    def test_direct_task_without_nested_properties_passes_through(self):
+        # A direct (ungrouped) rjsf entry with no ``properties`` dict is NOT
+        # detected as a group, so it lands at the top level via the
+        # direct-task branch (``k in rjsf_props and k not in task_groups``).
+        rjsf = {
+            "type": "object",
+            "properties": {
+                "grouped": {
+                    "type": "object",
+                    "properties": {"inner_task": {"type": "object"}},
+                },
+                "noop_task": {"type": "object"},  # no nested "properties"
+            },
+        }
+        params_schema = {
+            "type": "object",
+            "properties": {
+                "inner_task": {"type": "object"},
+                "noop_task": {"type": "object"},
+            },
+        }
+        params = {"inner_task": {}, "noop_task": {}}
+        assert params_to_formdata(params, rjsf, params_schema) == {
+            "noop_task": {},
+            "grouped": {"inner_task": {}},
+        }
 
     def test_invalid_params_raises(self):
         bad = {"fetch_data": {"since": 42}, "summarize": {"name": "x"}, "render": {}}

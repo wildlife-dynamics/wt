@@ -16,7 +16,7 @@ group membership is inferred from schema structure alone.
 
 from typing import Any, TypedDict
 
-import jsonschema  # type: ignore[import-untyped]
+import jsonschema
 from pydantic import BaseModel, Field
 
 
@@ -47,15 +47,19 @@ class ValidationErrorItem(BaseModel):
 
     Example:
         Validating ``{"age": "old"}`` against a schema that requires
-        ``{"age": {"type": "integer"}}`` produces a single error of the form::
+        ``{"age": {"type": "integer"}}`` produces a single error:
 
-            {
-                "message": "'old' is not of type 'integer'",
-                "path": ["age"],
-                "schema_path": ["properties", "age", "type"],
-                "validator": "type",
-                "input": "old",
-            }
+        >>> from wt_contracts import ValidationError, validate
+        >>> try:
+        ...     validate({"age": "old"}, {"properties": {"age": {"type": "integer"}}})
+        ... except ValidationError as e:
+        ...     err = e.errors[0]
+        >>> err["message"]
+        "'old' is not of type 'integer'"
+        >>> err["path"], err["schema_path"]
+        (['age'], ['properties', 'age', 'type'])
+        >>> err["validator"], err["input"]
+        ('type', 'old')
     """
 
     message: str = Field(description="Human-readable description of why validation failed.")
@@ -112,7 +116,7 @@ def _serialize_errors(
             "message": e.message,
             "path": list(e.absolute_path),
             "schema_path": list(e.absolute_schema_path),
-            "validator": e.validator,
+            "validator": e.validator if isinstance(e.validator, str) else "",
             "input": e.instance,
         }
         for e in errors
@@ -185,6 +189,8 @@ def formdata_to_params(
         if k in flat_keys:
             out[k] = v
         else:
+            # rjsf schema groups are flat: inner keys are validated as task IDs
+            # by the preceding validate() call, so no recursion is needed.
             for inner_k, inner_v in v.items():
                 out[inner_k] = inner_v
     return out

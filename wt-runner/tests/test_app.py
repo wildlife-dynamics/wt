@@ -246,8 +246,10 @@ async def test_convert_success():
 
 @pytest.mark.asyncio
 async def test_convert_validation_error_envelope():
-    """Test ``{"validation_errors": [...]}`` envelope raises _ConvertValidationError."""
-    from wt_runner.app import _convert, _ConvertValidationError
+    """Test ``{"validation_errors": [...]}`` envelope raises ValidationError."""
+    from wt_contracts import ValidationError
+
+    from wt_runner.app import _convert
 
     payload = {
         "validation_errors": [
@@ -257,7 +259,7 @@ async def test_convert_validation_error_envelope():
     mock_invoker = AsyncMock()
     mock_invoker.check_output = AsyncMock(return_value=json.dumps(payload))
 
-    with pytest.raises(_ConvertValidationError) as exc_info:
+    with pytest.raises(ValidationError) as exc_info:
         await _convert("formdata", "params", '{"input": "data"}', mock_invoker)
     assert exc_info.value.errors == payload["validation_errors"]
 

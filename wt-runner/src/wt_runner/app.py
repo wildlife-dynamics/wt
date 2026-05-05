@@ -32,7 +32,7 @@ from fastapi.responses import JSONResponse
 from opentelemetry import trace as otel_trace
 from pydantic import BaseModel, Field, SecretStr
 from rattler import MatchSpec
-from wt_contracts import ValidationErrorResponse
+from wt_contracts import ValidationError, ValidationErrorResponse
 from wt_invokers import (
     AbstractInvoker,
     CloudBatchInvoker,
@@ -657,18 +657,6 @@ async def data_connection_property_names(
     return await _get_metadata_attribute("data-connection-property-names", invoker)
 
 
-class _ConvertValidationError(Exception):
-    """Raised when the compiled CLI's ``convert`` returns ``validation_errors``.
-
-    Attributes:
-        errors: List of jsonschema-native error dicts emitted by the CLI.
-    """
-
-    def __init__(self, errors: list[dict[str, Any]]):
-        self.errors = errors
-        super().__init__(f"{len(errors)} validation error(s)")
-
-
 async def _convert(
     from_: str,
     to: str,
@@ -692,7 +680,7 @@ async def _convert(
 
     Raises:
         RuntimeError: If conversion or parsing fails.
-        _ConvertValidationError: If the CLI returned ``validation_errors``.
+        ValidationError: If the CLI returned ``validation_errors``.
     """
     cmd = f"convert --from {from_} --to {to}"
     out = await invoker.check_output(cmd.split(), stdin=json_)
@@ -703,7 +691,7 @@ async def _convert(
     except json.JSONDecodeError as e:
         raise RuntimeError(f"Failed to parse convert envelope from str: {out}") from e
     if "validation_errors" in envelope:
-        raise _ConvertValidationError(errors=envelope["validation_errors"])
+        raise ValidationError(errors=envelope["validation_errors"])
     if "result" in envelope:
         result: dict[str, Any] = envelope["result"]
         return result
@@ -738,7 +726,7 @@ async def validate_formdata(
             json_=json.dumps(formdata),
             invoker=invoker,
         )
-    except _ConvertValidationError as e:
+    except ValidationError as e:
         raise HTTPException(status_code=422, detail=e.errors) from e
 
 
@@ -770,5 +758,5 @@ async def generate_nested_params(
             json_=json.dumps(params),
             invoker=invoker,
         )
-    except _ConvertValidationError as e:
+    except ValidationError as e:
         raise HTTPException(status_code=422, detail=e.errors) from e

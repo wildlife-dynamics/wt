@@ -886,4 +886,5 @@ dev = [
     { name = "pytest", specifier = ">=7.0.0" },
     { name = "pytest-cov", specifier = ">=4.0.0" },
     { name = "ruff", specifier = ">=0.1.0" },
+    { name = "types-jsonschema" },
 ]
