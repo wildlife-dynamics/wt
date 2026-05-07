@@ -184,9 +184,9 @@ def test_is_422_with_valid_error():
 
 def test_is_422_with_invalid_data():
     """Test _is_422 returns False for non-error data."""
-    assert _is_422([{"result": "success"}]) == False
-    assert _is_422({"error": "message"}) == False
-    assert _is_422([]) == False
+    assert not _is_422([{"result": "success"}])
+    assert not _is_422({"error": "message"})
+    assert not _is_422([])
 
 
 @pytest.mark.asyncio

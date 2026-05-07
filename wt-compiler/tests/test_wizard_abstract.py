@@ -1,18 +1,22 @@
 """Tests for AbstractWizardProvider ABC conformance and generator mechanics."""
+# ruff: noqa: SIM117  # nested with-blocks read clearer here
 
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
+import contextlib
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
-
 from conftest import drive_wizard
 
 import wt_compiler.wizard.abstract as abstract_mod
 from wt_compiler.wizard.abstract import AbstractWizardProvider, WizardQuestion
 from wt_compiler.wizard.default import DefaultWizardProvider, non_empty_str, workflow_id_type
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class TestABCConformance:
@@ -43,7 +47,7 @@ class TestGeneratorMechanics:
     def test_argparse_compatibility(self) -> None:
         """For each yielded question, argparse kwargs can be passed to add_argument."""
         provider = DefaultWizardProvider()
-        gen = provider.input_generator()
+        provider.input_generator()
         # Collect all questions by driving through with valid answers
         valid_answers = [
             "my_workflow",  # workflow_id
@@ -149,10 +153,8 @@ class TestGeneratorMechanics:
         gen = provider.input_generator()
         next(gen)
         # Send None — should not call type callable, should use default
-        try:
+        with contextlib.suppress(StopIteration):
             gen.send(None)
-        except StopIteration:
-            pass
         assert provider.answers["optional_field"] == "fallback"
 
 

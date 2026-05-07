@@ -73,6 +73,14 @@ GCP metapackages are minimal — they contain only a `pyproject.toml` declaring 
 - **No circular dependencies**: wt-contracts is the foundation; all other packages depend on it
 - **Pydantic v2**: All packages use Pydantic for data validation and JSON schema generation
 
+### Lint configuration
+
+Each package's `[tool.ruff.lint]` block in `pyproject.toml` is the source
+of truth for ruff rules. All packages share an identical rule set —
+modulo a small number of preserved package-specific per-file-ignores for
+non-standard test layouts and example/demo code. When adding or changing
+a rule, update every package's `pyproject.toml` to keep the set uniform.
+
 ## Core Principles
 
 ### 1. Always Write and Run Unit Tests
@@ -122,6 +130,9 @@ def test_register_valid_function():
 
 **All functions must have complete type annotations.**
 
+Enforced by ruff via the `ANN` rule family. Missing annotations will fail
+lint, not just review.
+
 This is especially critical for wt-registry since we rely on type information to generate JSON schemas.
 
 - Annotate all function parameters
@@ -153,6 +164,10 @@ def get_registry():  # Missing return type
 ### 3. Write Docstrings with Examples
 
 **Every public function, class, and module must have a docstring.**
+
+Enforced by ruff via the `D` (pydocstyle) rule family with
+`convention = "google"`. Public modules, classes, and functions require
+docstrings; tests are exempt via per-file-ignores.
 
 - Use Google-style or NumPy-style docstrings
 - Include a brief summary (one line)
@@ -239,9 +254,11 @@ uv run pytest --doctest-modules
 
 ### Code Quality Tools
 
-- **Type checking**: Run `uv run mypy src/wt_registry` before committing
-- **Linting**: Run `uv run ruff check src/wt_registry` to catch issues
-- **Formatting**: Use `uv run ruff format src/wt_registry` for consistent style
+Run these from each package's root directory:
+
+- **Type checking**: `uv run mypy .` before committing
+- **Linting**: `uv run ruff check .` to catch issues
+- **Formatting**: `uv run ruff format .` for consistent style
 
 ### Error Messages
 
@@ -332,6 +349,14 @@ on the same line as the import:
 If you cannot articulate a clear justification, the rule must be
 followed — hoist the import to the top of the module. "It was already
 written this way" is not a justification.
+
+### Type annotations and docstrings are lint-enforced
+
+Every package's `pyproject.toml` enables `ANN` and `D` in
+`extend-select`. Public functions need full type annotations and a
+Google-style docstring. The standard test-file exemption
+(`"tests/**/*.py" = ["D", "S101", "ANN", "ARG", "PT011"]`) means
+tests do *not* need either — don't add them retroactively.
 
 ### Make only the edits the prompt or plan requires
 

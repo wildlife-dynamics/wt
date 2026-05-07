@@ -3,7 +3,7 @@
 import tempfile
 import warnings
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pydot
 import pytest

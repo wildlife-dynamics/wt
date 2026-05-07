@@ -1,4 +1,5 @@
 """Tests for discovery.py and its integration with compiler.py."""
+# ruff: noqa: SIM105, S110, BLE001, S108  # cleanup blocks tolerate any error; /tmp paths are test data
 
 import errno
 import json
@@ -253,7 +254,7 @@ class TestCompileWorkflowFromYaml:
         """Test that compile_workflow_from_yaml triggers discovery."""
         # This is an integration test that would require mocking
         # the entire discovery chain
-        pass  # Placeholder for full integration test
+        # Placeholder for full integration test
 
     @pytest.mark.asyncio
     async def test_compile_workflow_from_yaml_invalid_path(self):
@@ -622,14 +623,12 @@ class TestDiscoveryIntegration:
     async def test_end_to_end_discovery(self):
         """Test full discovery with real environment creation."""
         # Would test with real wt-registry installation
-        pass
 
     @pytest.mark.asyncio
     @pytest.mark.skip(reason="Requires wt-registry installed in environment")
     async def test_end_to_end_compilation(self, tmp_path):
         """Test full compilation from YAML with real discovery."""
         # Would test the complete compile_workflow_from_yaml flow
-        pass
 
 
 class TestCreateEnvironmentRetry:

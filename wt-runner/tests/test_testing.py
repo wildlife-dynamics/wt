@@ -1,4 +1,5 @@
 """Tests for wt_runner.testing module."""
+# ruff: noqa: S108  # /tmp paths are test data, not real filesystem operations
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch

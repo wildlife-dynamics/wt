@@ -1,4 +1,5 @@
 """Tests for CLI compatibility — interactive input() loop and static argparse flags."""
+# ruff: noqa: SIM117, SIM105  # nested with-blocks read clearer here; try/except/pass deliberate
 
 from __future__ import annotations
 
@@ -7,8 +8,6 @@ from typing import cast
 from unittest.mock import patch
 
 import pytest
-
-from conftest import drive_wizard
 
 from wt_compiler.wizard.abstract import (
     AbstractWizardProvider,
@@ -174,7 +173,7 @@ class TestStaticBatchMode:
                 # requirements question has its own argparse dict with custom type
                 parser.add_argument(
                     f"--{dest.replace('_', '-')}",
-                    **cast(SingleWizardQuestion, q)["argparse"],
+                    **cast("SingleWizardQuestion", q)["argparse"],
                 )
             else:
                 parser.add_argument(
@@ -191,7 +190,7 @@ class TestStaticBatchMode:
                 # Use the custom argparse dict (includes _requirements_batch_type)
                 parser.add_argument(
                     f"--{dest.replace('_', '-')}",
-                    **cast(SingleWizardQuestion, q)["argparse"],
+                    **cast("SingleWizardQuestion", q)["argparse"],
                 )
             else:
                 parser.add_argument(
@@ -236,7 +235,7 @@ class TestStaticBatchMode:
             if "questions" in q:
                 parser.add_argument(
                     f"--{dest.replace('_', '-')}",
-                    **cast(SingleWizardQuestion, q)["argparse"],
+                    **cast("SingleWizardQuestion", q)["argparse"],
                 )
             else:
                 parser.add_argument(
@@ -295,7 +294,7 @@ class TestStaticBatchMode:
         )
         assert "questions" in loop_q
 
-        batch_type = cast(SingleWizardQuestion, loop_q)["argparse"].get("type")
+        batch_type = cast("SingleWizardQuestion", loop_q)["argparse"].get("type")
         assert batch_type is _requirements_batch_type
 
         # Valid conda JSON

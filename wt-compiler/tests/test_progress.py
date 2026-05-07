@@ -1,14 +1,21 @@
 """Tests for the progress spinner module."""
+# ruff: noqa: SIM117  # nested with-blocks read clearer here
 
+import contextlib
 import io
 import os
-import pathlib
 import sys
 import time
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 from wt_compiler.cli import main
 from wt_compiler.progress import NullSpinner, Spinner, _StderrCapture, spinner
+
+if TYPE_CHECKING:
+    import pathlib
+
+    import pytest
 
 
 class TestSpinner:
@@ -115,10 +122,8 @@ class TestCliNoProgressFlag:
         """Test that --no-progress appears in compile help output."""
 
         with patch.object(sys, "argv", ["wt-compiler", "compile", "--help"]):
-            try:
+            with contextlib.suppress(SystemExit):
                 main()
-            except SystemExit:
-                pass
 
         captured = capsys.readouterr()
         assert "--no-progress" in captured.out
@@ -138,11 +143,10 @@ class TestCliNoProgressFlag:
             sys,
             "argv",
             ["wt-compiler", "compile", "--spec", str(spec_file), "--no-progress"],
-        ):
-            with patch(
-                "wt_compiler.cli.compile_workflow_from_yaml", return_value=mock_artifacts
-            ) as mock_compile:
-                main()
+        ), patch(
+            "wt_compiler.cli.compile_workflow_from_yaml", return_value=mock_artifacts
+        ) as mock_compile:
+            main()
 
         mock_compile.assert_called_once_with(
             str(spec_file.resolve()), progress=False, pkg_name_prefix="wt", results_env_var="WT_RESULTS"
@@ -206,7 +210,7 @@ class TestStderrCapture:
         """Test that fd 2 is properly restored after capture."""
         capture = _StderrCapture()
         capture.start()
-        captured = capture.stop()
+        capture.stop()
         capture.close_terminal_file()
         # fd 2 should work normally again — no exception
         os.write(2, b"after restore\n")
@@ -240,7 +244,7 @@ class TestSpinnerStderrCapture:
     def test_no_capture_when_disabled(self) -> None:
         """Test that capture_stderr=False skips capture."""
         buf = io.StringIO()
-        with Spinner("test", file=buf, capture_stderr=False) as sp:
+        with Spinner("test", file=buf, capture_stderr=False):
             time.sleep(0.1)
         output = buf.getvalue()
         assert "test" in output

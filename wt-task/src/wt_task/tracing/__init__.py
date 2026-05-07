@@ -15,8 +15,8 @@ from ._config import (
 from ._decorator import with_tracing
 
 __all__ = [
-    "OtelExporterChoice",
     "OTelConsoleExporterDst",
+    "OtelExporterChoice",
     "attach_context",
     "configure_tracer",
     "make_otel_console_exporter_file_dst_kws",

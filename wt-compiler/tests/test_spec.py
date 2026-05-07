@@ -944,7 +944,7 @@ class TestSpec:
         # For now, we'll test basic YAML parsing
 
         yaml = ruamel.yaml.YAML(typ="safe")
-        with open(fixture_path) as f:
+        with fixture_path.open() as f:
             data = yaml.load(f)
 
         assert data["id"] == "test-workflow"
@@ -956,14 +956,6 @@ class TestSpec:
         # Create a minimal spec
 
         # We'll create a simple spec manually
-        spec_data = {
-            "id": "test-spec",
-            "name": "Test",
-            "description": "Test spec",
-            "requirements": ["package>=1.0"],
-            "channels": ["conda-forge"],
-            "workflow": [],
-        }
 
         # The sha256 should be deterministic
         # We can't easily test this without full Spec instantiation
@@ -982,7 +974,6 @@ class TestTaskInstanceDependencies:
         """Test parsing variable references like ${{ workflow.task1.return }}."""
         # This is tested implicitly through TaskInstance.all_dependencies_dict
         # The Spec model handles this parsing
-        pass
 
 
 if __name__ == "__main__":

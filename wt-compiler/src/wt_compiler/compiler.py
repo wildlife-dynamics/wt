@@ -76,7 +76,7 @@ TEMPLATES = pathlib.Path(__file__).parent / "templates"
 
 def _remove_functionally_irrelevant_keys(
     data: dict[str, Any] | list[Any],
-) -> dict[str, Any] | list[Any] | Any:
+) -> dict[str, Any] | list[Any] | Any:  # noqa: ANN401  # recursive structure walks through any leaf
     """Remove keys from JSON schema that are irrelevant to fingerprinting.
 
     This removes documentation-related keys like title, description, default, and uiSchema
@@ -102,10 +102,9 @@ def _remove_functionally_irrelevant_keys(
             for key, value in data.items()
             if key not in {"title", "description", "default", "uiSchema"}
         }
-    elif isinstance(data, list):
+    if isinstance(data, list):
         return [_remove_functionally_irrelevant_keys(item) for item in data]
-    else:
-        return data
+    return data
 
 
 def _build_installed_requirements(
@@ -227,7 +226,7 @@ class DagCompiler(BaseModel):
     pkg_name_prefix: str = "wt"
     results_env_var: str = "WT_RESULTS"
 
-    def get_dag_config(self, dag_type: DagTypes, mock_io: bool) -> dict[str, Any]:
+    def get_dag_config(self, dag_type: DagTypes, mock_io: bool) -> dict[str, Any]:  # noqa: ARG002  # subclasses dispatch on dag_type
         """Get configuration dict for rendering a DAG.
 
         Args:
@@ -255,7 +254,7 @@ class DagCompiler(BaseModel):
             Mapping of task ID to list of argument names to omit
         """
         return {
-            t.id: (["return"] + list(t.partial) + list(t.map.argnames) + list(t.mapvalues.argnames))
+            t.id: (["return", *list(t.partial), *list(t.map.argnames), *list(t.mapvalues.argnames)])
             for t in self.spec.flat_workflow
         }
 
@@ -276,11 +275,11 @@ class DagCompiler(BaseModel):
         props = {t.id: t.known_task.parameters_jsonschema(omit_args=omit_args)}
         defs: dict[str, Any] = {}
 
-        for _, schema in props.items():
+        for schema in props.values():
             schema["title"] = t.name
             if "$defs" in schema:
                 # bc we've omitted some args, some defs may be unused, so exclude them
-                assert isinstance(schema["$defs"], dict)
+                assert isinstance(schema["$defs"], dict)  # noqa: S101  # type narrowing for mypy
                 referenced_defs = find_referenced_defs(schema)
                 defs.update({k: v for k, v in schema["$defs"].items() if k in referenced_defs})
                 del schema["$defs"]
@@ -331,7 +330,7 @@ class DagCompiler(BaseModel):
         """
         properties: dict[str, Any] = {}
         definitions: dict[str, Any] = {}
-        uiSchema: dict[str, Any] = {}
+        uiSchema: dict[str, Any] = {}  # noqa: N806  # JSON Schema field name is camelCase
 
         if flat:
             # Flat structure - all tasks at top level
@@ -374,14 +373,12 @@ class DagCompiler(BaseModel):
         uiSchema["ui:order"] = list(properties)
 
         # Create base configuration
-        config = ReactJSONSchemaFormConfiguration(
+        return ReactJSONSchemaFormConfiguration(
             title=None,
             properties=properties,
             uiSchema=uiSchema,
             **{"$defs": definitions},  # type: ignore[arg-type]
         )
-
-        return config
 
     def get_params_fillable_yaml(self) -> str:
         """Generate a fillable YAML template for parameters.
@@ -434,8 +431,8 @@ class DagCompiler(BaseModel):
             channels.append(self.wt_runner_channel)
         # Always add standard channels at the end
         # Note: name can be None for custom channels but not for these standard channels
-        assert CONDA_FORGE_CHANNEL.name is not None
-        assert MICROSOFT_CHANNEL.name is not None
+        assert CONDA_FORGE_CHANNEL.name is not None  # noqa: S101  # type narrowing for mypy
+        assert MICROSOFT_CHANNEL.name is not None  # noqa: S101  # type narrowing for mypy
         channels += [RELEASE_CHANNEL.base_url, CONDA_FORGE_CHANNEL.name, MICROSOFT_CHANNEL.name]
 
         # 2. Build workspace with dynamic channels
@@ -565,7 +562,7 @@ class DagCompiler(BaseModel):
         python_dep = NamelessMatchSpec.from_match_spec(MatchSpec("conda-forge::python >=3.10,<4.0"))
         feature_map = {"runner": runner_feature, "test": test_feature}
 
-        for _, env in environments.items():
+        for env in environments.values():
             if env.no_default_feature:
                 env_conda: dict[str, NamelessMatchSpec] = {}
                 env_pypi: dict[str, str | dict[str, Any]] = {}
@@ -645,9 +642,9 @@ class DagCompiler(BaseModel):
             Formatted Python code for the DAG
         """
         loader = FileSystemLoader(self.jinja_templates_dir / "pkg" / "dags")
-        env = Environment(loader=loader)
+        env = Environment(loader=loader)  # noqa: S701  # rendering Python code, not HTML
         template = env.get_template(f"run_{dag_type}.jinja2")
-        testing = True if mock_io else False
+        testing = bool(mock_io)
         return template.render(
             self.get_dag_config(dag_type, mock_io=mock_io) | {"testing": testing}
         )
@@ -694,7 +691,7 @@ class DagCompiler(BaseModel):
         return model
 
     @ruff_formatted
-    def ruffrender(self, template: str, **kws: Any) -> str:
+    def ruffrender(self, template: str, **kws: Any) -> str:  # noqa: ANN401  # template kwargs are dynamic
         """Render a template and format with ruff.
 
         Args:
@@ -704,14 +701,14 @@ class DagCompiler(BaseModel):
         Returns:
             Formatted rendered template
         """
-        env = Environment(
+        env = Environment(  # noqa: S701  # rendering Python code, not HTML
             loader=FileSystemLoader(self.jinja_templates_dir),
             keep_trailing_newline=True,
         )
         tmpl = env.get_template(template)
         return tmpl.render(file_header=self.file_header, **kws)
 
-    def plainrender(self, template: str, **kws: Any) -> str:
+    def plainrender(self, template: str, **kws: Any) -> str:  # noqa: ANN401  # template kwargs are dynamic
         """Render a template without formatting.
 
         Args:
@@ -721,7 +718,7 @@ class DagCompiler(BaseModel):
         Returns:
             Rendered template (unformatted)
         """
-        env = Environment(
+        env = Environment(  # noqa: S701  # rendering Python code, not HTML
             loader=FileSystemLoader(self.jinja_templates_dir),
             keep_trailing_newline=True,
         )
@@ -815,7 +812,7 @@ class DagCompiler(BaseModel):
         params_mod = params_schema_flat.model_copy(update={"title": "Params"})
         formdata_mod = params_schema_hierarchical.model_copy(update={"title": "FormData"})
 
-        def _mdump(j: Any) -> dict[str, Any]:
+        def _mdump(j: Any) -> dict[str, Any]:  # noqa: ANN401  # accepts any pydantic model
             result: dict[str, Any] = j.model_dump(by_alias=True, exclude_none=True)
             return result
 
@@ -935,7 +932,7 @@ def compile_workflow(
     wt_pypi_deps: dict[str, str | dict[str, Any]] | None = None,
     installed_requirements: list[SpecRequirement] | None = None,
     on_progress: Callable[[str], None] | None = None,
-    **compiler_kwargs: Any,
+    **compiler_kwargs: Any,  # noqa: ANN401  # forwarded to DagCompiler subclasses
 ) -> WorkflowArtifacts:
     """Compile a workflow from a validated Spec.
 
@@ -1006,7 +1003,7 @@ def _parse_requirements_from_yaml(yaml_path: Path) -> ParsedRequirements:
         FileNotFoundError: If yaml_path doesn't exist
         ValueError: If requirements section is missing or invalid
     """
-    with open(yaml_path) as f:
+    with yaml_path.open() as f:
         data = yaml.load(f)
 
     if "requirements" not in data:
@@ -1030,7 +1027,7 @@ def _parse_requirements_from_yaml(yaml_path: Path) -> ParsedRequirements:
 async def compile_workflow_from_yaml(
     yaml_path: str | Path,
     progress: bool = True,
-    **compiler_kwargs: Any,
+    **compiler_kwargs: Any,  # noqa: ANN401  # forwarded to DagCompiler subclasses
 ) -> WorkflowArtifacts:
     """Compile a workflow from a spec.yaml file with automatic task discovery.
 
@@ -1132,7 +1129,7 @@ async def compile_workflow_from_yaml(
 
         # Phase 3: Now we can safely validate the full Spec
         sp.update("Validating spec...")
-        with open(yaml_path) as f:
+        with yaml_path.open() as f:  # noqa: ASYNC230  # spec is a small local file
             data = yaml.load(f)
         spec = Spec.model_validate(data)
 

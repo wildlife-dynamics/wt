@@ -20,9 +20,9 @@ except ImportError:
     __version__ = "0.0.0.dev0"
 
 __all__ = [
+    "RegistryEntry",
     # Registry contracts
     "RegistryMetadata",
-    "RegistryEntry",
     "RegistryOutput",
     # Task protocol
     "TaskProtocol",

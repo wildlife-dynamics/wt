@@ -23,12 +23,14 @@ import argparse
 import datetime
 import json
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Generator
-from pathlib import Path
 from types import MappingProxyType
-from typing import Any, TypedDict, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, TypedDict, TypeGuard, cast
 
 import jinja2
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Generator
+    from pathlib import Path
 
 
 class ArgparseKwargs(TypedDict, total=False):
@@ -60,8 +62,7 @@ class WizardKwargs(TypedDict, total=False):
 
 
 class LoopContext(TypedDict):
-    """Metadata injected by the generator when yielding the first sub-question
-    of a loop iteration.
+    """Metadata injected by the generator when yielding a sub-question of a loop iteration.
 
     Renderers may inspect this to present loop-aware UX (e.g. "Add a …?" /
     "Add another …?" confirm prompts). Absent on non-loop questions and on
@@ -152,7 +153,7 @@ def with_condition(
         if _is_loop(q):
             result.append(WizardQuestionLoop(**q, condition=condition))
         else:
-            wiz = cast(SingleWizardQuestion, q)
+            wiz = cast("SingleWizardQuestion", q)
             result.append(
                 SingleWizardQuestion(
                     dest=wiz["dest"],
@@ -186,7 +187,7 @@ def _make_loop_type(
         if not isinstance(d, dict):
             raise argparse.ArgumentTypeError(f"Expected a JSON object (got {type(d).__name__})")
         for _sub_q in questions:
-            sq = cast(SingleWizardQuestion, _sub_q)
+            sq = cast("SingleWizardQuestion", _sub_q)
             dest = sq["dest"]
             if dest not in d:
                 default = sq.get("argparse", {}).get("default")
@@ -233,6 +234,7 @@ class AbstractWizardProvider(ABC):
     """
 
     def __init__(self) -> None:
+        """Initialise an empty answer dict."""
         self._answers: dict[str, Any] = {}
 
     @property
@@ -289,7 +291,7 @@ class AbstractWizardProvider(ABC):
             if not question["questions"]:
                 return []
             results: list[dict[str, Any]] = []
-            first_q = cast(SingleWizardQuestion, question["questions"][0])
+            first_q = cast("SingleWizardQuestion", question["questions"][0])
             # Protocol invariant: the first sub-question is the loop-termination
             # sentinel (empty answer = stop the loop).  It must never carry a
             # condition; use the WizardQuestionLoop's own ``condition`` key to
@@ -321,7 +323,7 @@ class AbstractWizardProvider(ABC):
                     if _is_loop(sub_q):
                         cond = sub_q.get("condition")
                     else:
-                        sq = cast(SingleWizardQuestion, sub_q)
+                        sq = cast("SingleWizardQuestion", sub_q)
                         cond = sq.get("wizard", {}).get("condition")
                     if cond and not cond(MappingProxyType(entry)):
                         continue  # skip field; leave it absent from entry
@@ -345,7 +347,7 @@ class AbstractWizardProvider(ABC):
             return results
         else:
             # SingleWizardQuestion
-            single = cast(SingleWizardQuestion, question)
+            single = cast("SingleWizardQuestion", question)
             answer = yield single
             coerced = yield from self._validate_answer(single, answer)
             default = single.get("argparse", {}).get("default")
@@ -374,13 +376,15 @@ class AbstractWizardProvider(ABC):
             if _is_loop(question):
                 condition = question.get("condition")
             else:
-                condition = cast(SingleWizardQuestion, question).get("wizard", {}).get("condition")
+                condition = (
+                    cast("SingleWizardQuestion", question).get("wizard", {}).get("condition")
+                )
             if condition and not condition(self.answers):
                 continue
             result = yield from self._process_question(question)
             # Enforce argparse.choices for single questions in interactive mode
             if not _is_loop(question):
-                argparse_kwargs = cast(SingleWizardQuestion, question).get("argparse", {})
+                argparse_kwargs = cast("SingleWizardQuestion", question).get("argparse", {})
                 choices = argparse_kwargs.get("choices")
                 if choices is not None and result not in choices:
                     raise ValueError(
@@ -432,7 +436,7 @@ class AbstractWizardProvider(ABC):
                 "Ensure the 'templates/' directory is included in the package data."
             )
 
-        env = jinja2.Environment(
+        env = jinja2.Environment(  # noqa: S701  # rendering YAML, not HTML
             loader=jinja2.ChoiceLoader(loaders),
             keep_trailing_newline=True,
             trim_blocks=True,

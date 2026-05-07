@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import subprocess
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
-from conftest import PixiInstallResult, Workspace
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from conftest import PixiInstallResult, Workspace
 
 
 class TestGenerated:
@@ -31,8 +34,7 @@ class TestGenerated:
         pixi_installed_workspace: tuple[Workspace, PixiInstallResult],
         request: pytest.FixtureRequest,
     ) -> None:
-        """
-        Verify that pixi install succeeds in the generated package.
+        """Verify that pixi install succeeds in the generated package.
 
         This test ensures the generated pixi.toml is valid and dependencies
         can be resolved.
@@ -47,9 +49,7 @@ class TestGenerated:
 
         if not pixi_result.success:
             pytest.fail(
-                f"pixi install failed\n"
-                f"STDOUT:\n{pixi_result.stdout}\n"
-                f"STDERR:\n{pixi_result.stderr}"
+                f"pixi install failed\nSTDOUT:\n{pixi_result.stdout}\nSTDERR:\n{pixi_result.stderr}"
             )
 
     def test_generated_tests_pass(
@@ -58,8 +58,7 @@ class TestGenerated:
         test_cases: list[str],
         request: pytest.FixtureRequest,
     ) -> None:
-        """
-        Run pytest on the generated workflow tests for each test case.
+        """Run pytest on the generated workflow tests for each test case.
 
         This test executes the generated test suite to verify the workflow
         works correctly after recompilation.
@@ -76,10 +75,7 @@ class TestGenerated:
             pytest.skip("Compilation failed, skipping generated tests")
 
         if not pixi_result.success:
-            pytest.skip(
-                f"pixi install failed, cannot run tests\n"
-                f"STDERR:\n{pixi_result.stderr}"
-            )
+            pytest.skip(f"pixi install failed, cannot run tests\nSTDERR:\n{pixi_result.stderr}")
 
         generated_package_path = workspace.compile_result.generated_path
 
@@ -113,8 +109,7 @@ class TestGenerated:
                 for fc in failed_cases
             )
             pytest.fail(
-                f"{len(failed_cases)}/{len(test_cases)} test cases failed:\n\n"
-                f"{failure_report}"
+                f"{len(failed_cases)}/{len(test_cases)} test cases failed:\n\n{failure_report}"
             )
 
     def test_metadata_valid(
@@ -123,8 +118,7 @@ class TestGenerated:
         test_cases: list[str],
         request: pytest.FixtureRequest,
     ) -> None:
-        """
-        Run the generated metadata tests.
+        """Run the generated metadata tests.
 
         This test specifically runs test_metadata.py to verify workflow
         metadata is correctly generated.
@@ -139,8 +133,7 @@ class TestGenerated:
 
         if not pixi_result.success:
             pytest.skip(
-                f"pixi install failed, cannot run metadata tests\n"
-                f"STDERR:\n{pixi_result.stderr}"
+                f"pixi install failed, cannot run metadata tests\nSTDERR:\n{pixi_result.stderr}"
             )
 
         generated_package_path = workspace.compile_result.generated_path

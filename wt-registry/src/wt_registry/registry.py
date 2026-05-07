@@ -12,8 +12,7 @@ _GLOBAL_REGISTRY: dict[str, RegistryEntry] = {}
 
 
 def register_entry(entry: RegistryEntry) -> None:
-    """
-    Add an entry to the global registry.
+    """Add an entry to the global registry.
 
     Args:
         entry: The registry entry to add
@@ -54,8 +53,7 @@ def register_entry(entry: RegistryEntry) -> None:
 
 
 def get_registry() -> MappingProxyType[str, RegistryEntry]:
-    """
-    Return an immutable view of the global registry.
+    """Return an immutable view of the global registry.
 
     The returned MappingProxyType prevents external code from modifying
     the registry directly. Functions can only be added via register_entry().
@@ -97,8 +95,7 @@ def get_registry() -> MappingProxyType[str, RegistryEntry]:
 
 
 def clear_registry() -> None:
-    """
-    Clear all entries from the global registry.
+    """Clear all entries from the global registry.
 
     This function is primarily intended for testing purposes to ensure
     test isolation. In production code, you typically would not clear
@@ -128,8 +125,7 @@ def clear_registry() -> None:
 
 
 def to_json(pretty: bool = False) -> str:
-    """
-    Serialize the entire registry to a JSON string.
+    """Serialize the entire registry to a JSON string.
 
     The registry is serialized using Pydantic's model_dump(mode='json')
     to ensure proper JSON serialization of all fields.
@@ -184,5 +180,4 @@ def to_json(pretty: bool = False) -> str:
         registry_data[fqn] = data
     if pretty:
         return json.dumps(registry_data, indent=2)
-    else:
-        return json.dumps(registry_data, separators=(",", ":"))
+    return json.dumps(registry_data, separators=(",", ":"))

@@ -3,16 +3,14 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import jinja2
 import pytest
 import yaml
-
-from wt_compiler.requirements import CHANNELS, _serialize_channel
 from conftest import drive_wizard
 
-from wt_compiler.wizard.abstract import AbstractWizardProvider, SingleWizardQuestion
+from wt_compiler.requirements import CHANNELS
 from wt_compiler.wizard.default import (
     CHANNEL_CHOICES,
     REQ_TYPE_CHOICES,
@@ -21,10 +19,11 @@ from wt_compiler.wizard.default import (
     _git_url_type,
     _http_url_type,
     _requirements_batch_type,
-    non_empty_str,
-    requirement_version_type,
     workflow_id_type,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class TestWorkflowIdValidation:

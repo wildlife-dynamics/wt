@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from wt_compiler.wizard.abstract import AbstractWizardProvider
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from wt_compiler.wizard.abstract import AbstractWizardProvider
 
 
 def drive_wizard(

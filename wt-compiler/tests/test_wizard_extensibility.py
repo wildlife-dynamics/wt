@@ -1,27 +1,27 @@
 """Tests for wizard extensibility — overrides, conditional branching, custom providers."""
+# ruff: noqa: N806, S108  # local class names used as factories; /tmp paths are test data
 
 from __future__ import annotations
 
 import argparse
 import importlib
 import sys
-import tempfile
-from pathlib import Path
 from types import MappingProxyType
-from typing import Any
-
-import pytest
+from typing import TYPE_CHECKING, Any
 
 from conftest import drive_wizard
 
 from wt_compiler.wizard.abstract import (
     AbstractWizardProvider,
-    SingleWizardQuestion,
     WizardQuestion,
-    WizardQuestionLoop,
     with_condition,
 )
 from wt_compiler.wizard.default import DefaultWizardProvider, non_empty_str
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    import pytest
 
 
 class TestCustomProviderConformance:
@@ -292,7 +292,8 @@ class TestWithCondition:
 
     def test_with_condition_composes_branches(self) -> None:
         """with_condition() applies condition to both SingleWizardQuestion and WizardQuestionLoop."""
-        cond = lambda a: a.get("mode") == "advanced"
+        def cond(a):
+            return a.get("mode") == "advanced"
 
         single_q: WizardQuestion = {
             "dest": "detail",

@@ -5,8 +5,7 @@
 #     "wt-registry",
 # ]
 # ///
-"""
-Example: Deprecated Functions
+"""Example: Deprecated Functions.
 
 This example demonstrates how to mark functions as deprecated
 and provide migration messages to users.

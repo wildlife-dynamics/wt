@@ -6,7 +6,6 @@ returns Future objects.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
 
 try:
@@ -16,14 +15,20 @@ try:
 except ImportError:
     TRACING_AVAILABLE = False
 
+from typing import TYPE_CHECKING
+
 from .base import K, P, R, V, _Task
-from .executors import AsyncExecutor, Future, FutureSequence
 from .sync_task import (
     _create_kwargs_iterable,
     _create_mapvalues_kwargs_iterable,
     _get_defaults,
     _wrap_for_mapvalues,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from .executors import AsyncExecutor, Future, FutureSequence
 
 
 @dataclass(frozen=True)

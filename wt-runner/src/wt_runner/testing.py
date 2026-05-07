@@ -5,7 +5,6 @@ workflow test cases via either the FastAPI application or CLI.
 """
 
 import asyncio
-import os
 import traceback
 import uuid
 from dataclasses import dataclass
@@ -68,7 +67,9 @@ class CaseRunner:
     otel_console_exporter_dst: OTelConsoleExporterDst = "file"
 
     def run_app(
-        self, app: Any, data_connections_env_vars: dict[str, Any] | None = None
+        self,
+        app: Any,  # noqa: ANN401  # accepts any FastAPI-compatible ASGI app
+        data_connections_env_vars: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Run a single test case for a workflow via the FastAPI application.
 
@@ -93,7 +94,7 @@ class CaseRunner:
             headers["traceparent"] = self.traceparent
         with TestClient(app) as client:
             response = client.post("/", json=json_, params=query_params, headers=headers)
-            assert response.status_code == self.case.expected_status_code, (
+            assert response.status_code == self.case.expected_status_code, (  # noqa: S101  # test helper assertion is the failure signal
                 f"Test failed with {response.status_code = }, "
                 f"which differs from {self.case.expected_status_code = }; "
                 f"{response.text =}"
@@ -110,7 +111,7 @@ class CaseRunner:
         Returns:
             Results dictionary.
         """
-        invoker = LocalSubprocessInvoker(matchspec=matchspec, cwd=os.getcwd())
+        invoker = LocalSubprocessInvoker(matchspec=matchspec, cwd=str(Path.cwd()))
         yaml = ruamel.yaml.YAML(typ="safe")
         config_text_stream = StringIO()
         yaml.dump(self.case.params, config_text_stream)
@@ -129,7 +130,7 @@ class CaseRunner:
                 )
                 await invoker.wait(timeout=300)
                 result = await get_results_json(self.results_subdir.as_uri())
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001  # surface any error in the test result for diagnosis
                 trace = traceback.format_exc()
                 result = {"error": str(e), "trace": trace}
 

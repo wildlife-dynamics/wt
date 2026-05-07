@@ -16,8 +16,7 @@ __all__ = ["RegistryEntry", "RegistryMetadata"]
 
 
 class RegistryEntry(BaseModel):
-    """
-    Complete registry entry for a registered function.
+    """Complete registry entry for a registered function.
 
     This model represents a complete entry in the global registry, combining
     user-provided metadata with auto-detected information. The JSON schema
@@ -62,8 +61,7 @@ class RegistryEntry(BaseModel):
 
     @property
     def json_schema(self) -> dict[str, Any]:
-        """
-        Generate JSON schema for the function.
+        """Generate JSON schema for the function.
 
         The schema is generated fresh on every access (no caching) by:
         1. Validating the function signature (raises ValidationError if invalid)
@@ -135,8 +133,7 @@ class RegistryEntry(BaseModel):
 
     @property
     def fully_qualified_name(self) -> str:
-        """
-        Generate fully qualified name: 'module_path.function_name'.
+        """Generate fully qualified name: 'module_path.function_name'.
 
         Returns:
             The fully qualified name of the function
@@ -158,8 +155,7 @@ class RegistryEntry(BaseModel):
 
     @property
     def import_statement(self) -> str:
-        """
-        Generate import statement: 'from module_path import function_name'.
+        """Generate import statement: 'from module_path import function_name'.
 
         Returns:
             A Python import statement for this function

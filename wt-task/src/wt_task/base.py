@@ -9,7 +9,6 @@ from __future__ import annotations
 import functools
 import sys
 import warnings
-from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Generic, Literal, ParamSpec, TypeVar, overload
 
@@ -19,6 +18,8 @@ else:
     from typing_extensions import Self
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from .async_task import AsyncTask
     from .sync_task import SyncTask
 

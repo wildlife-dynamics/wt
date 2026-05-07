@@ -1,7 +1,7 @@
 """Tests for wt_compiler.requirements module."""
+# ruff: noqa: S108  # /tmp paths are test data
 
 import importlib
-import os
 
 import pytest
 

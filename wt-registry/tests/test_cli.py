@@ -1,4 +1,5 @@
 """Tests for CLI functionality."""
+# ruff: noqa: SIM117  # nested with-blocks read clearer here
 
 import importlib
 import json
@@ -554,13 +555,15 @@ class TestDiscoverPublicPaths:
         mock_module = types.SimpleNamespace(__name__="pkg.tasks", my_func=my_func)
 
 
-        with patch.object(importlib, "import_module", return_value=mock_module):
-            with patch.object(
+        with (
+            patch.object(importlib, "import_module", return_value=mock_module),
+            patch.object(
                 cli_module,
                 "getmembers",
                 return_value=[("my_func", my_func)],
-            ):
-                public_paths = discover_public_paths(registry, ["pkg.tasks"])
+            ),
+        ):
+            public_paths = discover_public_paths(registry, ["pkg.tasks"])
 
         # Should find the public path
         assert ("pkg.tasks._internal", "my_func") in public_paths
@@ -589,9 +592,11 @@ class TestDiscoverPublicPaths:
         mock_module = types.SimpleNamespace(__name__="pkg.tasks")
 
 
-        with patch.object(importlib, "import_module", return_value=mock_module):
-            with patch.object(cli_module, "getmembers", return_value=[]):
-                public_paths = discover_public_paths(registry, ["pkg.tasks"])
+        with (
+            patch.object(importlib, "import_module", return_value=mock_module),
+            patch.object(cli_module, "getmembers", return_value=[]),
+        ):
+            public_paths = discover_public_paths(registry, ["pkg.tasks"])
 
         # Should not find any public path
         assert ("pkg.tasks._internal", "my_func") not in public_paths
@@ -693,20 +698,22 @@ class TestSerializeEntriesPublicPaths:
         mock_module = types.SimpleNamespace(__name__="pkg.tasks", my_func=my_func)
 
 
-        with patch.object(importlib, "import_module", return_value=mock_module):
-            with patch.object(
+        with (
+            patch.object(importlib, "import_module", return_value=mock_module),
+            patch.object(
                 cli_module,
                 "getmembers",
                 return_value=[("my_func", my_func)],
-            ):
-                output = serialize_entries(entries, packages=["pkg.tasks"])
+            ),
+        ):
+            output = serialize_entries(entries, packages=["pkg.tasks"])
 
         # Check that public_module_path is populated
         contract_entry = output.entries["pkg.tasks._internal.my_func"]
         assert contract_entry.public_module_path == "pkg.tasks"
         assert contract_entry.module_path == "pkg.tasks._internal"
         # Import statement should use public path
-        assert "from pkg.tasks import my_func as my_func" == contract_entry.import_statement
+        assert contract_entry.import_statement == "from pkg.tasks import my_func as my_func"
 
     def test_serialize_entries_falls_back_to_private_path(self) -> None:
         """Test that serialize_entries falls back to private path when no public path found."""

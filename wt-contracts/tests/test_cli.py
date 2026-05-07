@@ -1,4 +1,5 @@
 """Tests for CLI contracts."""
+# ruff: noqa: S108  # /tmp string literals are test data, not real filesystem operations
 
 import json
 import os

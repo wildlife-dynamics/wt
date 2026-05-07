@@ -24,7 +24,6 @@ from wt_compiler.compiler import (
 from wt_compiler.requirements import WT_LOCAL_CHANNEL
 from wt_compiler.spec import (
     KnownTask,
-    PyPIRequirement,
     Spec,
     SpecRequirement,
     TaskInstance,

@@ -88,7 +88,7 @@ def handle_errors(func: Callable[..., Any], *, task_instance_id: str) -> Callabl
     """
 
     @wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
+    def wrapper(*args: Any, **kwargs: Any) -> Any:  # noqa: ANN401  # generic wrapper passes args through
         try:
             return func(*args, **kwargs)
         except Exception as e:

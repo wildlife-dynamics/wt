@@ -5,7 +5,10 @@ from __future__ import annotations
 import subprocess
 import sys
 from dataclasses import dataclass
-from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @dataclass
@@ -48,8 +51,7 @@ def run_compiler(
     timeout: int = 300,
     compile_flags: dict[str, str] | None = None,
 ) -> CompileResult:
-    """
-    Run the wt-compiler CLI to compile a workflow spec.
+    """Run the wt-compiler CLI to compile a workflow spec.
 
     Args:
         spec_path: Path to the spec.yaml file
@@ -117,8 +119,7 @@ def compile_workflow(
     timeout: int = 300,
     compile_flags: dict[str, str] | None = None,
 ) -> CompileResult:
-    """
-    Compile a workflow in a cloned repository.
+    """Compile a workflow in a cloned repository.
 
     Args:
         repo_path: Path to the cloned repository root

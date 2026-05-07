@@ -1,4 +1,5 @@
 """Tests for the generalized ResponseModel and dispatch template changes."""
+# ruff: noqa: S701, BLE001  # rendering Python code (not HTML); broad except is acceptable here
 
 from __future__ import annotations
 

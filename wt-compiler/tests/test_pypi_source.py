@@ -167,5 +167,5 @@ class TestDeriveSiblingPypiRequirement:
         """Test that unrecognized direct_url format raises ValueError."""
         direct_url = {"url": "https://example.com/unknown", "unknown_info": {}}
 
-        with pytest.raises(ValueError, match="Unrecognized direct_url.json format"):
+        with pytest.raises(ValueError, match=r"Unrecognized direct_url\.json format"):
             derive_sibling_pypi_requirement("wt-registry", "wt-runner", direct_url, "1.0.0")

@@ -5,8 +5,7 @@
 #     "wt-registry",
 # ]
 # ///
-"""
-Example: Filtering Functions
+"""Example: Filtering Functions.
 
 This example demonstrates how to filter the registry by function names,
 showing only the functions you're interested in.

@@ -21,7 +21,7 @@ from .exceptions import InvocationTimeoutError
 
 @dataclass
 class LocalSubprocessInvoker(AbstractInvoker):
-    """Invoker that runs workflows in local subprocesses.
+    r"""Invoker that runs workflows in local subprocesses.
 
     This invoker executes workflows using pixi environments on the local
     machine. It's ideal for development, testing, and small-scale deployments.
@@ -112,7 +112,7 @@ class LocalSubprocessInvoker(AbstractInvoker):
             >>> # True
         """
         cmd = f"{self.entrypoint} --help".split()
-        returncode = subprocess.call(
+        returncode = subprocess.call(  # noqa: ASYNC221, S603  # blocking is intentional in this helper; cmd is built from a configured entrypoint
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -143,7 +143,7 @@ class LocalSubprocessInvoker(AbstractInvoker):
 
     async def run(
         self,
-        workflow_run_id: str,
+        workflow_run_id: str,  # noqa: ARG002  # interface compatibility
         config_text: str,
         results_url: str,
         execution_mode: str,
@@ -152,7 +152,7 @@ class LocalSubprocessInvoker(AbstractInvoker):
         otel_console_exporter_dst: str | None = None,
         extra_env: dict[str, str] | None = None,
         lithops_config_text: str | None = None,
-        **kwargs: Any,
+        **kwargs: Any,  # noqa: ARG002, ANN401  # interface passthrough
     ) -> None:
         """Invoke the workflow in a subprocess.
 
@@ -237,7 +237,7 @@ class LocalSubprocessInvoker(AbstractInvoker):
             env = os.environ.copy() | (extra_env or {})
 
             # Start subprocess
-            self._process = subprocess.Popen(
+            self._process = subprocess.Popen(  # noqa: ASYNC220, S603  # subprocess is intentional; cmd is built from a configured entrypoint
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -330,7 +330,7 @@ class LocalSubprocessInvoker(AbstractInvoker):
             >>> # output
             >>> # '1.2.3'
         """
-        p = subprocess.Popen(
+        p = subprocess.Popen(  # noqa: ASYNC220, S603  # subprocess is intentional; cmd is built from a configured entrypoint
             self.entrypoint.split() + command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

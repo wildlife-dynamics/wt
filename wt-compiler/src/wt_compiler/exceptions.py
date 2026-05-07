@@ -14,16 +14,18 @@ Examples:
     >>> "wt-registry executable not found" in str(error)
     True
 """
+# ruff: noqa: D105, D107  # exception __init__/__str__ are documented at the class level
 
 from __future__ import annotations
 
 import errno
-from pathlib import Path
 from typing import TYPE_CHECKING
 
-from rattler import MatchSpec
-
 if TYPE_CHECKING:
+    from pathlib import Path
+
+    from rattler import MatchSpec
+
     from wt_compiler.spec import PyPIRequirement
 
 
@@ -40,8 +42,6 @@ class DiscoveryError(Exception):
         ...     print(f"Caught: {e}")
         Caught: Discovery failed
     """
-
-    pass
 
 
 class RegistryNotFoundError(DiscoveryError):

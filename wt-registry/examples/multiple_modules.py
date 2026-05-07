@@ -5,8 +5,7 @@
 #     "wt-registry",
 # ]
 # ///
-"""
-Example: Functions from Multiple Modules
+"""Example: Functions from Multiple Modules.
 
 This example demonstrates how the registry works with functions
 from different modules, showing fully qualified names (FQN).

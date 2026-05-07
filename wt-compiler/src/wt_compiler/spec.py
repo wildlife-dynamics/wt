@@ -3,14 +3,14 @@
 This module defines the Spec and TaskInstance models that represent
 the workflow specification (spec.yaml) input format.
 """
+# ruff: noqa: ANN401  # pydantic validators receive raw values typed as Any
 
 import builtins
 import copy
 import hashlib
 import keyword
-import os
-from collections.abc import Generator
 from enum import Enum
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Self, TypedDict, cast
 
 from pydantic import (
@@ -33,6 +33,9 @@ from wt_compiler._models import _AllowArbitraryAndForbidExtra, _ForbidExtra
 from wt_compiler.jsonschema import ReactJSONSchemaFormOverrides
 from wt_compiler.requirements import CONDA_FORGE_CHANNEL, ChannelType, NamelessMatchSpecType
 from wt_compiler.util import rsplit_importable_reference, validate_importable_reference
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 # Type aliases
 ImportableReference = Annotated[str, AfterValidator(validate_importable_reference)]
@@ -120,7 +123,9 @@ class KnownTask(BaseModel):
 
     @field_serializer("importable_reference")
     def serialize_importable_reference(
-        self, value: str, info: FieldSerializationInfo
+        self,
+        value: str,  # noqa: ARG002  # required by pydantic field_serializer signature
+        info: FieldSerializationInfo,
     ) -> dict[str, str | bool]:
         """Serialize importable_reference to dict for template rendering.
 
@@ -194,18 +199,16 @@ def _resolve_task_from_name_or_reference(s: str) -> KnownTask:
                 f"Available modules: {list(known_tasks[task_name].keys())}"
             )
         return known_tasks[task_name][anchor]
-    else:
-        if s not in known_tasks:
-            raise ValueError(f"Task '{s}' not found in known tasks")
-        list_of_tasks_by_name = list(known_tasks[s].values())
-        if len(list_of_tasks_by_name) > 1:
-            raise ValueError(
-                f"Multiple tasks named '{s}' found. "
-                "Duplicate tasks must be fully qualified with their module path. "
-                f"Available modules: {list(known_tasks[s].keys())}"
-            )
-        else:
-            return list_of_tasks_by_name[0]
+    if s not in known_tasks:
+        raise ValueError(f"Task '{s}' not found in known tasks")
+    list_of_tasks_by_name = list(known_tasks[s].values())
+    if len(list_of_tasks_by_name) > 1:
+        raise ValueError(
+            f"Multiple tasks named '{s}' found. "
+            "Duplicate tasks must be fully qualified with their module path. "
+            f"Available modules: {list(known_tasks[s].keys())}"
+        )
+    return list_of_tasks_by_name[0]
 
 
 # Workflow variable models
@@ -351,7 +354,7 @@ def _is_identifier(s: str) -> str:
 
 def _is_not_reserved(s: str) -> str:
     """Validate that a string is not a Python keyword or builtin."""
-    assert _is_identifier(s)
+    assert _is_identifier(s)  # noqa: S101  # invariant: caller already validated identifier shape
     if keyword.iskeyword(s):
         raise ValueError(f"`{s}` is a python keyword.")
     if s in dir(builtins):
@@ -449,7 +452,7 @@ def _serialize_variables_or_inline_value(
 ) -> SerializedInlineValue | SerializedVars:
     """Serialize either variables or inline values."""
     if isinstance(v, InlineValue):
-        return cast(SerializedInlineValue, v.model_dump())
+        return cast("SerializedInlineValue", v.model_dump())
     return _serialize_variables(v)
 
 
@@ -493,13 +496,13 @@ class VariableValuesList(BaseModel):
 
     value: list["DictOrVarsOrInlineValue"]
 
-    def __iter__(self) -> Any:
+    def __iter__(self) -> Any:  # noqa: D105  # passthrough to underlying list
         return iter(self.value)
 
-    def __getitem__(self, item: int) -> Any:
+    def __getitem__(self, item: int) -> Any:  # noqa: D105  # passthrough to underlying list
         return self.value[item]
 
-    def __len__(self) -> int:
+    def __len__(self) -> int:  # noqa: D105  # passthrough to underlying list
         return len(self.value)
 
     @model_serializer
@@ -532,9 +535,9 @@ def _serialize_dict_or_variables_or_inline_value(
 ) -> SerializedDictOrVarsOrInlineValue:
     """Serialize dict, list, or variables or inline values."""
     if isinstance(v, VariableValuesDict):
-        return cast(SerializedVariableValuesDict, v.model_dump())
+        return cast("SerializedVariableValuesDict", v.model_dump())
     if isinstance(v, VariableValuesList):
-        return cast(SerializedVariableValuesList, v.model_dump())
+        return cast("SerializedVariableValuesList", v.model_dump())
     return _serialize_variables_or_inline_value(v)
 
 
@@ -625,13 +628,9 @@ class _ParallelOperation(_ForbidExtra):
 class MapOperation(_ParallelOperation):
     """A map operation to apply a task to an iterable of values."""
 
-    pass
-
 
 class MapValuesOperation(_ParallelOperation):
     """A mapvalues operation to apply a task to an iterable of key-value pairs."""
-
-    pass
 
 
 class SkipIf(_ForbidExtra):
@@ -778,6 +777,7 @@ class TaskInstance(_ForbidExtra):
         return self
 
     @field_validator("name", mode="before")
+    @classmethod
     def coerce_none_to_empty_string(cls, value: Any) -> str:
         """Convert None to empty string for name field."""
         return "" if value is None else value
@@ -801,7 +801,7 @@ class TaskInstance(_ForbidExtra):
     @property
     def method(self) -> str:
         """Get the execution method: 'map', 'mapvalues', or 'call'."""
-        return "map" if self.map else None or "mapvalues" if self.mapvalues else None or "call"
+        return "map" if self.map else "mapvalues" if self.mapvalues else "call"
 
 
 class TaskGroup(_ForbidExtra):
@@ -937,7 +937,7 @@ class PyPIRequirement(_ForbidExtra):
                     f"not a file:// URL. Got: '{self.path}'. "
                     f"Use an absolute path like '/home/user/my-package' instead."
                 )
-            if not os.path.isabs(self.path):
+            if not Path(self.path).is_absolute():
                 raise ValueError(
                     f"'path' for PyPI requirement '{self.name}' must be an absolute filesystem "
                     f"path. Got: '{self.path}'. Relative paths are not supported."
@@ -1004,12 +1004,12 @@ class PyPIRequirement(_ForbidExtra):
                 arg += f"#subdirectory={self.subdirectory}"
             extras = f"[{','.join(self.extras)}]" if self.extras else ""
             return f"{self.name}{extras} @ {arg}"
-        elif self.path is not None:
+        if self.path is not None:
             extras = f"[{','.join(self.extras)}]" if self.extras else ""
             if self.editable:
                 return f"-e {self.path}{extras}"
             return f"{self.path}{extras}"
-        elif self.url is not None:
+        if self.url is not None:
             extras = f"[{','.join(self.extras)}]" if self.extras else ""
             return f"{self.name}{extras} @ {self.url}"
         raise ValueError(f"No source set for PyPI requirement '{self.name}'.")
@@ -1146,7 +1146,7 @@ class Spec(_ForbidExtra):
     @model_validator(mode="after")
     def check_task_ids_dont_collide_with_spec_id(self) -> "Spec":
         """Validate that no task ID matches the spec ID."""
-        if self.id in self.all_task_ids.keys():
+        if self.id in self.all_task_ids:
             name = next(name for id, name in self.all_task_ids.items() if id == self.id)
             raise ValueError(
                 "Task `id`s cannot be the same as the spec `id`. "

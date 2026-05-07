@@ -24,25 +24,25 @@ from .skip import (
 from .sync_task import SyncTask
 
 __all__ = [
-    # Main decorator and task types
-    "task",
-    "Task",
-    "SyncTask",
+    "SKIP_SENTINEL",
+    "AsyncExecutor",
     "AsyncTask",
+    "Future",
+    "FutureSequence",
+    "PythonExecutor",
+    # Skip utilities
+    "SkipSentinel",
+    "SkippedDependencyFallback",
+    # Executors
+    "SyncExecutor",
+    "SyncTask",
+    "Task",
     # Exceptions
     "TaskInstanceError",
     "handle_errors",
-    # Executors
-    "SyncExecutor",
-    "AsyncExecutor",
-    "PythonExecutor",
-    "Future",
-    "FutureSequence",
-    # Skip utilities
-    "SkipSentinel",
-    "SKIP_SENTINEL",
-    "SkippedDependencyFallback",
     "skipif",
+    # Main decorator and task types
+    "task",
     "unpack_listlike",
 ]
 
