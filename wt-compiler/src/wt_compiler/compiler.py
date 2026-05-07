@@ -644,9 +644,8 @@ class DagCompiler(BaseModel):
         loader = FileSystemLoader(self.jinja_templates_dir / "pkg" / "dags")
         env = Environment(loader=loader)  # noqa: S701  # rendering Python code, not HTML
         template = env.get_template(f"run_{dag_type}.jinja2")
-        testing = bool(mock_io)
         return template.render(
-            self.get_dag_config(dag_type, mock_io=mock_io) | {"testing": testing}
+            self.get_dag_config(dag_type, mock_io=mock_io) | {"testing": mock_io}
         )
 
     @ruff_formatted

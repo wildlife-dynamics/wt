@@ -30,18 +30,14 @@ __all__ = [
     "Future",
     "FutureSequence",
     "PythonExecutor",
-    # Skip utilities
     "SkipSentinel",
     "SkippedDependencyFallback",
-    # Executors
     "SyncExecutor",
     "SyncTask",
     "Task",
-    # Exceptions
     "TaskInstanceError",
     "handle_errors",
     "skipif",
-    # Main decorator and task types
     "task",
     "unpack_listlike",
 ]

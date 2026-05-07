@@ -41,9 +41,7 @@ from wt_compiler.spec import (
 )
 
 __all__ = [
-    # Core compilation
     "DagCompiler",
-    # Exceptions
     "DiscoveryError",
     "EnvironmentCreationError",
     "Fingerprint",
@@ -52,7 +50,6 @@ __all__ = [
     "PyPIRequirement",
     "RegistryExecutionError",
     "RegistryNotFoundError",
-    # Spec models
     "Spec",
     "SpecRequirement",
     "TaskGroup",
@@ -60,7 +57,6 @@ __all__ = [
     "TaskTag",
     "compile_workflow",
     "compile_workflow_from_yaml",
-    # Discovery
     "discover_tasks_from_requirements",
     "discover_tasks_from_spec_requirements",
     "populate_known_tasks",

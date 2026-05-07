@@ -21,14 +21,10 @@ except ImportError:
 
 __all__ = [
     "RegistryEntry",
-    # Registry contracts
     "RegistryMetadata",
     "RegistryOutput",
-    # Task protocol
     "TaskProtocol",
-    # CLI contracts
     "WorkflowCLIArgs",
     "WorkflowCLIEnv",
-    # Version
     "__version__",
 ]
