@@ -307,6 +307,45 @@ Before considering a feature complete:
 7. Format code: `uv run ruff format src/wt_registry`
 8. Commit changes
 
+## Mandatory Rules
+
+### Imports must be at the top of the module (ruff PLC0415)
+
+The ruff rule `PLC0415` (`import-outside-top-level`) is enabled. Every
+`import` / `from … import …` statement must live at module top level
+unless there is a clear, documented justification for keeping it local.
+
+Acceptable justifications include:
+- **Avoiding a circular import** that cannot be resolved by restructuring
+  (use a `TYPE_CHECKING` guard first if the import is only needed for
+  type hints).
+- **Exercising optional-dependency presence** inside a test that must
+  import the optional package as the thing under test.
+- **Genuinely deferring an expensive or side-effecting import** behind a
+  rarely-taken code path (rare — prefer hoisting).
+
+When a local import is justified, add an inline noqa with the reason
+on the same line as the import:
+
+    from .async_task import AsyncTask  # noqa: PLC0415  # circular import: AsyncTask imports _Task
+
+If you cannot articulate a clear justification, the rule must be
+followed — hoist the import to the top of the module. "It was already
+written this way" is not a justification.
+
+### Make only the edits the prompt or plan requires
+
+Every edit must be strictly required by the plan or prompt being
+implemented, or required by the linter / type checker / test runner.
+Do not perform unprompted "cleanup", "tidying", reformatting, comment
+rewrites, docstring polish, import reordering, or refactoring while
+working on an unrelated task. If you notice something that looks worth
+fixing, mention it to the human — do not silently change it.
+
+This rule is about *unprompted* changes. When the human explicitly asks
+for cleanup, reformatting, or a refactor, that work is in-scope and the
+rule does not restrict it.
+
 ## Questions?
 
 When in doubt:

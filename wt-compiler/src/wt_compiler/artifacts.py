@@ -1,11 +1,13 @@
 """Artifact generation models for workflow compilation."""
 
 import copy
+import io
 import json
 import re
 import shutil
 import subprocess
 import tomllib
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -218,8 +220,6 @@ class PixiToml(_AllowArbitraryAndValidateAssignment):
             >>> "test" in toml_str  # doctest: +SKIP
             True
         """
-        import io
-
         buffer = io.BytesIO()
         if self.file_header:
             buffer.write(self.file_header.encode("utf-8"))
@@ -518,8 +518,6 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
             try:
                 self.pydot_graph.write_png(path=self.release_dir.joinpath("graph.png"))  # type: ignore[attr-defined]
             except FileNotFoundError:
-                import warnings
-
                 warnings.warn(
                     "Graphviz 'dot' binary not found; skipping graph.png generation. "
                     "Install Graphviz to enable workflow visualization.",

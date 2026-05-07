@@ -2,10 +2,12 @@
 
 import io
 import os
+import pathlib
 import sys
 import time
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+from wt_compiler.cli import main
 from wt_compiler.progress import NullSpinner, Spinner, _StderrCapture, spinner
 
 
@@ -111,7 +113,6 @@ class TestCliNoProgressFlag:
 
     def test_no_progress_in_help(self, capsys: "pytest.CaptureFixture[str]") -> None:
         """Test that --no-progress appears in compile help output."""
-        from wt_compiler.cli import main
 
         with patch.object(sys, "argv", ["wt-compiler", "compile", "--help"]):
             try:
@@ -124,11 +125,8 @@ class TestCliNoProgressFlag:
 
     def test_no_progress_passed_to_compile(self, tmp_path: "pathlib.Path") -> None:
         """Test that --no-progress passes progress=False to compile_workflow_from_yaml."""
-        import pathlib
 
-        from unittest.mock import MagicMock
 
-        from wt_compiler.cli import main
 
         spec_file = tmp_path / "spec.yaml"
         spec_file.write_text("id: test-workflow\n")
@@ -152,11 +150,8 @@ class TestCliNoProgressFlag:
 
     def test_progress_default_true(self, tmp_path: "pathlib.Path") -> None:
         """Test that progress defaults to True (no --no-progress flag)."""
-        import pathlib
 
-        from unittest.mock import MagicMock
 
-        from wt_compiler.cli import main
 
         spec_file = tmp_path / "spec.yaml"
         spec_file.write_text("id: test-workflow\n")

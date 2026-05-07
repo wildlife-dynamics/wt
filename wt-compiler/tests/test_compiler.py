@@ -1,7 +1,18 @@
 """Tests for compiler.py - DagCompiler functionality."""
 
-import pytest
+from unittest.mock import MagicMock
 
+import pytest
+import ruamel.yaml
+
+from wt_compiler.artifacts import (
+    Dags,
+    PackageDirectory,
+    PixiToml,
+    PixiWorkspace,
+    Tests,
+    WorkflowArtifacts,
+)
 from wt_compiler.compiler import (
     DagCompiler,
     Fingerprint,
@@ -10,12 +21,14 @@ from wt_compiler.compiler import (
     _parse_requirements_from_yaml,
     _remove_functionally_irrelevant_keys,
 )
+from wt_compiler.requirements import WT_LOCAL_CHANNEL
 from wt_compiler.spec import (
     KnownTask,
     PyPIRequirement,
     Spec,
     SpecRequirement,
     TaskInstance,
+    TaskTag,
     known_tasks,
 )
 
@@ -201,7 +214,6 @@ class TestDagCompiler:
 
     def test_get_pixi_toml_with_wt_registry(self):
         """Test pixi.toml generation with wt-registry dependency."""
-        from wt_compiler.requirements import WT_LOCAL_CHANNEL
 
         spec = Spec(
             id="my_workflow",
@@ -411,7 +423,6 @@ class TestParseRequirementsFromYaml:
 
     def test_conda_only(self, tmp_path):
         """Test parsing YAML with only conda requirements."""
-        import ruamel.yaml
 
         yaml_file = tmp_path / "spec.yaml"
         yaml = ruamel.yaml.YAML()
@@ -433,7 +444,6 @@ class TestParseRequirementsFromYaml:
 
     def test_mixed_requirements(self, tmp_path):
         """Test parsing YAML with mixed conda and pypi requirements."""
-        import ruamel.yaml
 
         yaml_file = tmp_path / "spec.yaml"
         yaml = ruamel.yaml.YAML()
@@ -457,7 +467,6 @@ class TestParseRequirementsFromYaml:
 
     def test_pypi_only(self, tmp_path):
         """Test parsing YAML with only pypi requirements."""
-        import ruamel.yaml
 
         yaml_file = tmp_path / "spec.yaml"
         yaml = ruamel.yaml.YAML()
@@ -481,14 +490,6 @@ class TestFingerprint:
 
     def test_fingerprint_creation(self):
         """Test creating a fingerprint."""
-        from wt_compiler.artifacts import (
-            Dags,
-            PackageDirectory,
-            PixiToml,
-            PixiWorkspace,
-            Tests,
-            WorkflowArtifacts,
-        )
 
         # Create minimal artifacts
         spec = Spec(
@@ -542,14 +543,6 @@ class TestFingerprint:
 
     def test_fingerprint_to_yaml(self):
         """Test fingerprint YAML serialization."""
-        from wt_compiler.artifacts import (
-            Dags,
-            PackageDirectory,
-            PixiToml,
-            PixiWorkspace,
-            Tests,
-            WorkflowArtifacts,
-        )
 
         spec = Spec(
             id="test",
@@ -605,14 +598,6 @@ class TestFingerprint:
 
     def test_fingerprint_with_installed_requirements(self):
         """Test fingerprint YAML includes installed_requirements in block style."""
-        from wt_compiler.artifacts import (
-            Dags,
-            PackageDirectory,
-            PixiToml,
-            PixiWorkspace,
-            Tests,
-            WorkflowArtifacts,
-        )
 
         spec = Spec(
             id="test",
@@ -679,14 +664,6 @@ class TestFingerprint:
 
     def test_fingerprint_default_empty_installed_requirements(self):
         """Test fingerprint defaults to empty installed_requirements."""
-        from wt_compiler.artifacts import (
-            Dags,
-            PackageDirectory,
-            PixiToml,
-            PixiWorkspace,
-            Tests,
-            WorkflowArtifacts,
-        )
 
         spec = Spec(
             id="test",
@@ -744,7 +721,6 @@ class TestBuildInstalledRequirements:
 
     def test_matches_spec_requirements_to_records(self):
         """Test that spec requirements are matched to solved records."""
-        from unittest.mock import MagicMock
 
         # Create mock records mimicking RepoDataRecord
         record1 = MagicMock()
@@ -774,7 +750,6 @@ class TestBuildInstalledRequirements:
 
     def test_skips_unresolved_requirements(self):
         """Test that requirements not found in records are skipped."""
-        from unittest.mock import MagicMock
 
         record = MagicMock()
         record.name.normalized = "pandas"
@@ -802,7 +777,6 @@ class TestBuildInstalledRequirements:
 
     def test_empty_requirements(self):
         """Test with empty requirements list."""
-        from unittest.mock import MagicMock
 
         record = MagicMock()
         record.name.normalized = "pandas"
@@ -822,7 +796,6 @@ class TestRenderDag:
         Returns:
             DagCompiler instance with two tasks (one IO-tagged, one not).
         """
-        from wt_compiler.spec import TaskTag
 
         io_task = KnownTask(
             importable_reference="mymod.io_func",
@@ -922,7 +895,6 @@ class TestRenderDag:
         Returns:
             DagCompiler instance with 5 tasks (only load_data is IO-tagged).
         """
-        from wt_compiler.spec import TaskTag
 
         load_data = KnownTask(
             importable_reference="mymod.load_data",

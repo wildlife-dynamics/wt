@@ -4,12 +4,21 @@ import argparse
 import sys
 import types
 from pathlib import Path
+from types import MappingProxyType
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from wt_compiler.cli import main, _write_init_artifacts
-from wt_compiler.wizard.abstract import AbstractWizardProvider
+import wt_compiler.__main__  # noqa: F401  # imported for side-effect coverage in CLI tests
+from wt_compiler.cli import _make_questionary_validator, _write_init_artifacts, main
+from wt_compiler.wizard import DefaultWizardProvider
+from wt_compiler.wizard.abstract import (
+    AbstractWizardProvider,
+    ArgparseKwargs,
+    SingleWizardQuestion,
+    WizardKwargs,
+)
+from wt_compiler.wizard.default import non_empty_str, workflow_id_type
 
 # ---------------------------------------------------------------------------
 # Mock provider module factory (used by register-provider / list-providers /
@@ -87,16 +96,12 @@ class TestMakeQuestionaryValidator:
 
     def test_returns_true_on_valid_input(self) -> None:
         """Valid input returns True."""
-        from wt_compiler.cli import _make_questionary_validator
-        from wt_compiler.wizard.default import workflow_id_type
 
         validator = _make_questionary_validator(workflow_id_type)
         assert validator("my_workflow") is True
 
     def test_returns_error_string_on_invalid_input(self) -> None:
         """Invalid input returns an error string (not raises)."""
-        from wt_compiler.cli import _make_questionary_validator
-        from wt_compiler.wizard.default import workflow_id_type
 
         validator = _make_questionary_validator(workflow_id_type)
         result = validator("123bad")
@@ -105,16 +110,12 @@ class TestMakeQuestionaryValidator:
 
     def test_returns_true_for_non_empty_str(self) -> None:
         """non_empty_str validator returns True for valid input."""
-        from wt_compiler.cli import _make_questionary_validator
-        from wt_compiler.wizard.default import non_empty_str
 
         validator = _make_questionary_validator(non_empty_str)
         assert validator("Author Name") is True
 
     def test_returns_error_string_for_empty_str(self) -> None:
         """non_empty_str validator returns error string for whitespace-only input."""
-        from wt_compiler.cli import _make_questionary_validator
-        from wt_compiler.wizard.default import non_empty_str
 
         validator = _make_questionary_validator(non_empty_str)
         result = validator("   ")
@@ -391,7 +392,6 @@ class TestInitCommand:
 
     def test_init_batch_mode_sets_answers(self, tmp_path: Path) -> None:
         """Batch mode: provider._answers populated correctly from flags."""
-        from wt_compiler.wizard import DefaultWizardProvider
 
         captured_provider: list[DefaultWizardProvider] = []
 
@@ -420,7 +420,6 @@ class TestInitCommand:
 
     def test_init_batch_mode_defaults(self, tmp_path: Path) -> None:
         """Batch mode: omitted optional flags use correct defaults."""
-        from wt_compiler.wizard import DefaultWizardProvider
 
         captured_provider: list[DefaultWizardProvider] = []
 
@@ -444,7 +443,6 @@ class TestInitCommand:
 
     def test_init_batch_mode_with_requirements(self, tmp_path: Path) -> None:
         """Batch mode: --requirements flags are expanded through the loop generator."""
-        from wt_compiler.wizard import DefaultWizardProvider
 
         captured_provider: list[DefaultWizardProvider] = []
 
@@ -759,7 +757,6 @@ class TestInitCommand:
 
     def test_init_batch_local_path_requirement(self, tmp_path: Path) -> None:
         """--requirements with local path stored correctly in answers."""
-        from wt_compiler.wizard import DefaultWizardProvider
 
         captured_provider: list[DefaultWizardProvider] = []
 
@@ -789,7 +786,6 @@ class TestInitCommand:
 
     def test_init_batch_git_requirement(self, tmp_path: Path) -> None:
         """--requirements with git+branch stored correctly in answers."""
-        from wt_compiler.wizard import DefaultWizardProvider
 
         captured_provider: list[DefaultWizardProvider] = []
 
@@ -855,7 +851,6 @@ class TestModuleEntryPoint:
 
     def test_main_module_import(self) -> None:
         """Test that __main__.py can be imported."""
-        import wt_compiler.__main__
 
         assert hasattr(wt_compiler.__main__, "main")
 
@@ -1039,8 +1034,6 @@ class _ConditionalProvider(AbstractWizardProvider):
     """Provider with a top-level conditional question for testing _batch_init."""
 
     def get_questions(self) -> list:  # type: ignore[override]
-        from types import MappingProxyType
-        from wt_compiler.wizard.abstract import ArgparseKwargs, SingleWizardQuestion, WizardKwargs
 
         return [
             SingleWizardQuestion(
@@ -1068,7 +1061,6 @@ class TestBatchInitConditionalQuestions:
 
     def test_conditional_question_skipped_when_condition_false(self, tmp_path: Path) -> None:
         """When include_widget='no', widget_title is skipped and answers are correct."""
-        from wt_compiler.wizard.abstract import AbstractWizardProvider
 
         captured: list[AbstractWizardProvider] = []
 
@@ -1101,7 +1093,6 @@ class TestBatchInitConditionalQuestions:
 
     def test_conditional_question_included_when_condition_true(self, tmp_path: Path) -> None:
         """When include_widget='yes', widget_title is answered with its default."""
-        from wt_compiler.wizard.abstract import AbstractWizardProvider
 
         captured: list[AbstractWizardProvider] = []
 
@@ -1133,7 +1124,6 @@ class TestBatchInitConditionalQuestions:
 
     def test_conditional_question_included_with_explicit_value(self, tmp_path: Path) -> None:
         """When include_widget='yes' and --widget-title passed, explicit value is used."""
-        from wt_compiler.wizard.abstract import AbstractWizardProvider
 
         captured: list[AbstractWizardProvider] = []
 

@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from conftest import drive_wizard
 
+import wt_compiler.wizard.abstract as abstract_mod
 from wt_compiler.wizard.abstract import AbstractWizardProvider, WizardQuestion
-from wt_compiler.wizard.default import DefaultWizardProvider, workflow_id_type
+from wt_compiler.wizard.default import DefaultWizardProvider, non_empty_str, workflow_id_type
 
 
 class TestABCConformance:
@@ -206,7 +208,6 @@ class TestLoopContext:
 
     def test_loop_context_preserved_on_validation_error_reyield(self) -> None:
         """loop_context survives _validate_answer() re-yield on validation failure."""
-        from wt_compiler.wizard.default import non_empty_str
 
         class LoopProvider(AbstractWizardProvider):
             def get_questions(self) -> list[WizardQuestion]:
@@ -241,9 +242,7 @@ class TestDumpNoTemplates:
 
     def test_dump_raises_when_no_loaders(self, tmp_path: Path) -> None:
         """dump() raises RuntimeError when no PackageLoader can be constructed from MRO."""
-        from unittest.mock import patch
 
-        import wt_compiler.wizard.abstract as abstract_mod
 
         class NoTemplatesProvider(AbstractWizardProvider):
             def get_questions(self) -> list[WizardQuestion]:

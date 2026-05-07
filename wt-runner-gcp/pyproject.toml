@@ -49,6 +49,9 @@ root = ".."
 version_file = "src/wt_runner_gcp/_version.py"
 git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--match", "wt-runner-gcp/v*"]
 
+[tool.ruff.lint]
+extend-select = ["PLC0415"]  # import-outside-top-level
+
 # ============================================================================
 # Pixi Build Configuration (conda package building)
 # ============================================================================

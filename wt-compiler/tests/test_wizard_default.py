@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+import jinja2
 import pytest
 import yaml
 
@@ -809,8 +810,6 @@ class TestDump:
 
     def test_dump_raises_on_incomplete_answers(self, tmp_path: Path) -> None:
         """Incomplete provider raises UndefinedError when rendering."""
-        import jinja2
-
         provider = DefaultWizardProvider()
         # Don't drive the wizard — answers are empty
         with pytest.raises(jinja2.UndefinedError):

@@ -5,6 +5,7 @@ This module provides the SyncTask class for synchronous task execution.
 
 from __future__ import annotations
 
+import functools
 import inspect
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -128,8 +129,6 @@ def _wrap_for_mapvalues(
     Returns:
         Wrapped function that accepts (key, kwargs) and returns (key, result)
     """
-    import functools
-
     wrapper: mapvalues_wrapper[Any, dict[str, Any], R] = mapvalues_wrapper(func)
     functools.update_wrapper(wrapper, func)
     return wrapper

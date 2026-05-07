@@ -1,6 +1,7 @@
 """Tests for CLI contracts."""
 
 import json
+import os
 
 from wt_contracts.cli import WorkflowCLIArgs, WorkflowCLIEnv
 
@@ -217,8 +218,6 @@ class TestWorkflowCLIEnv:
 
     def test_env_merging_with_os_environ(self) -> None:
         """Test pattern for merging env with os.environ."""
-        import os
-
         env = WorkflowCLIEnv(WORKFLOW_RUN_ID="run-merge-test", WORKFLOW_TRACE_ENABLED="true")
 
         # Pattern for subprocess.run(env=...)
@@ -276,8 +275,6 @@ class TestCLIIntegration:
         ]
 
         # Build environment
-        import os
-
         env_dict = {**os.environ, **env.model_dump(exclude_none=True)}
 
         # Verify structure

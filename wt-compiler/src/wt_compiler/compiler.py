@@ -18,6 +18,7 @@ import io
 import json
 import os
 import pathlib
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -43,7 +44,9 @@ from wt_compiler.artifacts import (
 from wt_compiler.discovery import populate_known_tasks
 from wt_compiler.formatting import ruff_formatted
 from wt_compiler.jsonschema import ReactJSONSchemaFormConfiguration, find_referenced_defs
+from wt_compiler.progress import spinner
 from wt_compiler.requirements import (
+    CHANNELS,
     CONDA_FORGE_CHANNEL,
     CUSTOM_LOCAL_CHANNEL,
     CUSTOM_RELEASE_CHANNEL,
@@ -58,8 +61,11 @@ from wt_compiler.spec import (
     PyPIRequirement,
     Spec,
     SpecRequirement,
+    TaskGroup,
     TaskInstance,
     TaskInstanceId,
+    TaskTag,
+    _conda_or_pypi,
 )
 
 yaml = ruamel.yaml.YAML(typ="safe")
@@ -323,8 +329,6 @@ class DagCompiler(BaseModel):
             >>> # compiler = DagCompiler(spec=spec)  # doctest: +SKIP
             >>> # schema = compiler.get_params_jsonschema()  # doctest: +SKIP
         """
-        from wt_compiler.spec import TaskGroup
-
         properties: dict[str, Any] = {}
         definitions: dict[str, Any] = {}
         uiSchema: dict[str, Any] = {}
@@ -669,10 +673,8 @@ class DagCompiler(BaseModel):
             >>> "class" in model  # doctest: +SKIP
             True
         """
-        import tempfile
-
-        import datamodel_code_generator as dcg
-        import datamodel_code_generator.format as dcg_format
+        import datamodel_code_generator as dcg  # noqa: PLC0415  # deferred: heavy import (drags in black, jinja2 templates) only needed during model generation
+        import datamodel_code_generator.format as dcg_format  # noqa: PLC0415  # deferred: see above
 
         with tempfile.NamedTemporaryFile(suffix=".py", mode="w+", delete=False) as tmp:
             output = Path(tmp.name)
@@ -853,8 +855,6 @@ class DagCompiler(BaseModel):
         if on_progress is not None:
             on_progress("Generating tests...")
         # Generate tests
-        from wt_compiler.spec import TaskTag
-
         tests = Tests(
             **{
                 "conftest.py": self.ruffrender(
@@ -1006,8 +1006,6 @@ def _parse_requirements_from_yaml(yaml_path: Path) -> ParsedRequirements:
         FileNotFoundError: If yaml_path doesn't exist
         ValueError: If requirements section is missing or invalid
     """
-    from wt_compiler.spec import _conda_or_pypi
-
     with open(yaml_path) as f:
         data = yaml.load(f)
 
@@ -1062,10 +1060,6 @@ async def compile_workflow_from_yaml(
         >>> # artifacts = await compile_workflow_from_yaml("spec.yaml")  # doctest: +SKIP
         >>> # artifacts.dump("output/")  # doctest: +SKIP
     """
-    from rattler import MatchSpec
-
-    from wt_compiler.progress import spinner
-
     yaml_path = Path(yaml_path)
 
     with spinner(progress) as sp:
@@ -1096,8 +1090,6 @@ async def compile_workflow_from_yaml(
         if conda_requirements:
             # Add all known channels for transitive dependency resolution
             # (only needed when there are conda requirements from custom channels)
-            from wt_compiler.requirements import CHANNELS
-
             for known_channel in CHANNELS:
                 if not any(c.base_url == known_channel.base_url for c in unique_channels):
                     unique_channels.append(known_channel)

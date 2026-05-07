@@ -17,6 +17,7 @@ Examples:
 
 from __future__ import annotations
 
+import errno
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -246,8 +247,6 @@ class EnvironmentCreationError(DiscoveryError):
         super().__init__(str(self))
 
     def __str__(self) -> str:
-        import errno
-
         req_list = "\n".join(f"  - {req}" for req in self.requirements)
         base_msg = f"""Environment creation failed during {self.phase} phase
 

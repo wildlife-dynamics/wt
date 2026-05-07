@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+import ruamel.yaml
 
 from wt_compiler.spec import (
     InlineValue,
@@ -18,7 +19,9 @@ from wt_compiler.spec import (
     VariableValuesList,
     _conda_or_pypi,
     _find_task_id_vars,
+    known_tasks,
 )
+from wt_compiler.spec import known_tasks as global_known_tasks
 
 
 class TestKnownTask:
@@ -230,7 +233,6 @@ class TestSkipIfKnownTasks:
 
     def test_known_tasks_property_exists(self):
         """Test that SkipIf.known_tasks property resolves conditions."""
-        from wt_compiler.spec import known_tasks as global_known_tasks
 
         # Register a mock condition task
         mock_task = KnownTask(importable_reference="mod.condition_func")
@@ -245,7 +247,6 @@ class TestSkipIfKnownTasks:
 
     def test_known_tasks_serialization(self):
         """Test that known_tasks serializes correctly for templates."""
-        from wt_compiler.spec import known_tasks as global_known_tasks
 
         mock_task = KnownTask(importable_reference="mod.check_condition")
         global_known_tasks["check_condition"] = {"mod": mock_task}
@@ -268,7 +269,6 @@ class TestSkipIfKnownTasks:
 
     def test_known_tasks_with_fully_qualified_reference(self):
         """Test known_tasks with fully qualified importable reference."""
-        from wt_compiler.spec import known_tasks as global_known_tasks
 
         mock_task = KnownTask(importable_reference="mypackage.conditions.should_skip")
         global_known_tasks["should_skip"] = {"mypackage.conditions": mock_task}
@@ -519,7 +519,6 @@ class TestTaskInstance:
 
     def test_task_instance_basic(self):
         """Test creating a basic TaskInstance."""
-        from wt_compiler.spec import known_tasks
 
         # Register the task in the global registry
         mock_task = KnownTask(importable_reference="mod.func")
@@ -540,7 +539,6 @@ class TestTaskInstance:
 
     def test_task_instance_with_partial(self):
         """Test TaskInstance with partial arguments."""
-        from wt_compiler.spec import known_tasks
 
         # Register the task in the global registry
         mock_task = KnownTask(importable_reference="mod.add")
@@ -638,7 +636,6 @@ class TestVariableValuesList:
 
     def test_mixed_list_parsing(self):
         """Test that a mixed list is parsed as VariableValuesList."""
-        from wt_compiler.spec import known_tasks
 
         mock_task = KnownTask(importable_reference="mod.func")
         known_tasks["func"] = {"mod": mock_task}
@@ -658,7 +655,6 @@ class TestVariableValuesList:
 
     def test_mixed_list_serialization_asstr(self):
         """Test that VariableValuesList serialization produces correct asstr."""
-        from wt_compiler.spec import known_tasks
 
         mock_task = KnownTask(importable_reference="mod.func")
         known_tasks["func"] = {"mod": mock_task}
@@ -679,7 +675,6 @@ class TestVariableValuesList:
 
     def test_mixed_list_serialization_aslist(self):
         """Test that VariableValuesList aslist contains properly serialized items."""
-        from wt_compiler.spec import known_tasks
 
         mock_task = KnownTask(importable_reference="mod.func")
         known_tasks["func"] = {"mod": mock_task}
@@ -705,7 +700,6 @@ class TestVariableValuesList:
 
     def test_pure_inline_list_becomes_variable_values_list(self):
         """Test that a pure inline list (no variables) becomes VariableValuesList."""
-        from wt_compiler.spec import known_tasks
 
         mock_task = KnownTask(importable_reference="mod.func")
         known_tasks["func"] = {"mod": mock_task}
@@ -726,7 +720,6 @@ class TestVariableValuesList:
 
     def test_single_variable_list(self):
         """Test a list with a single variable reference."""
-        from wt_compiler.spec import known_tasks
 
         mock_task = KnownTask(importable_reference="mod.func")
         known_tasks["func"] = {"mod": mock_task}
@@ -747,7 +740,6 @@ class TestVariableValuesList:
 
     def test_empty_list(self):
         """Test an empty list partial arg."""
-        from wt_compiler.spec import known_tasks
 
         mock_task = KnownTask(importable_reference="mod.func")
         known_tasks["func"] = {"mod": mock_task}
@@ -768,7 +760,6 @@ class TestVariableValuesList:
 
     def test_dependency_extraction_from_mixed_list(self):
         """Test TaskIdVariable extraction from VariableValuesList."""
-        from wt_compiler.spec import known_tasks
 
         mock_task = KnownTask(importable_reference="mod.func")
         known_tasks["func"] = {"mod": mock_task}
@@ -788,7 +779,6 @@ class TestVariableValuesList:
 
     def test_dependency_extraction_no_variables(self):
         """Test that pure inline lists produce empty dependency lists."""
-        from wt_compiler.spec import known_tasks
 
         mock_task = KnownTask(importable_reference="mod.func")
         known_tasks["func"] = {"mod": mock_task}
@@ -844,7 +834,6 @@ class TestVariableValuesDict:
 
     def test_nested_dict_with_variable_ref(self):
         """Test that a variable ref inside a nested dict is parsed as TaskIdVariable."""
-        from wt_compiler.spec import known_tasks
 
         mock_task = KnownTask(importable_reference="mod.func")
         known_tasks["func"] = {"mod": mock_task}
@@ -874,7 +863,6 @@ class TestVariableValuesDict:
 
     def test_variable_ref_in_dict_in_list_in_dict(self):
         """Test ${{ }} ref inside dict → list → dict nesting."""
-        from wt_compiler.spec import known_tasks
 
         mock_task = KnownTask(importable_reference="mod.func")
         known_tasks["func"] = {"mod": mock_task}
@@ -913,7 +901,6 @@ class TestVariableValuesDict:
 
     def test_nested_variable_ref_in_asdict(self):
         """Test that asdict contains properly serialized nested variable refs."""
-        from wt_compiler.spec import known_tasks
 
         mock_task = KnownTask(importable_reference="mod.func")
         known_tasks["func"] = {"mod": mock_task}
@@ -955,7 +942,6 @@ class TestSpec:
         # For this test, we need to mock KnownTask discovery
         # In real usage, discovery.py would populate known_task
         # For now, we'll test basic YAML parsing
-        import ruamel.yaml
 
         yaml = ruamel.yaml.YAML(typ="safe")
         with open(fixture_path) as f:

@@ -114,6 +114,7 @@ select = [
     "B",   # flake8-bugbear
     "SIM", # flake8-simplify
 ]
+extend-select = ["PLC0415"]  # import-outside-top-level
 ignore = []
 
 [tool.ruff.lint.per-file-ignores]

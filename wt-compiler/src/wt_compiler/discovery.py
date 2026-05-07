@@ -8,6 +8,7 @@ direct Python import dependencies on task libraries.
 
 import asyncio
 import errno
+import platform as plat
 import shutil
 import subprocess
 import sys
@@ -90,8 +91,6 @@ async def discover_tasks_from_requirements(
     if platform is None:
         # Determine current platform
         if sys.platform == "darwin":
-            import platform as plat
-
             platform = Platform("osx-arm64") if plat.machine() == "arm64" else Platform("osx-64")
         elif sys.platform == "linux":
             platform = Platform("linux-64")
@@ -238,7 +237,9 @@ async def discover_tasks_from_requirements(
         wt_pypi_deps: dict[str, str | dict[str, Any]] | None = None
         wt_registry_in_conda = any(str(r.name.normalized) == "wt-registry" for r in records)
         if not wt_registry_in_conda:
-            from wt_compiler.pypi_source import (
+            # lazy import: tests patch wt_compiler.pypi_source.detect_pypi_source directly,
+            # which only works if discovery.py looks the name up at call time.
+            from wt_compiler.pypi_source import (  # noqa: PLC0415
                 derive_sibling_pypi_requirement,
                 detect_pypi_source,
             )

@@ -1,6 +1,7 @@
 """Command-line interface for wt-registry."""
 
 import argparse
+import importlib
 import importlib.metadata
 import sys
 import types
@@ -44,8 +45,6 @@ def discover_public_paths(
             discover_public_paths(registry, ["pkg.tasks"])
             # {("pkg.tasks._internal", "my_func"): "pkg.tasks"}
     """
-    import importlib
-
     public_paths: dict[tuple[str, str], str] = {}
 
     for package in packages:
@@ -370,8 +369,6 @@ def main() -> None:
     # Import explicitly specified packages to trigger task registration
     all_packages: list[str] = list(discovered_modules)
     if args.packages:
-        import importlib
-
         for package in args.packages:
             try:
                 importlib.import_module(package)

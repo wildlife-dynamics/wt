@@ -7,6 +7,7 @@ Note: This is adapted from https://github.com/PADAS/cdip-routing.
 """
 
 import os
+import warnings
 from pathlib import Path
 from typing import Literal
 
@@ -110,8 +111,6 @@ def configure_tracer(
         >>> configure_tracer("my-service", "1.0.0", "console", kws)
     """
     if not TRACING_AVAILABLE:
-        import warnings
-
         warnings.warn(
             "OpenTelemetry dependencies not installed. Tracing is disabled. "
             "Install with: pip install wt-task[gcp]",
@@ -194,8 +193,6 @@ def attach_context(traceparent: str, tracestate: str | None = None) -> None:
         ... )
     """
     if not TRACING_AVAILABLE:
-        import warnings
-
         warnings.warn(
             "OpenTelemetry dependencies not installed. Cannot attach trace context. "
             "Install with: pip install wt-task[gcp]",

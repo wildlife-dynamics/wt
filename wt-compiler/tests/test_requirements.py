@@ -5,6 +5,8 @@ import os
 
 import pytest
 
+import wt_compiler.requirements as req_mod
+
 
 class TestWtLocalChannel:
     """Tests for WT_LOCAL_CHANNEL configuration via WT_CONDA_CHANNEL env var."""
@@ -12,8 +14,6 @@ class TestWtLocalChannel:
     @staticmethod
     def _reload_wt_local_channel():
         """Reload the requirements module and return the WT_LOCAL_CHANNEL."""
-        import wt_compiler.requirements as req_mod
-
         importlib.reload(req_mod)
         return req_mod.WT_LOCAL_CHANNEL
 

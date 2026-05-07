@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import importlib
+import sys
 import tempfile
 from pathlib import Path
 from types import MappingProxyType
@@ -361,8 +363,6 @@ class TestCustomTemplates:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Subclass provides templates/spec.yaml.jinja2 overriding the default via MRO."""
-        import importlib
-        import sys
 
         pkg_name = "test_override_wiz_pkg"
         pkg_dir = tmp_path / pkg_name
@@ -410,8 +410,6 @@ class TestCustomTemplates:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Subclass adds templates/extra.yaml.jinja2 for a new artifact in addition to defaults."""
-        import importlib
-        import sys
 
         pkg_name = "test_extra_wiz_pkg"
         pkg_dir = tmp_path / pkg_name

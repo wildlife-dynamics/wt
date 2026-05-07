@@ -290,9 +290,9 @@ class _Task(Generic[P, R, K, V]):
             >>> type(custom.executor).__name__
             'PythonExecutor'
         """
-        # Import here to avoid circular imports
-        from .async_task import AsyncTask
-        from .sync_task import SyncTask
+        # circular import: AsyncTask/SyncTask subclass _Task defined here
+        from .async_task import AsyncTask  # noqa: PLC0415
+        from .sync_task import SyncTask  # noqa: PLC0415
 
         match name_or_executor:
             case "python":

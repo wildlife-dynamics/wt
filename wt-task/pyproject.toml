@@ -110,6 +110,7 @@ select = [
     "C4", # flake8-comprehensions
     "UP", # pyupgrade
 ]
+extend-select = ["PLC0415"]  # import-outside-top-level
 ignore = [
     "E501", # line too long (handled by formatter)
 ]

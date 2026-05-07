@@ -1,8 +1,11 @@
 """Tests for artifacts.py - artifact generation models."""
 
 import tempfile
+import warnings
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
+import pydot
 import pytest
 
 from wt_compiler.artifacts import (
@@ -11,6 +14,7 @@ from wt_compiler.artifacts import (
     PackageDirectory,
     PixiToml,
     PixiWorkspace,
+    Tests,
     WorkflowArtifacts,
 )
 
@@ -142,7 +146,6 @@ class TestWorkflowArtifacts:
 
     def test_workflow_artifacts_creation(self):
         """Test creating WorkflowArtifacts instance."""
-        from wt_compiler.artifacts import Tests
 
         dags = Dags(
             **{
@@ -191,7 +194,6 @@ class TestWorkflowArtifacts:
 
     def test_workflow_artifacts_dump_and_load(self):
         """Test WorkflowArtifacts with all required fields."""
-        from wt_compiler.artifacts import Tests
 
         dags = Dags(
             **{
@@ -248,7 +250,6 @@ class TestWorkflowArtifactsDump:
 
     def _make_artifacts(self, pydot_graph=None):
         """Helper to create a minimal WorkflowArtifacts for dump testing."""
-        from wt_compiler.artifacts import Tests
 
         dags = Dags(
             **{
@@ -309,9 +310,6 @@ class TestWorkflowArtifactsDump:
 
     def test_dump_warns_when_dot_binary_missing(self, tmp_path, monkeypatch):
         """Test that dump() emits a warning when write_png raises FileNotFoundError."""
-        from unittest.mock import MagicMock, patch
-        import warnings
-        import pydot
 
         monkeypatch.chdir(tmp_path)
         mock_graph = MagicMock(spec=pydot.Dot)
