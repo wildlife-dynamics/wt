@@ -155,13 +155,16 @@ This may indicate:
 
 
 class PyPIInstallError(DiscoveryError):
-    """Raised when pip install of a PyPI requirement fails.
+    """Raised when the bulk pip install of PyPI requirements fails.
 
-    This error occurs after the conda environment is created but a PyPI
-    dependency fails to install via pip.
+    This error occurs after the conda environment is created but the bulk
+    ``uv pip install`` call (covering all PyPI dependencies at once) fails.
+    Because the install is a single subprocess invocation, the failure is
+    shared across every requirement in the batch.
 
     Attributes:
-        requirement: The PyPIRequirement that failed to install
+        requirements: All PyPIRequirements that were passed to the failed
+            ``uv pip install`` invocation
         returncode: Exit code from the pip install command
         stdout: Standard output from pip
         stderr: Standard error from pip
@@ -170,7 +173,7 @@ class PyPIInstallError(DiscoveryError):
         >>> from wt_compiler.spec import PyPIRequirement
         >>> req = PyPIRequirement(name="foo", git="https://github.com/org/foo.git")
         >>> error = PyPIInstallError(
-        ...     requirement=req,
+        ...     requirements=[req],
         ...     returncode=1,
         ...     stdout="",
         ...     stderr="ERROR: Could not find a version that satisfies the requirement",
@@ -181,22 +184,24 @@ class PyPIInstallError(DiscoveryError):
 
     def __init__(
         self,
-        requirement: PyPIRequirement,
+        requirements: list[PyPIRequirement],
         returncode: int,
         stdout: str,
         stderr: str,
     ) -> None:
-        self.requirement = requirement
+        self.requirements = requirements
         self.returncode = returncode
         self.stdout = stdout
         self.stderr = stderr
         super().__init__(str(self))
 
     def __str__(self) -> str:
-        name = self.requirement.name
-        return f"""pip install failed for PyPI requirement '{name}' (exit code {self.returncode})
+        names = ", ".join(r.name for r in self.requirements) or "(none)"
+        install_args = "\n".join(f"  {r.to_pip_install_arg()}" for r in self.requirements)
+        return f"""pip install failed for PyPI requirements [{names}] (exit code {self.returncode})
 
-Install argument: {self.requirement.to_pip_install_arg()}
+Install arguments:
+{install_args}
 
 stdout:
 {self.stdout or "(empty)"}

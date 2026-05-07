@@ -1,0 +1,32 @@
+# wt-compiler env-overrides for reverse-integration tests.
+#
+# This file declares per-feature pypi dependencies that the reverse-integration
+# harness merges into both the wt-compiler discovery env and the compiled
+# package's pixi.toml. Path-based deps resolve relative to this file's own
+# directory (matching pixi.toml semantics), so `../../wt-task` points to the
+# wt-task package at the monorepo root.
+#
+# See docs/content/reference/env-overrides.md for the full file format.
+
+# Discovery env overlay (wt-compiler-only pseudo-feature; never emitted into
+# the compiled pixi.toml). Forces the discovery env's wt-* sources to local.
+[feature.discovery.pypi-dependencies]
+wt-registry  = { path = "../../wt-registry",  editable = true }
+wt-task      = { path = "../../wt-task",      editable = true }
+wt-contracts = { path = "../../wt-contracts", editable = true }
+
+# Default feature — emitted as top-level [pypi-dependencies] in pixi.toml.
+[feature.default.pypi-dependencies]
+wt-task      = { path = "../../wt-task",      editable = true, extras = ["gcp"] }
+wt-contracts = { path = "../../wt-contracts", editable = true }
+wt-registry  = { path = "../../wt-registry",  editable = true }
+
+# Runner feature — emitted as [feature.runner.pypi-dependencies] in pixi.toml.
+# The compiled `test` env pulls runner via features=["runner","test"], so
+# overrides for cross-cutting wt-* sources live here.
+[feature.runner.pypi-dependencies]
+wt-runner    = { path = "../../wt-runner",    editable = true, extras = ["gcp"] }
+wt-task      = { path = "../../wt-task",      editable = true, extras = ["gcp"] }
+wt-invokers  = { path = "../../wt-invokers",  editable = true, extras = ["gcp"] }
+wt-contracts = { path = "../../wt-contracts", editable = true }
+wt-registry  = { path = "../../wt-registry",  editable = true }

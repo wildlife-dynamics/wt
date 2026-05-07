@@ -22,6 +22,17 @@ uv run pytest src/test_recompile.py -v
 - **Recompilation tests** (`test_recompile.py`): Clone downstream repos, recompile with latest `wt-compiler`, and verify only expected files change
 - **Generated tests** (`test_generated.py`): Run the generated workflow's test suite via `pixi`
 
+## Local-source overrides
+
+The harness invokes `wt-compiler` with
+`--env-overrides=wt-compiler-env-overrides.toml` (resolved relative to
+`manifest.yaml`). That file ships path-source declarations resolving to
+the local monorepo via `../..`-relative paths, so every `wt-*` import in
+both the discovery env and the compiled package's envs resolves to the
+local checkout — never to a released conda or PyPI package. See
+[Env Overrides](../../docs/content/reference/env-overrides.md) for the
+full file format.
+
 ## CLI Options
 
 | Option | Description |

@@ -16,6 +16,7 @@ TODO areas for expansion:
 import hashlib
 import io
 import json
+import logging
 import os
 import pathlib
 import tempfile
@@ -26,7 +27,7 @@ from typing import Any, NamedTuple
 import pydot as dot
 import ruamel.yaml
 from jinja2 import Environment, FileSystemLoader
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 from rattler import Channel, MatchSpec, NamelessMatchSpec
 
 from wt_compiler.artifacts import (
@@ -42,6 +43,7 @@ from wt_compiler.artifacts import (
     Environment as PixiEnvironment,
 )
 from wt_compiler.discovery import populate_known_tasks
+from wt_compiler.env_overrides import EnvOverrides
 from wt_compiler.formatting import ruff_formatted
 from wt_compiler.jsonschema import ReactJSONSchemaFormConfiguration, find_referenced_defs
 from wt_compiler.progress import spinner
@@ -69,6 +71,8 @@ from wt_compiler.spec import (
 )
 
 yaml = ruamel.yaml.YAML(typ="safe")
+
+logger = logging.getLogger(__name__)
 
 # Template directory
 TEMPLATES = pathlib.Path(__file__).parent / "templates"
@@ -218,9 +222,11 @@ class DagCompiler(BaseModel):
     6. Create complete workflow package
     """
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     spec: Spec
     wt_runner_channel: str | None = None
-    wt_pypi_deps: dict[str, str | dict[str, Any]] | None = None
+    env_overrides: EnvOverrides | None = Field(default=None, exclude=True)
     variant: str | None = None
     jinja_templates_dir: pathlib.Path = TEMPLATES
     pkg_name_prefix: str = "wt"
@@ -240,6 +246,43 @@ class DagCompiler(BaseModel):
             exclude={"jinja_templates_dir"},
             context={"mock_io": mock_io},
         )
+
+    def _override_pypi_dict(self, feature_name: str) -> dict[str, dict[str, Any]]:
+        """Get the override file's pypi-dependencies for a feature, as a dict.
+
+        Args:
+            feature_name: One of ``default``, ``runner``, ``test``.
+
+        Returns:
+            Mapping of package name to its pixi-style pypi value (a dict
+            with ``path`` / ``git`` / ``url`` etc.). Empty when no override
+            file is set or the feature is not declared.
+        """
+        if self.env_overrides is None:
+            return {}
+        return {
+            req.name: req.to_pixi_dict()
+            for req in self.env_overrides.get_feature_pypi_deps(feature_name)
+        }
+
+    def _override_conda_dict(self, feature_name: str) -> dict[str, MatchSpec]:
+        """Get the override file's conda dependencies for a feature, as a dict.
+
+        Args:
+            feature_name: One of ``default``, ``runner``, ``test``.
+
+        Returns:
+            Mapping of package name to its rattler ``MatchSpec``. Empty when
+            no override file is set or the feature is not declared.
+        """
+        if self.env_overrides is None:
+            return {}
+        out: dict[str, MatchSpec] = {}
+        for spec in self.env_overrides.get_feature_conda_deps(feature_name):
+            if spec.name is None:
+                continue
+            out[str(spec.name.normalized)] = spec
+        return out
 
     @property
     def per_taskinstance_omit_args(
@@ -401,12 +444,32 @@ class DagCompiler(BaseModel):
         - Environments: default, runner, test
         - Tasks: docker-build (if local artifacts) and workflow CLI
 
+        When ``env_overrides`` is set, conda and pypi entries declared per
+        feature in the override file are merged into the corresponding
+        sections of the compiled pixi.toml. Per-package per-feature
+        replacement: if the override declares ``wt-task`` in
+        ``feature.runner.pypi-dependencies``, any auto-injection of
+        ``wt-task`` (conda or pypi) for the runner feature is suppressed.
+
         Returns:
             PixiToml model with all dependencies and configuration
         """
         # Separate conda and pypi requirements
         conda_reqs = self.spec.conda_requirements
         pypi_reqs = self.spec.pypi_requirements
+
+        # Per-feature override sets, used for per-package replacement
+        # of auto-injected entries.
+        default_pypi_overrides = self._override_pypi_dict("default")
+        default_conda_overrides = self._override_conda_dict("default")
+        runner_pypi_overrides = self._override_pypi_dict("runner")
+        runner_conda_overrides = self._override_conda_dict("runner")
+        test_pypi_overrides = self._override_pypi_dict("test")
+        test_conda_overrides = self._override_conda_dict("test")
+
+        default_overridden_names = set(default_pypi_overrides) | set(default_conda_overrides)
+        runner_overridden_names = set(runner_pypi_overrides) | set(runner_conda_overrides)
+        test_overridden_names = set(test_pypi_overrides) | set(test_conda_overrides)
 
         # Initialize pypi-dependencies from spec's PyPI requirements
         pypi_dependencies: dict[str, str | dict[str, Any]] = {}
@@ -469,29 +532,43 @@ class DagCompiler(BaseModel):
                 MatchSpec("conda-forge::opentelemetry-api >=1.20.0,<2.0.0")
             ),
         }
-        # Only add wt-task to conda deps when not using PyPI mode
-        if self.wt_pypi_deps is None:
+        # Auto-inject wt-task to default conda deps unless overridden
+        # by --env-overrides for the default feature, or unless we have
+        # no wt_runner_channel to anchor the conda match-spec.
+        if runner_channel and task_pkg not in default_overridden_names:
             cli_runtime_deps[task_pkg] = NamelessMatchSpec.from_match_spec(
                 MatchSpec(f"{runner_channel}::{task_pkg} >=0.1.2,<1.0.0")
             )
+        # Drop auto-injected names that are overridden by the default feature
+        for name in default_overridden_names:
+            cli_runtime_deps.pop(name, None)
         dependencies.update(cli_runtime_deps)
+
+        # Apply default-feature conda overrides (top-level [dependencies]).
+        for name, spec in default_conda_overrides.items():
+            dependencies[name] = NamelessMatchSpec.from_match_spec(spec)
+        # Apply default-feature pypi overrides (top-level [pypi-dependencies]).
+        # These also replace any auto-injected conda entry of the same name.
+        for name, value in default_pypi_overrides.items():
+            dependencies.pop(name, None)
+            pypi_dependencies[name] = value
 
         # 4. Build feature.runner.dependencies
         runner_conda_deps: dict[str, NamelessMatchSpec] = {}
         runner_pypi_deps: dict[str, str | dict[str, Any]] = {}
 
-        if self.wt_pypi_deps is None:
-            # Conda mode: wt-runner comes from conda channel
+        # Auto-inject wt-runner conda dep unless overridden for runner feature.
+        if runner_channel and runner_pkg not in runner_overridden_names:
             runner_conda_deps[runner_pkg] = NamelessMatchSpec.from_match_spec(
                 MatchSpec(f"{runner_channel}::{runner_pkg} >=0.1.5,<1.0.0")
             )
-        else:
-            # PyPI mode: wt-runner goes in runner feature pypi-deps,
-            # wt-task goes in top-level pypi-deps
-            if runner_pkg in self.wt_pypi_deps:
-                runner_pypi_deps[runner_pkg] = self.wt_pypi_deps[runner_pkg]
-            if task_pkg in self.wt_pypi_deps:
-                pypi_dependencies[task_pkg] = self.wt_pypi_deps[task_pkg]
+        # Layer in runner-feature overrides (conda first, then pypi which
+        # also displaces any conda entry of the same name).
+        for name, spec in runner_conda_overrides.items():
+            runner_conda_deps[name] = NamelessMatchSpec.from_match_spec(spec)
+        for name, value in runner_pypi_overrides.items():
+            runner_conda_deps.pop(name, None)
+            runner_pypi_deps[name] = value
 
         runner_feature = Feature(dependencies=runner_conda_deps, pypi_dependencies=runner_pypi_deps)  # type: ignore[call-arg]
 
@@ -515,6 +592,15 @@ class DagCompiler(BaseModel):
                 MatchSpec("microsoft::playwright >=1.52.0")
             ),
         }
+        test_pypi_deps: dict[str, str | dict[str, Any]] = {}
+        # Drop any auto-injected test conda dep that the override file replaces.
+        for name in test_overridden_names:
+            test_dependencies.pop(name, None)
+        for name, spec in test_conda_overrides.items():
+            test_dependencies[name] = NamelessMatchSpec.from_match_spec(spec)
+        for name, value in test_pypi_overrides.items():
+            test_dependencies.pop(name, None)
+            test_pypi_deps[name] = value
 
         test_tasks: dict[str, str | dict[str, str | list[str]]] = {
             "test-all": "python -m pytest -v tests",
@@ -542,7 +628,11 @@ class DagCompiler(BaseModel):
             },
         }
 
-        test_feature = Feature(dependencies=test_dependencies, tasks=test_tasks)
+        test_feature = Feature(  # type: ignore[call-arg]
+            dependencies=test_dependencies,
+            pypi_dependencies=test_pypi_deps,
+            tasks=test_tasks,
+        )
 
         # 6. Build environments
         # Note: using field names instead of aliases; pydantic's populate_by_name allows this
@@ -928,7 +1018,7 @@ def compile_workflow(
     spec: Spec,
     spec_relpath: str,
     wt_runner_channel: str | None = None,
-    wt_pypi_deps: dict[str, str | dict[str, Any]] | None = None,
+    env_overrides: EnvOverrides | None = None,
     installed_requirements: list[SpecRequirement] | None = None,
     on_progress: Callable[[str], None] | None = None,
     **compiler_kwargs: Any,  # noqa: ANN401  # forwarded to DagCompiler subclasses
@@ -943,10 +1033,13 @@ def compile_workflow(
         spec: Workflow specification (must have known_tasks already populated)
         spec_relpath: Relative path to spec file
         wt_runner_channel: Channel URL where wt-runner package is available.
-            Can be None when wt_pypi_deps is set (PyPI mode).
-        wt_pypi_deps: Optional dict mapping sibling package names to pixi
-            pypi-dependency values. When set, wt-runner/wt-task are installed
-            from PyPI instead of conda.
+            When ``None``, no auto-injected conda wt-task / wt-runner deps
+            are emitted; the caller is expected to provide them via
+            ``env_overrides``.
+        env_overrides: Optional parsed env-overrides file. When set, its
+            per-feature conda and pypi entries are merged into the compiled
+            ``pixi.toml`` with per-package per-feature replacement of
+            auto-injected entries.
         installed_requirements: Optional list of solved/pinned requirements
         on_progress: Optional callback invoked with a status message at each sub-step
         **compiler_kwargs: Additional arguments for DagCompiler
@@ -968,7 +1061,7 @@ def compile_workflow(
     compiler = DagCompiler(
         spec=spec,
         wt_runner_channel=wt_runner_channel,
-        wt_pypi_deps=wt_pypi_deps,
+        env_overrides=env_overrides,
         **compiler_kwargs,
     )
     return compiler.compile(
@@ -1026,6 +1119,7 @@ def _parse_requirements_from_yaml(yaml_path: Path) -> ParsedRequirements:
 async def compile_workflow_from_yaml(
     yaml_path: str | Path,
     progress: bool = True,
+    env_overrides_path: str | Path | None = None,
     **compiler_kwargs: Any,  # noqa: ANN401  # forwarded to DagCompiler subclasses
 ) -> WorkflowArtifacts:
     """Compile a workflow from a spec.yaml file with automatic task discovery.
@@ -1041,6 +1135,10 @@ async def compile_workflow_from_yaml(
         yaml_path: Path to spec.yaml file
         progress: Whether to display a progress spinner on stderr (default: True).
             Automatically disabled when stderr is not a TTY.
+        env_overrides_path: Optional path to a wt-compiler env-overrides toml
+            file. When set, the file's ``feature.discovery`` section is
+            overlaid onto the discovery env, and its other recognized
+            features are merged into the compiled pixi.toml.
         **compiler_kwargs: Additional arguments for DagCompiler
 
     Returns:
@@ -1057,6 +1155,10 @@ async def compile_workflow_from_yaml(
         >>> # artifacts.dump("output/")  # doctest: +SKIP
     """
     yaml_path = Path(yaml_path)
+
+    env_overrides: EnvOverrides | None = None
+    if env_overrides_path is not None:
+        env_overrides = EnvOverrides.from_file(env_overrides_path)
 
     with spinner(progress) as sp:
         # Phase 1: Parse requirements from YAML
@@ -1103,6 +1205,27 @@ async def compile_workflow_from_yaml(
             # PyPI-only: just need conda-forge for python + uv
             unique_channels = [CONDA_FORGE_CHANNEL]
 
+        # Overlay discovery-feature deps from the env-overrides file onto the
+        # discovery env. Conda deps add to the rattler match-specs; pypi deps
+        # are passed through as pypi_requirements with override-wins
+        # collision resolution against any same-named entries from spec.yaml.
+        if env_overrides is not None:
+            discovery_pypi = env_overrides.get_feature_pypi_deps("discovery")
+            discovery_conda = env_overrides.get_feature_conda_deps("discovery")
+            overlay_names = {pr.name for pr in discovery_pypi}
+            filtered: list[PyPIRequirement] = []
+            for pypi_req in pypi_requirements:
+                if pypi_req.name in overlay_names:
+                    logger.warning(
+                        "spec.yaml declares pypi requirement %r; --env-overrides "
+                        "feature.discovery supersedes this with the override source.",
+                        pypi_req.name,
+                    )
+                    continue
+                filtered.append(pypi_req)
+            pypi_requirements = filtered + discovery_pypi
+            match_specs.extend(discovery_conda)
+
         # Discover tasks and populate global known_tasks
         discovery_result = await populate_known_tasks(
             match_specs,
@@ -1112,16 +1235,16 @@ async def compile_workflow_from_yaml(
         )
         records = discovery_result.records
 
-        # Extract wt-runner channel from the solved wt-registry record
+        # Extract wt-runner channel from the solved wt-registry record (if any).
+        # When wt-registry is not in conda records (e.g. PyPI-only spec), the
+        # auto-injection of wt-task / wt-runner conda deps is skipped, and the
+        # caller is expected to provide them via --env-overrides.
         wt_registry_record = next(
             (r for r in records if str(r.name.normalized) == "wt-registry"), None
         )
-        if wt_registry_record is not None:
-            wt_runner_channel: str | None = str(wt_registry_record.channel)
-            wt_pypi_deps = None
-        else:
-            wt_runner_channel = None
-            wt_pypi_deps = discovery_result.wt_pypi_deps
+        wt_runner_channel: str | None = (
+            str(wt_registry_record.channel) if wt_registry_record is not None else None
+        )
 
         # Build installed requirements from solved records
         installed_requirements = _build_installed_requirements(conda_requirements, records)
@@ -1139,7 +1262,7 @@ async def compile_workflow_from_yaml(
             spec,
             spec_relpath,
             wt_runner_channel=wt_runner_channel,
-            wt_pypi_deps=wt_pypi_deps,
+            env_overrides=env_overrides,
             installed_requirements=installed_requirements,
             on_progress=sp.update,
             **compiler_kwargs,

@@ -23,7 +23,7 @@ The core engine that transforms a validated `Spec` into workflow artifacts.
 DagCompiler(
     spec: Spec,
     wt_runner_channel: str | None = None,
-    wt_pypi_deps: dict[str, str | dict[str, Any]] | None = None,
+    env_overrides: EnvOverrides | None = None,
     variant: str | None = None,
     jinja_templates_dir: Path = TEMPLATES,
     pkg_name_prefix: str = "wt",
@@ -34,8 +34,8 @@ DagCompiler(
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `spec` | `Spec` | *(required)* | Validated workflow specification |
-| `wt_runner_channel` | `str \| None` | `None` | Channel URL for `wt-runner` package |
-| `wt_pypi_deps` | `dict[str, str \| dict[str, Any]] \| None` | `None` | Additional PyPI dependencies for the compiled workflow |
+| `wt_runner_channel` | `str \| None` | `None` | Channel URL where `wt-runner` / `wt-task` conda packages are auto-injected from. When `None`, no auto-injection is performed and the caller is expected to provide these via `env_overrides`. |
+| `env_overrides` | `EnvOverrides \| None` | `None` | Parsed env-overrides file (see [Env Overrides](env-overrides.md)). Per-feature conda and pypi entries are merged into the compiled `pixi.toml` with per-package per-feature replacement of auto-injected entries. |
 | `variant` | `str \| None` | `None` | Platform variant suffix (e.g. `"gcp"`) |
 | `jinja_templates_dir` | `Path` | `TEMPLATES` | Path to Jinja2 templates (built-in default) |
 | `pkg_name_prefix` | `str` | `"wt"` | Prefix for generated package names |
@@ -127,12 +127,20 @@ without importing task code into the compiler process.
 
 1. Solve conda dependencies using py-rattler's async `solve()`.
 2. Install conda packages with py-rattler's async `install()`.
-3. If PyPI requirements are present, install them via `uv pip install` into
-   the conda environment.
-4. Execute `wt-registry --format json` in the ephemeral environment.
-5. Parse output against `RegistryOutput` from wt-contracts.
-6. Convert entries to `KnownTask` models.
-7. Update the global `known_tasks` dict.
+3. If PyPI requirements are present, install them via a single bulk
+   `uv pip install --reinstall-package <name> ...` into the conda
+   environment. The bulk call ensures all path/git/url sources resolve
+   together; `--reinstall-package` forces uv to replace any conda-installed
+   `.dist-info` with the explicit source.
+4. If a `--env-overrides` file declares a `feature.discovery` section, its
+   conda deps are added to the rattler match-specs and its pypi deps are
+   merged into the bulk install. On a per-package collision with
+   `spec.yaml`'s `requirements:`, the override wins and a one-line warning
+   is logged.
+5. Execute `wt-registry --format json` in the ephemeral environment.
+6. Parse output against `RegistryOutput` from wt-contracts.
+7. Convert entries to `KnownTask` models.
+8. Update the global `known_tasks` dict.
 
 ### Functions
 
@@ -149,7 +157,7 @@ without importing task code into the compiler process.
 | `RegistryNotFoundError` | `wt-registry` executable not found in environment |
 | `RegistryExecutionError` | `wt-registry` returned non-zero exit code |
 | `EnvironmentCreationError` | py-rattler failed to solve or install |
-| `PyPIInstallError` | `uv pip install` failed for a PyPI requirement |
+| `PyPIInstallError` | The bulk `uv pip install` failed; the failure is shared across every requirement in the batch |
 
 ---
 
@@ -257,6 +265,11 @@ wt-compiler compile --spec spec.yaml --clobber --update
 
 # GCP variant
 wt-compiler compile --spec spec.yaml --variant gcp
+
+# Override wt-* sources for development/testing of feature branches —
+# see Env Overrides
+wt-compiler compile --spec spec.yaml \
+    --env-overrides=wt-compiler-env-overrides.toml
 ```
 
 ---

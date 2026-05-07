@@ -21,6 +21,7 @@ from wt_compiler.compiler import (
     _parse_requirements_from_yaml,
     _remove_functionally_irrelevant_keys,
 )
+from wt_compiler.env_overrides import EnvOverrides
 from wt_compiler.requirements import WT_LOCAL_CHANNEL
 from wt_compiler.spec import (
     KnownTask,
@@ -89,7 +90,9 @@ class TestDagCompiler:
             requirements=[],
             workflow=[],
         )
-        compiler = DagCompiler(spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/")
+        compiler = DagCompiler(
+            spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/"
+        )
         # Release name: prefix-{id with _ replaced by -}-workflow
         assert compiler.release_name == "wt-my-workflow-workflow"
         # Package name: release name with - replaced by _
@@ -102,7 +105,11 @@ class TestDagCompiler:
             requirements=[],
             workflow=[],
         )
-        compiler = DagCompiler(spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/", pkg_name_prefix="custom")
+        compiler = DagCompiler(
+            spec=spec,
+            wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/",
+            pkg_name_prefix="custom",
+        )
         assert compiler.release_name == "custom-my-workflow-workflow"
         assert compiler.package_name == "custom_my_workflow_workflow"
 
@@ -139,7 +146,9 @@ class TestDagCompiler:
                 requirements=[],
                 workflow=[instance1, instance2],
             )
-            compiler = DagCompiler(spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/")
+            compiler = DagCompiler(
+                spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/"
+            )
 
             omit_args = compiler.per_taskinstance_omit_args
             assert "task1" in omit_args
@@ -168,7 +177,9 @@ class TestDagCompiler:
                 requirements=[],
                 workflow=[instance1],
             )
-            compiler = DagCompiler(spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/")
+            compiler = DagCompiler(
+                spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/"
+            )
 
             graph = compiler.build_pydot_graph()
             assert graph.get_name() == "test_spec"
@@ -188,7 +199,9 @@ class TestDagCompiler:
             ],
             workflow=[],
         )
-        compiler = DagCompiler(spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/")
+        compiler = DagCompiler(
+            spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/"
+        )
         pixi_toml = compiler.get_pixi_toml()
 
         # Workspace name should be the release name (underscores replaced by dashes)
@@ -217,9 +230,7 @@ class TestDagCompiler:
         spec = Spec(
             id="my_workflow",
             requirements=[
-                SpecRequirement(
-                    requirement=f"{WT_LOCAL_CHANNEL.base_url}::wt-registry>=0.1.0"
-                ),
+                SpecRequirement(requirement=f"{WT_LOCAL_CHANNEL.base_url}::wt-registry>=0.1.0"),
             ],
             workflow=[],
         )
@@ -282,41 +293,65 @@ class TestDagCompiler:
         toml_str = pixi_toml.to_toml()
         assert "pypi-dependencies" not in toml_str
 
-    def test_get_pixi_toml_with_wt_pypi_deps_path(self):
-        """Test pixi.toml generation when wt-runner/wt-task come from PyPI (path mode)."""
+    def test_get_pixi_toml_with_env_overrides_default_pypi(self, tmp_path):
+        """Override file replaces auto-injected wt-task in default deps with a pypi entry."""
+        wt_task_dir = tmp_path / "wt-task"
+        wt_task_dir.mkdir()
+        override_file = tmp_path / "wt-compiler-env-overrides.toml"
+        override_file.write_text(
+            '[feature.default.pypi-dependencies]\nwt-task = { path = "wt-task", editable = true }\n'
+        )
+        env_overrides = EnvOverrides.from_file(override_file)
+
         spec = Spec(
             id="test_spec",
-            requirements=[
-                {"name": "foo", "git": "https://github.com/org/foo.git", "tag": "v1.0"},
-            ],
+            requirements=[{"requirement": "python>=3.10"}],
             workflow=[],
         )
-        wt_pypi_deps = {
-            "wt-runner": {"path": "/home/user/wt/wt-runner", "editable": True},
-            "wt-task": {"path": "/home/user/wt/wt-task", "editable": True},
-        }
         compiler = DagCompiler(
-            spec=spec, wt_pypi_deps=wt_pypi_deps
+            spec=spec,
+            wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/",
+            env_overrides=env_overrides,
         )
         pixi_toml = compiler.get_pixi_toml()
 
-        # wt-task should be in top-level pypi_dependencies, NOT conda dependencies
+        # wt-task is now in pypi_dependencies, not in conda dependencies
         assert "wt-task" in pixi_toml.pypi_dependencies
-        assert pixi_toml.pypi_dependencies["wt-task"]["path"] == "/home/user/wt/wt-task"
+        assert pixi_toml.pypi_dependencies["wt-task"]["path"] == str(wt_task_dir)
+        assert pixi_toml.pypi_dependencies["wt-task"]["editable"] is True
         assert "wt-task" not in pixi_toml.dependencies
 
-        # wt-runner should be in runner feature's pypi_dependencies
+    def test_get_pixi_toml_with_env_overrides_runner_pypi(self, tmp_path):
+        """Override file replaces auto-injected wt-runner in runner deps with a pypi entry."""
+        wt_runner_dir = tmp_path / "wt-runner"
+        wt_runner_dir.mkdir()
+        override_file = tmp_path / "wt-compiler-env-overrides.toml"
+        override_file.write_text(
+            "[feature.runner.pypi-dependencies]\n"
+            'wt-runner = { path = "wt-runner", editable = true, extras = ["gcp"] }\n'
+        )
+        env_overrides = EnvOverrides.from_file(override_file)
+
+        spec = Spec(
+            id="test_spec",
+            requirements=[{"requirement": "python>=3.10"}],
+            workflow=[],
+        )
+        compiler = DagCompiler(
+            spec=spec,
+            wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/",
+            env_overrides=env_overrides,
+        )
+        pixi_toml = compiler.get_pixi_toml()
+
         runner_feature = pixi_toml.feature["runner"]
         assert "wt-runner" in runner_feature.pypi_dependencies
-        assert runner_feature.pypi_dependencies["wt-runner"]["path"] == "/home/user/wt/wt-runner"
+        assert runner_feature.pypi_dependencies["wt-runner"]["path"] == str(wt_runner_dir)
+        assert runner_feature.pypi_dependencies["wt-runner"]["extras"] == ["gcp"]
         assert "wt-runner" not in runner_feature.dependencies
 
-        # python should be injected into runner feature's conda deps
-        # because the runner env has pypi deps but no conda deps
-        assert "python" in runner_feature.dependencies
-
-    def test_get_pixi_toml_with_wt_pypi_deps_wildcard(self):
-        """Test pixi.toml generation when wt-runner/wt-task come from PyPI registry."""
+    def test_get_pixi_toml_no_runner_channel_skips_auto_injection(self):
+        """When wt_runner_channel is None, no wt-task / wt-runner conda deps are auto-injected."""
         spec = Spec(
             id="test_spec",
             requirements=[
@@ -324,65 +359,12 @@ class TestDagCompiler:
             ],
             workflow=[],
         )
-        wt_pypi_deps = {
-            "wt-runner": "*",
-            "wt-task": "*",
-        }
-        compiler = DagCompiler(
-            spec=spec, wt_pypi_deps=wt_pypi_deps
-        )
+        compiler = DagCompiler(spec=spec, wt_runner_channel=None)
         pixi_toml = compiler.get_pixi_toml()
 
-        # wt-task should be in top-level pypi_dependencies with wildcard
-        assert pixi_toml.pypi_dependencies["wt-task"] == "*"
-
-        # wt-runner should be in runner feature's pypi_dependencies
-        assert pixi_toml.feature["runner"].pypi_dependencies["wt-runner"] == "*"
-
-        # python should be injected into runner feature's conda deps
-        assert "python" in pixi_toml.feature["runner"].dependencies
-
-    def test_get_pixi_toml_pypi_mode_runner_has_python_dep(self):
-        """Test that python conda dep is injected when runner env has only PyPI deps."""
-        spec = Spec(
-            id="test_spec",
-            requirements=[
-                {"name": "foo", "git": "https://github.com/org/foo.git", "tag": "v1.0"},
-            ],
-            workflow=[],
-        )
-        wt_pypi_deps = {"wt-runner": "*", "wt-task": "*"}
-        compiler = DagCompiler(spec=spec, wt_pypi_deps=wt_pypi_deps)
-        pixi_toml = compiler.get_pixi_toml()
-
-        runner_feature = pixi_toml.feature["runner"]
-        # python should be injected because runner env has pypi deps but no conda deps
-        assert "python" in runner_feature.dependencies
-        python_spec = str(runner_feature.dependencies["python"])
-        assert ">=3.10" in python_spec
-        assert "<4.0" in python_spec
-
-        # Default env should NOT get python injected (it has conda deps from cli_runtime_deps)
-        assert "python" not in pixi_toml.dependencies
-
-    def test_get_pixi_toml_pypi_mode_no_runner_channel_in_channels(self):
-        """Test that PyPI mode doesn't add wt_runner_channel to channels list."""
-        spec = Spec(
-            id="test_spec",
-            requirements=[
-                {"name": "foo", "git": "https://github.com/org/foo.git", "tag": "v1.0"},
-            ],
-            workflow=[],
-        )
-        wt_pypi_deps = {"wt-runner": "*", "wt-task": "*"}
-        compiler = DagCompiler(
-            spec=spec, wt_pypi_deps=wt_pypi_deps
-        )
-        pixi_toml = compiler.get_pixi_toml()
-        toml_str = pixi_toml.to_toml()
-
-        # Should still have conda-forge and other standard channels
-        assert "conda-forge" in toml_str
+        # Without a runner channel, no wt-task / wt-runner conda deps should be emitted.
+        assert "wt-task" not in pixi_toml.dependencies
+        assert "wt-runner" not in pixi_toml.feature["runner"].dependencies
 
     def test_props_and_defs_from_task_instance(self):
         """Test extracting properties and definitions from a task instance."""
@@ -519,11 +501,13 @@ class TestFingerprint:
             },
         )
         pixi_toml = PixiToml(workspace=PixiWorkspace(name="test"), dependencies={})
-        tests = Tests(**{
-            "conftest.py": "",
-            "test_metadata.py": "",
-            "test_results.py": "",
-        })
+        tests = Tests(
+            **{
+                "conftest.py": "",
+                "test_metadata.py": "",
+                "test_results.py": "",
+            }
+        )
 
         artifacts = WorkflowArtifacts(
             spec_relpath="spec.yaml",
@@ -571,11 +555,13 @@ class TestFingerprint:
             },
         )
         pixi_toml = PixiToml(workspace=PixiWorkspace(name="test"), dependencies={})
-        tests = Tests(**{
-            "conftest.py": "",
-            "test_metadata.py": "",
-            "test_results.py": "",
-        })
+        tests = Tests(
+            **{
+                "conftest.py": "",
+                "test_metadata.py": "",
+                "test_results.py": "",
+            }
+        )
 
         artifacts = WorkflowArtifacts(
             spec_relpath="spec.yaml",
@@ -593,7 +579,6 @@ class TestFingerprint:
         assert "spec_sha256" in yaml_str
         assert "params_sha256" in yaml_str
         assert "artifacts_sha256_basic" in yaml_str
-
 
     def test_fingerprint_with_installed_requirements(self):
         """Test fingerprint YAML includes installed_requirements in block style."""
@@ -626,11 +611,13 @@ class TestFingerprint:
             },
         )
         pixi_toml = PixiToml(workspace=PixiWorkspace(name="test"), dependencies={})
-        tests = Tests(**{
-            "conftest.py": "",
-            "test_metadata.py": "",
-            "test_results.py": "",
-        })
+        tests = Tests(
+            **{
+                "conftest.py": "",
+                "test_metadata.py": "",
+                "test_results.py": "",
+            }
+        )
 
         artifacts = WorkflowArtifacts(
             spec_relpath="spec.yaml",
@@ -647,9 +634,7 @@ class TestFingerprint:
             SpecRequirement(name="numpy", version="==1.26.4", channel="conda-forge"),
         ]
 
-        fingerprint = Fingerprint(
-            spec=spec, wa=artifacts, installed_requirements=installed_reqs
-        )
+        fingerprint = Fingerprint(spec=spec, wa=artifacts, installed_requirements=installed_reqs)
         yaml_str = fingerprint.to_yaml()
 
         # Should include installed_requirements key
@@ -692,11 +677,13 @@ class TestFingerprint:
             },
         )
         pixi_toml = PixiToml(workspace=PixiWorkspace(name="test"), dependencies={})
-        tests = Tests(**{
-            "conftest.py": "",
-            "test_metadata.py": "",
-            "test_results.py": "",
-        })
+        tests = Tests(
+            **{
+                "conftest.py": "",
+                "test_metadata.py": "",
+                "test_results.py": "",
+            }
+        )
 
         artifacts = WorkflowArtifacts(
             spec_relpath="spec.yaml",
@@ -824,7 +811,9 @@ class TestRenderDag:
                 ),
             ],
         )
-        return DagCompiler(spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/")
+        return DagCompiler(
+            spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/"
+        )
 
     def test_sequential_mock_io_skips_validate_for_io_tasks(self):
         """With mock_io=True, IO tasks should NOT have .validate(), non-IO tasks should."""
@@ -953,7 +942,9 @@ class TestRenderDag:
                 ),
             ],
         )
-        return DagCompiler(spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/")
+        return DagCompiler(
+            spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/"
+        )
 
     def test_sequential_realistic_validate_count(self):
         """mock_io=True: 4 .validate() calls and 1 'validation omitted' comment."""
@@ -996,16 +987,12 @@ class TestRenderDag:
 
             tasks = config["spec"]["flat_workflow"]
             mocked_ids = [
-                t["id"]
-                for t in tasks
-                if t["known_task"]["importable_reference"]["is_mocked"]
+                t["id"] for t in tasks if t["known_task"]["importable_reference"]["is_mocked"]
             ]
             assert mocked_ids == ["step_load"]
 
             not_mocked_ids = [
-                t["id"]
-                for t in tasks
-                if not t["known_task"]["importable_reference"]["is_mocked"]
+                t["id"] for t in tasks if not t["known_task"]["importable_reference"]["is_mocked"]
             ]
             assert set(not_mocked_ids) == {
                 "step_transform",
@@ -1023,10 +1010,7 @@ class TestRenderDag:
             config = compiler.get_dag_config("sequential", mock_io=False)
 
             tasks = config["spec"]["flat_workflow"]
-            assert all(
-                t["known_task"]["importable_reference"]["is_mocked"] is False
-                for t in tasks
-            )
+            assert all(t["known_task"]["importable_reference"]["is_mocked"] is False for t in tasks)
         finally:
             known_tasks.clear()
 

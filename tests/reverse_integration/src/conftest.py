@@ -82,6 +82,29 @@ def _derive_spec_name(spec_path: str) -> str:
     return path.parent.name or path.stem
 
 
+def _resolve_env_overrides(compile_flags: dict[str, str] | None) -> dict[str, str] | None:
+    """Resolve a relative ``env_overrides`` path against ``MANIFEST_PATH.parent``.
+
+    Paths inside the override file remain relative to the override file's own
+    directory; this only resolves the manifest-level reference.
+
+    Args:
+        compile_flags: Dict of compile flags from a manifest entry, or None.
+
+    Returns:
+        A copy of ``compile_flags`` with ``env_overrides`` resolved to an
+        absolute path, or the original input when no resolution is needed.
+    """
+    if not compile_flags or "env_overrides" not in compile_flags:
+        return compile_flags
+    resolved = dict(compile_flags)
+    raw = Path(resolved["env_overrides"])
+    if not raw.is_absolute():
+        raw = (MANIFEST_PATH.parent / raw).resolve()
+    resolved["env_overrides"] = str(raw)
+    return resolved
+
+
 def get_repo_configs(
     manifest: dict[str, Any],
     repo_url_filter: str | None = None,
@@ -116,7 +139,7 @@ def get_repo_configs(
                     spec_path=spec_config["spec_path"],
                     generated_path=spec_config["generated_path"],
                     spec_name=_derive_spec_name(spec_config["spec_path"]),
-                    compile_flags=spec_config.get("compile_flags") or None,
+                    compile_flags=_resolve_env_overrides(spec_config.get("compile_flags")) or None,
                 )
                 for spec_config in repo["specs"]
             )
@@ -128,7 +151,7 @@ def get_repo_configs(
                     ref=ref_override or repo.get("ref", "main"),
                     spec_path=repo.get("spec_path", "spec.yaml"),
                     generated_path=repo.get("generated_path", ""),
-                    compile_flags=repo.get("compile_flags") or None,
+                    compile_flags=_resolve_env_overrides(repo.get("compile_flags")) or None,
                 )
             )
 

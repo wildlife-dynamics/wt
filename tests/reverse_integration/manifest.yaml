@@ -19,6 +19,7 @@ repos:
       pkg_name_prefix: ecoscope-workflows
       results_env_var: ECOSCOPE_WORKFLOWS_RESULTS
       variant: gcp
+      env_overrides: wt-compiler-env-overrides.toml  # resolved relative to manifest.yaml
 
   - url: https://github.com/ecoscope-platform-workflows-releases/patrols
     ref: main  # Default: main branch
@@ -78,7 +79,13 @@ diff_allowlist:
     allowed_variance:
       - 'PIXI_VERSION=\S+'
 
-  # Only version specifiers may change
+  # Version specifiers, override-driven path sources for wt-* packages, and
+  # the runner/test feature pypi-dependencies blocks may change. The runner
+  # and test feature blocks vary because --env-overrides injects per-feature
+  # pypi entries with absolute paths that differ between machines.
   - file: pixi.toml
     allowed_variance:
       - '(?<=version = ")[^"]*'
+      - 'wt-(contracts|runner|task|registry|invokers)(-gcp)? = \{[^}]*\}'
+      - '\[feature\.runner\.pypi-dependencies\][\s\S]*?(?=\n\[|\Z)'
+      - '\[feature\.test\.pypi-dependencies\][\s\S]*?(?=\n\[|\Z)'
