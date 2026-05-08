@@ -19,7 +19,6 @@ wt-contracts = { path = "../../wt-contracts" }
 # Default feature — emitted as top-level [pypi-dependencies] in pixi.toml.
 [feature.default.pypi-dependencies]
 wt-task      = { path = "../../wt-task", extras = ["gcp"] }
-wt-contracts = { path = "../../wt-contracts"              }
 wt-registry  = { path = "../../wt-registry"               }
 
 # Runner feature — emitted as [feature.runner.pypi-dependencies] in pixi.toml.
@@ -28,5 +27,3 @@ wt-registry  = { path = "../../wt-registry"               }
 [feature.runner.pypi-dependencies]
 wt-runner    = { path = "../../wt-runner",   extras = ["gcp"] }
 wt-task      = { path = "../../wt-task",     extras = ["gcp"] }
-wt-invokers  = { path = "../../wt-invokers", extras = ["gcp"] }
-wt-contracts = { path = "../../wt-contracts"                  }
