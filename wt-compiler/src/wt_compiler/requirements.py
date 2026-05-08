@@ -234,6 +234,12 @@ def _serialize_namelessmatchspec(
         >>> serialized
         {'version': '>=0.1.0'}
 
+        Wildcard ``"*"`` round-trips to the literal ``"*"`` rather than
+        ``"None"`` (``NamelessMatchSpec("*").version`` is ``None``):
+
+        >>> _serialize_namelessmatchspec(NamelessMatchSpec("*"))
+        {'version': '*'}
+
         With channel:
 
         >>> value = {
@@ -246,7 +252,7 @@ def _serialize_namelessmatchspec(
         {'version': '>=0.1.0', 'channel': 'https://repo.prefix.dev/ecoscope-workflows/'}
     """
     channel_base_url = value.channel.base_url if value.channel else None
-    version_dict = {"version": str(value.version)}
+    version_dict = {"version": "*" if value.version is None else str(value.version)}
     match channel_base_url:
         case None:
             return cast("SerializedNamelessMatchSpecDictMinimal", version_dict)

@@ -167,7 +167,7 @@ class TestPyPIInstallErrorInDiscovery:
             )
 
         error = exc_info.value
-        assert error.requirement is pypi_req
+        assert error.requirements == [pypi_req]
         assert error.returncode == 1
         assert "Collecting bad-package" in error.stdout
         assert "No matching distribution" in error.stderr
@@ -176,7 +176,7 @@ class TestPyPIInstallErrorInDiscovery:
         """str(PyPIInstallError) contains package name, exit code, pip arg, and output."""
         req = PyPIRequirement(name="foo-bar", git="https://github.com/org/foo-bar.git")
         error = PyPIInstallError(
-            requirement=req,
+            requirements=[req],
             returncode=2,
             stdout="some stdout",
             stderr="some stderr",
@@ -190,7 +190,6 @@ class TestPyPIInstallErrorInDiscovery:
         assert "some stderr" in msg
 
     @pytest.mark.asyncio
-    @patch("wt_compiler.pypi_source.detect_pypi_source", return_value=(None, "0.1.0"))
     @patch("wt_compiler.discovery.subprocess.run")
     @patch("wt_compiler.discovery._create_environment", new_callable=AsyncMock)
     @patch("wt_compiler.discovery.tempfile.TemporaryDirectory")
@@ -199,7 +198,6 @@ class TestPyPIInstallErrorInDiscovery:
         mock_tmpdir: MagicMock,
         mock_create_env: AsyncMock,
         mock_run: MagicMock,
-        mock_detect_pypi: MagicMock,
         tmp_path: Path,
     ) -> None:
         """wt-registry CLI is called without --package args (uses entry point auto-discovery)."""

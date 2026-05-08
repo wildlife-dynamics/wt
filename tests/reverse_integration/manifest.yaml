@@ -80,12 +80,16 @@ diff_allowlist:
       - 'PIXI_VERSION=\S+'
 
   # Version specifiers, override-driven path sources for wt-* packages, and
-  # the runner/test feature pypi-dependencies blocks may change. The runner
-  # and test feature blocks vary because --env-overrides injects per-feature
-  # pypi entries with absolute paths that differ between machines.
+  # the pypi-dependencies blocks injected by --env-overrides may change.
+  # Both the bare per-feature form ([feature.runner.pypi-dependencies]) and
+  # the dotted-per-key form ([feature.runner.pypi-dependencies.wt-runner]) are
+  # matched, along with top-level [pypi-dependencies.wt-*] blocks injected by
+  # the [feature.default.pypi-dependencies] section of the overrides TOML.
+  # Absolute paths in those entries differ between machines.
   - file: pixi.toml
     allowed_variance:
       - '(?<=version = ")[^"]*'
       - 'wt-(contracts|runner|task|registry|invokers)(-gcp)? = \{[^}]*\}'
-      - '\[feature\.runner\.pypi-dependencies\][\s\S]*?(?=\n\[|\Z)'
-      - '\[feature\.test\.pypi-dependencies\][\s\S]*?(?=\n\[|\Z)'
+      - '\[pypi-dependencies\.wt-[a-z-]+\][\s\S]*?(?=\n\[|\Z)'
+      - '\[feature\.runner\.pypi-dependencies(\.[^\]]+)?\][\s\S]*?(?=\n\[|\Z)'
+      - '\[feature\.test\.pypi-dependencies(\.[^\]]+)?\][\s\S]*?(?=\n\[|\Z)'
