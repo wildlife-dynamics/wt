@@ -85,8 +85,7 @@ def _derive_spec_name(spec_path: str) -> str:
 def _resolve_env_overrides(compile_flags: dict[str, str] | None) -> dict[str, str] | None:
     """Resolve the *manifest-relative* ``env_overrides`` path to absolute.
 
-    Two distinct anchors, two distinct phases — name them explicitly so the
-    distinction doesn't get lost:
+    There are two distinct anchors at two distinct phases:
 
     1. **Manifest-relative (this function).** The manifest entry's
        ``env_overrides`` value is interpreted relative to the manifest

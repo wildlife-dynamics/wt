@@ -266,9 +266,10 @@ does not affect `wt-task` in *other* features.
 Layer C may additionally declare a `[feature.discovery.*]` block that
 the compiler overlays onto its own discovery env via
 `uv pip install --reinstall-package`. Discovery is a wt-compiler-only
-pseudo-feature and is **never emitted into the compiled pixi.toml** —
-note this asymmetry explicitly. The `discovery` feature is rejected
-in any other context (e.g. it's invalid in `default-env-injections.toml`).
+pseudo-feature: it is parsed from `--env-overrides` files but is
+**never emitted into the compiled pixi.toml**, and it is rejected in
+any other context (e.g. it's invalid in
+`default-env-injections.toml`).
 
 ### Where each feature lands
 

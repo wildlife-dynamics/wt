@@ -73,6 +73,15 @@ class TestPixiTomlFragmentParsing:
         spec = frag.get_feature("default").conda[0]
         assert spec.channel.base_url == "https://example.invalid/custom/"
 
+    def test_longform_conda_unknown_channel_rejected(self, tmp_path):
+        """An unknown channel name (not a URL, not a known alias) is rejected."""
+        f = tmp_path / "frag.toml"
+        f.write_text(
+            '[feature.default.dependencies]\nfoo = { version = ">=1.0", channel = "bogus" }\n'
+        )
+        with pytest.raises(ValueError, match="Unknown conda channel 'bogus'"):
+            PixiTomlFragment.from_file(f)
+
     def test_longform_conda_default_channel(self, tmp_path):
         """Longform table with no channel defaults to conda-forge."""
         f = tmp_path / "frag.toml"

@@ -53,6 +53,27 @@ _NAMED_CHANNELS = {
 _DEFAULT_CONDA_CHANNEL_NAME = "conda-forge"
 
 
+def _spec_name(spec: MatchSpec) -> str:
+    """Return *spec*'s normalized package name.
+
+    All ``MatchSpec`` instances produced by this module are built from a
+    non-empty TOML key, so ``spec.name`` is expected to be set. A
+    ``None`` here indicates an internal invariant violation (e.g. a
+    refactor mistake or an unexpected rattler change), not a user input
+    error — surface it loudly rather than silently filtering.
+
+    Raises:
+        ValueError: If ``spec.name`` is ``None``.
+    """
+    if spec.name is None:
+        raise ValueError(
+            f"Internal invariant violated: MatchSpec {spec!r} has no name. "
+            f"MatchSpecs in this module must always carry the package name "
+            f"from their source TOML key."
+        )
+    return str(spec.name.normalized)
+
+
 @dataclass
 class FeatureSection:
     """Parsed conda + pypi dependency section for one feature.
@@ -71,7 +92,7 @@ class FeatureSection:
 
     def conda_by_name(self) -> dict[str, MatchSpec]:
         """Return conda specs keyed by normalized package name."""
-        return {str(spec.name.normalized): spec for spec in self.conda if spec.name is not None}
+        return {_spec_name(spec): spec for spec in self.conda}
 
     def pypi_by_name(self) -> dict[str, PyPIRequirement]:
         """Return pypi requirements keyed by package name."""
@@ -251,7 +272,7 @@ def _parse_feature_section(
             )
         )
 
-    conda_names = {str(spec.name.normalized) for spec in section.conda if spec.name is not None}
+    conda_names = {_spec_name(spec) for spec in section.conda}
     pypi_names = {req.name for req in section.pypi}
     overlap = sorted(conda_names & pypi_names)
     if overlap:
@@ -269,18 +290,27 @@ def _resolve_channel_to_base_url(channel: str) -> str:
 
     Args:
         channel: Either a known channel name (``conda-forge``,
-            ``ecoscope-workflows``, ``microsoft``) or a full base URL.
+            ``ecoscope-workflows``, ``microsoft``) or a full base URL
+            (containing ``://``).
 
     Returns:
-        The channel's ``base_url`` (or the input if it already looks like a
-        URL).
+        The channel's ``base_url`` if *channel* names a known channel, or
+        *channel* itself if it already looks like a URL.
+
+    Raises:
+        ValueError: If *channel* is neither a URL nor a known named
+            channel.
     """
     if "://" in channel:
         return channel
     known = _NAMED_CHANNELS.get(channel)
     if known is not None:
         return known.base_url
-    return channel
+    raise ValueError(
+        f"Unknown conda channel {channel!r}. Expected a full base URL "
+        f"(containing '://') or one of the known names: "
+        f"{sorted(_NAMED_CHANNELS)}."
+    )
 
 
 def _parse_conda_entry(
@@ -423,13 +453,11 @@ def merge_features(
     """
     override_names = {
         *(req.name for req in overrides.pypi),
-        *(str(spec.name.normalized) for spec in overrides.conda if spec.name is not None),
+        *(_spec_name(spec) for spec in overrides.conda),
     }
     drop = suppress_names | override_names
 
-    merged_conda: list[MatchSpec] = [
-        spec for spec in base.conda if spec.name is None or str(spec.name.normalized) not in drop
-    ]
+    merged_conda: list[MatchSpec] = [spec for spec in base.conda if _spec_name(spec) not in drop]
     merged_pypi: list[PyPIRequirement] = [req for req in base.pypi if req.name not in drop]
 
     merged_conda.extend(overrides.conda)

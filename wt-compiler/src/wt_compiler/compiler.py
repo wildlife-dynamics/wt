@@ -107,6 +107,14 @@ def _apply_variant_suffix(
     selection lives in one place (the ``--variant`` CLI flag) rather than
     in the data file.
 
+    The default *variant_packages* tuple lists exactly the variant-aware
+    names that appear by name in ``default-env-injections.toml``:
+    ``wt-task`` (default feature) and ``wt-runner`` (runner feature).
+    ``wt-invokers`` is also variant-aware (``wt-invokers-gcp`` exists),
+    but it is never injected by name in the bundled defaults — its
+    ``-gcp`` form arrives transitively as a dependency of
+    ``wt-runner-gcp``, so it does not need rewriting here.
+
     Args:
         section: A parsed :class:`FeatureSection`.
         variant: Variant suffix, or ``None`` for no rewrite.
