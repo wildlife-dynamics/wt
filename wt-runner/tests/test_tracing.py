@@ -90,9 +90,7 @@ def test_configure_tracer_with_console_exporter():
         patch("wt_runner.tracing.trace.set_tracer_provider") as mock_set_provider,
         patch("wt_runner.tracing.ConsoleSpanExporter") as mock_exporter,
     ):
-        configure_tracer(
-            name="test-service", version="1.0.0", exporter="console", exporter_kws={}
-        )
+        configure_tracer(name="test-service", version="1.0.0", exporter="console", exporter_kws={})
 
         mock_exporter.assert_called_once_with()
         mock_set_provider.assert_called_once()
@@ -105,9 +103,7 @@ def test_configure_tracer_with_gcp_exporter():
         patch("wt_runner.tracing.HAS_GCP_EXPORTER", True),
         patch("wt_runner.tracing.CloudTraceSpanExporter") as mock_exporter,
     ):
-        configure_tracer(
-            name="test-service", version="1.0.0", exporter="gcp", exporter_kws={}
-        )
+        configure_tracer(name="test-service", version="1.0.0", exporter="gcp", exporter_kws={})
 
         mock_exporter.assert_called_once_with()
         mock_set_provider.assert_called_once()
@@ -146,9 +142,7 @@ def test_attach_context_with_traceparent_only():
 
         attach_context(traceparent="00-test-trace-id-span-id-01")
 
-        mock_extract.assert_called_once_with(
-            carrier={"traceparent": "00-test-trace-id-span-id-01"}
-        )
+        mock_extract.assert_called_once_with(carrier={"traceparent": "00-test-trace-id-span-id-01"})
         mock_attach.assert_called_once_with(mock_ctx)
 
 

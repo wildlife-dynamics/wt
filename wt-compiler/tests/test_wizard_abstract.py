@@ -29,7 +29,7 @@ class TestABCConformance:
     def test_abstract_methods_enforced(self) -> None:
         """Attempting to instantiate AbstractWizardProvider directly raises TypeError."""
         with pytest.raises(TypeError):
-          AbstractWizardProvider()
+            AbstractWizardProvider()
 
 
 class TestGeneratorMechanics:
@@ -70,9 +70,7 @@ class TestGeneratorMechanics:
             if dest in seen_dests:
                 continue
             seen_dests.add(dest)
-            parser.add_argument(
-                f"--{dest.replace('_', '-')}", **q["argparse"]
-            )
+            parser.add_argument(f"--{dest.replace('_', '-')}", **q["argparse"])
 
     def test_send_based_flow_complete(self) -> None:
         """Drive generator with valid answers, verify StopIteration and answers populated."""
@@ -191,10 +189,10 @@ class TestLoopContext:
             question = gen.send(ans)
         assert question["wizard"]["loop_context"]["iteration"] == 0
         # Collect one requirement (conda)
-        question = gen.send("numpy")       # name → yields req_type
-        question = gen.send("conda")       # req_type → yields version
-        question = gen.send("*")           # version → yields channel
-        question = gen.send("conda-forge") # channel → loops back to name
+        question = gen.send("numpy")  # name → yields req_type
+        question = gen.send("conda")  # req_type → yields version
+        question = gen.send("*")  # version → yields channel
+        question = gen.send("conda-forge")  # channel → loops back to name
         assert question["wizard"]["loop_context"]["iteration"] == 1
 
     def test_loop_context_absent_on_subsequent_sub_questions(self) -> None:
@@ -244,7 +242,6 @@ class TestDumpNoTemplates:
 
     def test_dump_raises_when_no_loaders(self, tmp_path: Path) -> None:
         """dump() raises RuntimeError when no PackageLoader can be constructed from MRO."""
-
 
         class NoTemplatesProvider(AbstractWizardProvider):
             def get_questions(self) -> list[WizardQuestion]:

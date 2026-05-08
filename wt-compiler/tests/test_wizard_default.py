@@ -127,13 +127,22 @@ class TestRequirementsLoop:
         reqs = provider.answers["requirements"]
         assert len(reqs) == 3
         assert reqs[0] == {
-            "name": "numpy", "req_type": "conda", "version": ">=1.0", "channel": "conda-forge"
+            "name": "numpy",
+            "req_type": "conda",
+            "version": ">=1.0",
+            "channel": "conda-forge",
         }
         assert reqs[1] == {
-            "name": "pandas", "req_type": "conda", "version": "*", "channel": "conda-forge"
+            "name": "pandas",
+            "req_type": "conda",
+            "version": "*",
+            "channel": "conda-forge",
         }
         assert reqs[2] == {
-            "name": "scipy", "req_type": "conda", "version": ">=2.0", "channel": "conda-forge"
+            "name": "scipy",
+            "req_type": "conda",
+            "version": ">=2.0",
+            "channel": "conda-forge",
         }
 
     def test_requirements_loop_empty_immediately(self) -> None:
@@ -196,11 +205,11 @@ class TestRequirementsLoop:
             "desc",
             "Author",
             "MIT",
-            "mypackage",             # name
-            "local path",            # req_type → skips version + channel, shows path
+            "mypackage",  # name
+            "local path",  # req_type → skips version + channel, shows path
             "/home/user/mypackage",  # path
-            "false",                 # editable
-            "",                      # end loop
+            "false",  # editable
+            "",  # end loop
         ]
         drive_wizard(provider, answers)
         reqs = provider.answers["requirements"]
@@ -221,10 +230,10 @@ class TestRequirementsLoop:
             "desc",
             "Author",
             "MIT",
-            "mypackage",                     # name
-            "url",                           # req_type
-            "https://example.com/pkg.whl",   # url
-            "",                              # end loop
+            "mypackage",  # name
+            "url",  # req_type
+            "https://example.com/pkg.whl",  # url
+            "",  # end loop
         ]
         drive_wizard(provider, answers)
         reqs = provider.answers["requirements"]
@@ -244,11 +253,11 @@ class TestRequirementsLoop:
             "desc",
             "Author",
             "MIT",
-            "mypkg",                                   # name
-            "git",                                     # req_type
-            "https://github.com/org/pkg.git",          # git
-            "none",                                    # git_ref_type
-            "",                                        # end loop
+            "mypkg",  # name
+            "git",  # req_type
+            "https://github.com/org/pkg.git",  # git
+            "none",  # git_ref_type
+            "",  # end loop
         ]
         drive_wizard(provider, answers)
         reqs = provider.answers["requirements"]
@@ -269,12 +278,12 @@ class TestRequirementsLoop:
             "desc",
             "Author",
             "MIT",
-            "mypkg",                                   # name
-            "git",                                     # req_type
-            "https://github.com/org/pkg.git",          # git
-            "branch",                                  # git_ref_type
-            "main",                                    # git_ref_value
-            "",                                        # end loop
+            "mypkg",  # name
+            "git",  # req_type
+            "https://github.com/org/pkg.git",  # git
+            "branch",  # git_ref_type
+            "main",  # git_ref_value
+            "",  # end loop
         ]
         drive_wizard(provider, answers)
         reqs = provider.answers["requirements"]
@@ -296,11 +305,11 @@ class TestRequirementsLoop:
             "desc",
             "Author",
             "MIT",
-            "mypkg",              # name
-            "local path",         # req_type
-            "/home/user/mypkg",   # path
-            "true",               # editable
-            "",                   # end loop
+            "mypkg",  # name
+            "local path",  # req_type
+            "/home/user/mypkg",  # path
+            "true",  # editable
+            "",  # end loop
         ]
         drive_wizard(provider, answers)
         reqs = provider.answers["requirements"]
@@ -315,20 +324,23 @@ class TestRequirementsLoop:
             "desc",
             "Author",
             "MIT",
-            "numpy",        # name
-            "conda",        # req_type
-            ">=1.0",        # version
+            "numpy",  # name
+            "conda",  # req_type
+            ">=1.0",  # version
             "conda-forge",  # channel
-            "mypackage",    # name
-            "url",          # req_type
+            "mypackage",  # name
+            "url",  # req_type
             "https://example.com/pkg.whl",  # url
-            "",             # end loop
+            "",  # end loop
         ]
         drive_wizard(provider, answers)
         reqs = provider.answers["requirements"]
         assert len(reqs) == 2
         assert reqs[0] == {
-            "name": "numpy", "req_type": "conda", "version": ">=1.0", "channel": "conda-forge"
+            "name": "numpy",
+            "req_type": "conda",
+            "version": ">=1.0",
+            "channel": "conda-forge",
         }
         assert reqs[1] == {
             "name": "mypackage",
@@ -386,7 +398,7 @@ class TestRequirementsLoop:
         q = next(gen)
         for ans in ["my_workflow", "My Workflow", "desc", "Author", "MIT"]:
             q = gen.send(ans)
-        q = gen.send("mypkg")           # name
+        q = gen.send("mypkg")  # name
         assert q["dest"] == "req_type"
         q = gen.send("git")
         assert q["dest"] == "git"
@@ -403,7 +415,7 @@ class TestRequirementsLoop:
         q = next(gen)
         for ans in ["my_workflow", "My Workflow", "desc", "Author", "MIT"]:
             q = gen.send(ans)
-        q = gen.send("mypkg")           # name
+        q = gen.send("mypkg")  # name
         assert q["dest"] == "req_type"
         q = gen.send("url")
         # path + editable skipped — url shown directly
@@ -474,9 +486,7 @@ class TestRequirementsBatchType:
         assert d["url"] == "https://example.com/pkg.whl"
 
     def test_git_inferred_from_git_key(self) -> None:
-        d = _requirements_batch_type(
-            '{"name":"mypkg","git":"https://github.com/org/pkg.git"}'
-        )
+        d = _requirements_batch_type('{"name":"mypkg","git":"https://github.com/org/pkg.git"}')
         assert d["req_type"] == "git"
         assert d["git"] == "https://github.com/org/pkg.git"
         assert d["git_ref_type"] == "none"
@@ -518,9 +528,7 @@ class TestRequirementsBatchType:
         assert d["req_type"] == "conda"
 
     def test_explicit_req_type_local_path(self) -> None:
-        d = _requirements_batch_type(
-            '{"name":"mypkg","req_type":"local path","path":"/abs/path"}'
-        )
+        d = _requirements_batch_type('{"name":"mypkg","req_type":"local path","path":"/abs/path"}')
         assert d["req_type"] == "local path"
 
     def test_invalid_json_raises(self) -> None:
@@ -535,9 +543,7 @@ class TestRequirementsBatchType:
 
     def test_invalid_channel_raises(self) -> None:
         with pytest.raises(argparse.ArgumentTypeError, match="channel"):
-            _requirements_batch_type(
-                '{"name":"numpy","version":"*","channel":"not-a-channel"}'
-            )
+            _requirements_batch_type('{"name":"numpy","version":"*","channel":"not-a-channel"}')
 
     def test_invalid_path_raises(self) -> None:
         with pytest.raises(argparse.ArgumentTypeError, match="path"):
@@ -608,9 +614,9 @@ class TestDump:
             "A test workflow",
             "Test Author",
             "MIT",
-            "numpy",   # name
-            "conda",   # req_type
-            ">=1.0",   # version
+            "numpy",  # name
+            "conda",  # req_type
+            ">=1.0",  # version
             "conda-forge",  # channel
             "",  # end requirements loop
         ]
@@ -651,8 +657,16 @@ class TestDump:
         """spec.yaml renders local path requirement correctly."""
         provider = DefaultWizardProvider()
         answers = [
-            "my_workflow", "My Workflow", "", "Author", "MIT",
-            "mypkg", "local path", "/home/user/mypkg", "false", "",
+            "my_workflow",
+            "My Workflow",
+            "",
+            "Author",
+            "MIT",
+            "mypkg",
+            "local path",
+            "/home/user/mypkg",
+            "false",
+            "",
         ]
         drive_wizard(provider, answers)
         provider.dump(tmp_path)
@@ -666,8 +680,16 @@ class TestDump:
         """spec.yaml renders local path+editable requirement correctly."""
         provider = DefaultWizardProvider()
         answers = [
-            "my_workflow", "My Workflow", "", "Author", "MIT",
-            "mypkg", "local path", "/home/user/mypkg", "true", "",
+            "my_workflow",
+            "My Workflow",
+            "",
+            "Author",
+            "MIT",
+            "mypkg",
+            "local path",
+            "/home/user/mypkg",
+            "true",
+            "",
         ]
         drive_wizard(provider, answers)
         provider.dump(tmp_path)
@@ -679,8 +701,15 @@ class TestDump:
         """spec.yaml renders URL requirement correctly."""
         provider = DefaultWizardProvider()
         answers = [
-            "my_workflow", "My Workflow", "", "Author", "MIT",
-            "mypkg", "url", "https://example.com/pkg.whl", "",
+            "my_workflow",
+            "My Workflow",
+            "",
+            "Author",
+            "MIT",
+            "mypkg",
+            "url",
+            "https://example.com/pkg.whl",
+            "",
         ]
         drive_wizard(provider, answers)
         provider.dump(tmp_path)
@@ -692,8 +721,17 @@ class TestDump:
         """spec.yaml renders git+branch requirement correctly."""
         provider = DefaultWizardProvider()
         answers = [
-            "my_workflow", "My Workflow", "", "Author", "MIT",
-            "mypkg", "git", "https://github.com/org/pkg.git", "branch", "main", "",
+            "my_workflow",
+            "My Workflow",
+            "",
+            "Author",
+            "MIT",
+            "mypkg",
+            "git",
+            "https://github.com/org/pkg.git",
+            "branch",
+            "main",
+            "",
         ]
         drive_wizard(provider, answers)
         provider.dump(tmp_path)
@@ -706,8 +744,16 @@ class TestDump:
         """spec.yaml renders git (no ref) requirement correctly."""
         provider = DefaultWizardProvider()
         answers = [
-            "my_workflow", "My Workflow", "", "Author", "MIT",
-            "mypkg", "git", "https://github.com/org/pkg.git", "none", "",
+            "my_workflow",
+            "My Workflow",
+            "",
+            "Author",
+            "MIT",
+            "mypkg",
+            "git",
+            "https://github.com/org/pkg.git",
+            "none",
+            "",
         ]
         drive_wizard(provider, answers)
         provider.dump(tmp_path)

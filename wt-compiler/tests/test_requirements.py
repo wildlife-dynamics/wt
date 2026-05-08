@@ -33,20 +33,14 @@ class TestWtLocalChannel:
 
     def test_custom_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test WT_LOCAL_CHANNEL respects WT_CONDA_CHANNEL env var."""
-        monkeypatch.setenv(
-            "WT_CONDA_CHANNEL", "/tmp/ecoscope-workflows/release/artifacts"
-        )
+        monkeypatch.setenv("WT_CONDA_CHANNEL", "/tmp/ecoscope-workflows/release/artifacts")
         channel = self._reload_wt_local_channel()
 
         assert channel.base_url == "file:///tmp/ecoscope-workflows/release/artifacts/"
 
-    def test_custom_path_with_trailing_slash(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_custom_path_with_trailing_slash(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test WT_LOCAL_CHANNEL handles trailing slash in WT_CONDA_CHANNEL."""
-        monkeypatch.setenv(
-            "WT_CONDA_CHANNEL", "/tmp/ecoscope-workflows/release/artifacts/"
-        )
+        monkeypatch.setenv("WT_CONDA_CHANNEL", "/tmp/ecoscope-workflows/release/artifacts/")
         channel = self._reload_wt_local_channel()
 
         assert channel.base_url == "file:///tmp/ecoscope-workflows/release/artifacts/"

@@ -67,12 +67,12 @@ jobs:
       - name: Run ruff check
         if: matrix.package != 'wt-runner-gcp'
         working-directory: ${{ matrix.package }}
-        run: uv run ruff check src/
+        run: uv run ruff check src/ tests/
 
       - name: Run ruff format check
         if: matrix.package != 'wt-runner-gcp'
         working-directory: ${{ matrix.package }}
-        run: uv run ruff format --check src/
+        run: uv run ruff format --check src/ tests/
 
       - name: Run mypy
         if: matrix.package != 'wt-runner-gcp'

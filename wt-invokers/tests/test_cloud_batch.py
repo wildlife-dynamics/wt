@@ -74,7 +74,6 @@ def test_cloud_batch_invoker_initialization_fails_without_gcp_libs() -> None:
     wt_invokers.cloud_batch.GCP_AVAILABLE = False
 
     try:
-
         matchspec = MatchSpec("test-workflow>=1.0.0")
 
         with pytest.raises(

@@ -18,6 +18,7 @@ TEMPLATES_DIR = pathlib.Path(__file__).resolve().parent.parent / "src" / "wt_com
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _render_template(name: str) -> str:
     """Render a pkg/ template with an empty file_header."""
     env = Environment(

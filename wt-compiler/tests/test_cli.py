@@ -128,9 +128,12 @@ class TestCompileCommand:
 
     def test_spec_file_not_found(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Test error when spec file doesn't exist."""
-        with patch.object(
-            sys, "argv", ["wt-compiler", "compile", "--spec", "/nonexistent/spec.yaml"]
-        ), pytest.raises(SystemExit) as exc_info:
+        with (
+            patch.object(
+                sys, "argv", ["wt-compiler", "compile", "--spec", "/nonexistent/spec.yaml"]
+            ),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             main()
 
         assert exc_info.value.code == 1
@@ -166,7 +169,10 @@ class TestCompileCommand:
                 main()
 
         mock_compile.assert_called_once_with(
-            str(spec_file.resolve()), progress=True, pkg_name_prefix="wt", results_env_var="WT_RESULTS"
+            str(spec_file.resolve()),
+            progress=True,
+            pkg_name_prefix="wt",
+            results_env_var="WT_RESULTS",
         )
         mock_artifacts.dump.assert_called_once_with(clobber=False, update=False)
 
@@ -181,9 +187,12 @@ class TestCompileCommand:
         mock_artifacts = MagicMock()
         mock_artifacts.release_dir = tmp_path / "test-workflow"
 
-        with patch.object(
-            sys, "argv", ["wt-compiler", "compile", "--spec", str(spec_file), "--clobber"]
-        ), patch("wt_compiler.cli.compile_workflow_from_yaml", return_value=mock_artifacts):
+        with (
+            patch.object(
+                sys, "argv", ["wt-compiler", "compile", "--spec", str(spec_file), "--clobber"]
+            ),
+            patch("wt_compiler.cli.compile_workflow_from_yaml", return_value=mock_artifacts),
+        ):
             main()
 
         mock_artifacts.dump.assert_called_once_with(clobber=True, update=False)
@@ -196,11 +205,14 @@ class TestCompileCommand:
         mock_artifacts = MagicMock()
         mock_artifacts.release_dir = tmp_path / "test-workflow"
 
-        with patch.object(
-            sys,
-            "argv",
-            ["wt-compiler", "compile", "--spec", str(spec_file), "--clobber", "--update"],
-        ), patch("wt_compiler.cli.compile_workflow_from_yaml", return_value=mock_artifacts):
+        with (
+            patch.object(
+                sys,
+                "argv",
+                ["wt-compiler", "compile", "--spec", str(spec_file), "--clobber", "--update"],
+            ),
+            patch("wt_compiler.cli.compile_workflow_from_yaml", return_value=mock_artifacts),
+        ):
             main()
 
         mock_artifacts.dump.assert_called_once_with(clobber=True, update=True)
@@ -244,9 +256,7 @@ class TestCompileCommand:
         captured = capsys.readouterr()
         assert "Error: Invalid spec format" in captured.err
 
-    def test_compile_with_install(
-        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
-    ) -> None:
+    def test_compile_with_install(self, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
         """Test that --install calls artifacts.install() after dump."""
         spec_file = tmp_path / "spec.yaml"
         spec_file.write_text("id: test-workflow\n")
@@ -254,11 +264,14 @@ class TestCompileCommand:
         mock_artifacts = MagicMock()
         mock_artifacts.release_dir = tmp_path / "test-workflow"
 
-        with patch.object(
-            sys,
-            "argv",
-            ["wt-compiler", "compile", "--spec", str(spec_file), "--install"],
-        ), patch("wt_compiler.cli.compile_workflow_from_yaml", return_value=mock_artifacts):
+        with (
+            patch.object(
+                sys,
+                "argv",
+                ["wt-compiler", "compile", "--spec", str(spec_file), "--install"],
+            ),
+            patch("wt_compiler.cli.compile_workflow_from_yaml", return_value=mock_artifacts),
+        ):
             main()
 
         mock_artifacts.dump.assert_called_once_with(clobber=False, update=False)
@@ -275,11 +288,14 @@ class TestCompileCommand:
         mock_artifacts = MagicMock()
         mock_artifacts.release_dir = tmp_path / "test-workflow"
 
-        with patch.object(
-            sys,
-            "argv",
-            ["wt-compiler", "compile", "--spec", str(spec_file), "--clobber", "--update"],
-        ), patch("wt_compiler.cli.compile_workflow_from_yaml", return_value=mock_artifacts):
+        with (
+            patch.object(
+                sys,
+                "argv",
+                ["wt-compiler", "compile", "--spec", str(spec_file), "--clobber", "--update"],
+            ),
+            patch("wt_compiler.cli.compile_workflow_from_yaml", return_value=mock_artifacts),
+        ):
             main()
 
         mock_artifacts.dump.assert_called_once_with(clobber=True, update=True)
@@ -293,11 +309,14 @@ class TestCompileCommand:
         spec_file = tmp_path / "spec.yaml"
         spec_file.write_text("id: test-workflow\n")
 
-        with patch.object(
-            sys,
-            "argv",
-            ["wt-compiler", "compile", "--spec", str(spec_file), "--update"],
-        ), pytest.raises(SystemExit) as exc_info:
+        with (
+            patch.object(
+                sys,
+                "argv",
+                ["wt-compiler", "compile", "--spec", str(spec_file), "--update"],
+            ),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             main()
 
         assert exc_info.value.code == 1
@@ -311,19 +330,22 @@ class TestCompileCommand:
         spec_file = tmp_path / "spec.yaml"
         spec_file.write_text("id: test-workflow\n")
 
-        with patch.object(
-            sys,
-            "argv",
-            [
-                "wt-compiler",
-                "compile",
-                "--spec",
-                str(spec_file),
-                "--clobber",
-                "--update",
-                "--install",
-            ],
-        ), pytest.raises(SystemExit) as exc_info:
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "compile",
+                    "--spec",
+                    str(spec_file),
+                    "--clobber",
+                    "--update",
+                    "--install",
+                ],
+            ),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             main()
 
         assert exc_info.value.code == 1
@@ -362,18 +384,27 @@ class TestInitCommand:
         self, capsys: pytest.CaptureFixture[str], tmp_path: Path
     ) -> None:
         """Batch mode: all required flags → dump() called with correct workdir."""
-        with patch.object(
-            sys,
-            "argv",
-            [
-                "wt-compiler", "scaffold", "init",
-                "--no-interactive",
-                "--workflow-id", "my_workflow",
-                "--workflow-name", "My Workflow",
-                "--author-name", "Author",
-                "--output-dir", str(tmp_path),
-            ],
-        ), patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump") as mock_dump:
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "my_workflow",
+                    "--workflow-name",
+                    "My Workflow",
+                    "--author-name",
+                    "Author",
+                    "--output-dir",
+                    str(tmp_path),
+                ],
+            ),
+            patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump") as mock_dump,
+        ):
             with patch("builtins.input") as mock_input:
                 main()
 
@@ -390,16 +421,31 @@ class TestInitCommand:
         def capture_dump(self: DefaultWizardProvider, workdir: Path) -> None:
             captured_provider.append(self)
 
-        with patch.object(sys, "argv", [
-            "wt-compiler", "scaffold", "init",
-            "--no-interactive",
-            "--workflow-id", "my_wf",
-            "--workflow-name", "My Workflow",
-            "--workflow-description", "A desc",
-            "--author-name", "Author",
-            "--license-type", "MIT",
-            "--output-dir", str(tmp_path),
-        ]), patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump", capture_dump):
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "my_wf",
+                    "--workflow-name",
+                    "My Workflow",
+                    "--workflow-description",
+                    "A desc",
+                    "--author-name",
+                    "Author",
+                    "--license-type",
+                    "MIT",
+                    "--output-dir",
+                    str(tmp_path),
+                ],
+            ),
+            patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump", capture_dump),
+        ):
             main()
 
         assert len(captured_provider) == 1
@@ -417,14 +463,27 @@ class TestInitCommand:
         def capture_dump(self: DefaultWizardProvider, workdir: Path) -> None:
             captured_provider.append(self)
 
-        with patch.object(sys, "argv", [
-            "wt-compiler", "scaffold", "init",
-            "--no-interactive",
-            "--workflow-id", "my_wf",
-            "--workflow-name", "My Workflow",
-            "--author-name", "Author",
-            "--output-dir", str(tmp_path),
-        ]), patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump", capture_dump):
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "my_wf",
+                    "--workflow-name",
+                    "My Workflow",
+                    "--author-name",
+                    "Author",
+                    "--output-dir",
+                    str(tmp_path),
+                ],
+            ),
+            patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump", capture_dump),
+        ):
             main()
 
         p = captured_provider[0]
@@ -439,46 +498,79 @@ class TestInitCommand:
         def capture_dump(self: DefaultWizardProvider, workdir: Path) -> None:
             captured_provider.append(self)
 
-        with patch.object(
-            sys,
-            "argv",
-            [
-                "wt-compiler", "scaffold", "init",
-                "--no-interactive",
-                "--workflow-id", "my_wf",
-                "--workflow-name", "My Workflow",
-                "--author-name", "Author",
-                "--requirements", '{"name":"pandas","version":">=2.0","channel":"conda-forge"}',
-                "--requirements", '{"name":"numpy","version":"*","channel":"conda-forge"}',
-                "--output-dir", str(tmp_path),
-            ],
-        ), patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump", capture_dump):
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "my_wf",
+                    "--workflow-name",
+                    "My Workflow",
+                    "--author-name",
+                    "Author",
+                    "--requirements",
+                    '{"name":"pandas","version":">=2.0","channel":"conda-forge"}',
+                    "--requirements",
+                    '{"name":"numpy","version":"*","channel":"conda-forge"}',
+                    "--output-dir",
+                    str(tmp_path),
+                ],
+            ),
+            patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump", capture_dump),
+        ):
             main()
 
         reqs = captured_provider[0].answers["requirements"]
         assert len(reqs) == 2
-        assert reqs[0] == {"name": "pandas", "req_type": "conda", "version": ">=2.0", "channel": "conda-forge"}
-        assert reqs[1] == {"name": "numpy", "req_type": "conda", "version": "*", "channel": "conda-forge"}
+        assert reqs[0] == {
+            "name": "pandas",
+            "req_type": "conda",
+            "version": ">=2.0",
+            "channel": "conda-forge",
+        }
+        assert reqs[1] == {
+            "name": "numpy",
+            "req_type": "conda",
+            "version": "*",
+            "channel": "conda-forge",
+        }
 
     def test_init_batch_mode_no_input_calls(
         self, capsys: pytest.CaptureFixture[str], tmp_path: Path
     ) -> None:
         """Batch mode never calls input() regardless of which flags are supplied."""
-        with patch.object(
-            sys,
-            "argv",
-            [
-                "wt-compiler", "scaffold", "init",
-                "--no-interactive",
-                "--workflow-id", "my_wf",
-                "--workflow-name", "My Workflow",
-                "--workflow-description", "desc",
-                "--author-name", "Author",
-                "--license-type", "MIT",
-                "--requirements", '{"name":"pkg","version":"*","channel":"conda-forge"}',
-                "--output-dir", str(tmp_path),
-            ],
-        ), patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump"):
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "my_wf",
+                    "--workflow-name",
+                    "My Workflow",
+                    "--workflow-description",
+                    "desc",
+                    "--author-name",
+                    "Author",
+                    "--license-type",
+                    "MIT",
+                    "--requirements",
+                    '{"name":"pkg","version":"*","channel":"conda-forge"}',
+                    "--output-dir",
+                    str(tmp_path),
+                ],
+            ),
+            patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump"),
+        ):
             with patch("builtins.input") as mock_input:
                 with patch("questionary.text") as mock_text:
                     with patch("questionary.select") as mock_select:
@@ -500,8 +592,12 @@ class TestInitCommand:
         # questionary.text: workflow_id, workflow_name, description, author_name, name, version
         text_mock = MagicMock()
         text_mock.return_value.ask.side_effect = [
-            "my_workflow", "My Workflow", "", "Author",
-            "numpy", "*",
+            "my_workflow",
+            "My Workflow",
+            "",
+            "Author",
+            "numpy",
+            "*",
         ]
         # questionary.select: license_type, req_type (conda), channel
         select_mock = MagicMock()
@@ -509,7 +605,9 @@ class TestInitCommand:
 
         mock_providers = make_mock_providers()
         with patch("wt_compiler.cli.wt_providers", mock_providers):
-            with patch.object(sys, "argv", ["wt-compiler", "scaffold", "init", "--output-dir", str(tmp_path)]):
+            with patch.object(
+                sys, "argv", ["wt-compiler", "scaffold", "init", "--output-dir", str(tmp_path)]
+            ):
                 with patch("questionary.text", text_mock):
                     with patch("questionary.select", select_mock):
                         with patch("questionary.confirm", confirm_mock):
@@ -529,15 +627,21 @@ class TestInitCommand:
         confirm_mock.return_value.ask.side_effect = [True, False]
         text_mock = MagicMock()
         text_mock.return_value.ask.side_effect = [
-            "my_workflow", "My Workflow", "", "Author",
-            "numpy", "*",
+            "my_workflow",
+            "My Workflow",
+            "",
+            "Author",
+            "numpy",
+            "*",
         ]
         select_mock = MagicMock()
         select_mock.return_value.ask.side_effect = ["MIT", "conda", "conda-forge"]
 
         mock_providers = make_mock_providers()
         with patch("wt_compiler.cli.wt_providers", mock_providers):
-            with patch.object(sys, "argv", ["wt-compiler", "scaffold", "init", "--output-dir", str(tmp_path)]):
+            with patch.object(
+                sys, "argv", ["wt-compiler", "scaffold", "init", "--output-dir", str(tmp_path)]
+            ):
                 with patch("questionary.text", text_mock):
                     with patch("questionary.select", select_mock):
                         with patch("questionary.confirm", confirm_mock):
@@ -556,14 +660,27 @@ class TestInitCommand:
         """Error when workdir exists and --clobber not set."""
         (tmp_path / "my_workflow").mkdir()
 
-        with patch.object(sys, "argv", [
-            "wt-compiler", "scaffold", "init",
-            "--no-interactive",
-            "--workflow-id", "my_workflow",
-            "--workflow-name", "My Workflow",
-            "--author-name", "Author",
-            "--output-dir", str(tmp_path),
-        ]), pytest.raises(SystemExit) as exc_info:
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "my_workflow",
+                    "--workflow-name",
+                    "My Workflow",
+                    "--author-name",
+                    "Author",
+                    "--output-dir",
+                    str(tmp_path),
+                ],
+            ),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             main()
 
         assert exc_info.value.code == 1
@@ -577,49 +694,86 @@ class TestInitCommand:
         """--clobber allows scaffolding into existing directory."""
         (tmp_path / "my_workflow").mkdir()
 
-        with patch.object(sys, "argv", [
-            "wt-compiler", "scaffold", "init",
-            "--no-interactive",
-            "--workflow-id", "my_workflow",
-            "--workflow-name", "My Workflow",
-            "--author-name", "Author",
-            "--output-dir", str(tmp_path),
-            "--clobber",
-        ]), patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump") as mock_dump:
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "my_workflow",
+                    "--workflow-name",
+                    "My Workflow",
+                    "--author-name",
+                    "Author",
+                    "--output-dir",
+                    str(tmp_path),
+                    "--clobber",
+                ],
+            ),
+            patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump") as mock_dump,
+        ):
             main()
 
         mock_dump.assert_called_once()
 
     def test_init_output_dir_defaults_to_cwd(self, tmp_path: Path) -> None:
         """Without --output-dir, workdir is Path.cwd() / workflow_id."""
-        with patch.object(sys, "argv", [
-            "wt-compiler", "scaffold", "init",
-            "--no-interactive",
-            "--workflow-id", "my_workflow",
-            "--workflow-name", "My Workflow",
-            "--author-name", "Author",
-        ]), patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump") as mock_dump:
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "my_workflow",
+                    "--workflow-name",
+                    "My Workflow",
+                    "--author-name",
+                    "Author",
+                ],
+            ),
+            patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump") as mock_dump,
+        ):
             with patch("pathlib.Path.cwd", return_value=tmp_path):
                 with patch("pathlib.Path.exists", return_value=False):
                     main()
 
         assert mock_dump.call_args[0][0] == tmp_path / "my_workflow"
 
-    def test_init_dump_error(
-        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
-    ) -> None:
+    def test_init_dump_error(self, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
         """Generic exception from dump() exits 1 with error message on stderr."""
-        with patch.object(sys, "argv", [
-            "wt-compiler", "scaffold", "init",
-            "--no-interactive",
-            "--workflow-id", "my_workflow",
-            "--workflow-name", "My Workflow",
-            "--author-name", "Author",
-            "--output-dir", str(tmp_path),
-        ]), patch(
-            "wt_compiler.wizard.abstract.AbstractWizardProvider.dump",
-            side_effect=RuntimeError("template error"),
-        ), pytest.raises(SystemExit) as exc_info:
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "my_workflow",
+                    "--workflow-name",
+                    "My Workflow",
+                    "--author-name",
+                    "Author",
+                    "--output-dir",
+                    str(tmp_path),
+                ],
+            ),
+            patch(
+                "wt_compiler.wizard.abstract.AbstractWizardProvider.dump",
+                side_effect=RuntimeError("template error"),
+            ),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             main()
 
         assert exc_info.value.code == 1
@@ -629,13 +783,21 @@ class TestInitCommand:
         self, capsys: pytest.CaptureFixture[str], tmp_path: Path
     ) -> None:
         """--no-interactive without required flags exits 1 with clear error."""
-        with patch.object(sys, "argv", [
-            "wt-compiler", "scaffold", "init",
-            "--no-interactive",
-            "--workflow-id", "my_workflow",
-            # missing --workflow-name and --author-name
-            "--output-dir", str(tmp_path),
-        ]):
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "wt-compiler",
+                "scaffold",
+                "init",
+                "--no-interactive",
+                "--workflow-id",
+                "my_workflow",
+                # missing --workflow-name and --author-name
+                "--output-dir",
+                str(tmp_path),
+            ],
+        ):
             with pytest.raises(SystemExit) as exc_info:
                 main()
 
@@ -647,54 +809,104 @@ class TestInitCommand:
 
     def test_init_batch_invalid_workflow_id(self, capsys: pytest.CaptureFixture[str]) -> None:
         """--workflow-id with invalid value is rejected by argparse (exit 2)."""
-        with patch.object(sys, "argv", [
-            "wt-compiler", "scaffold", "init",
-            "--no-interactive",
-            "--workflow-id", "123bad",
-            "--workflow-name", "My Workflow",
-            "--author-name", "Author",
-        ]), pytest.raises(SystemExit) as exc_info:
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "123bad",
+                    "--workflow-name",
+                    "My Workflow",
+                    "--author-name",
+                    "Author",
+                ],
+            ),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             main()
 
         assert exc_info.value.code == 2
 
     def test_init_batch_invalid_workflow_name(self, capsys: pytest.CaptureFixture[str]) -> None:
         """--workflow-name with whitespace-only value is rejected by argparse (exit 2)."""
-        with patch.object(sys, "argv", [
-            "wt-compiler", "scaffold", "init",
-            "--no-interactive",
-            "--workflow-id", "my_workflow",
-            "--workflow-name", "   ",
-            "--author-name", "Author",
-        ]), pytest.raises(SystemExit) as exc_info:
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "my_workflow",
+                    "--workflow-name",
+                    "   ",
+                    "--author-name",
+                    "Author",
+                ],
+            ),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             main()
 
         assert exc_info.value.code == 2
 
     def test_init_batch_invalid_license_type(self, capsys: pytest.CaptureFixture[str]) -> None:
         """--license-type with value outside choices is rejected by argparse (exit 2)."""
-        with patch.object(sys, "argv", [
-            "wt-compiler", "scaffold", "init",
-            "--no-interactive",
-            "--workflow-id", "my_workflow",
-            "--workflow-name", "My Workflow",
-            "--author-name", "Author",
-            "--license-type", "INVALID",
-        ]), pytest.raises(SystemExit) as exc_info:
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "my_workflow",
+                    "--workflow-name",
+                    "My Workflow",
+                    "--author-name",
+                    "Author",
+                    "--license-type",
+                    "INVALID",
+                ],
+            ),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             main()
 
         assert exc_info.value.code == 2
 
     def test_init_batch_invalid_requirement_name(self, capsys: pytest.CaptureFixture[str]) -> None:
         """--requirements with empty package name is rejected by argparse (exit 2)."""
-        with patch.object(sys, "argv", [
-            "wt-compiler", "scaffold", "init",
-            "--no-interactive",
-            "--workflow-id", "my_workflow",
-            "--workflow-name", "My Workflow",
-            "--author-name", "Author",
-            "--requirements", '{"name":"","version":"*","channel":"conda-forge"}',
-        ]), pytest.raises(SystemExit) as exc_info:
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "my_workflow",
+                    "--workflow-name",
+                    "My Workflow",
+                    "--author-name",
+                    "Author",
+                    "--requirements",
+                    '{"name":"","version":"*","channel":"conda-forge"}',
+                ],
+            ),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             main()
 
         assert exc_info.value.code == 2
@@ -703,14 +915,27 @@ class TestInitCommand:
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """--requirements with invalid version spec is rejected by argparse (exit 2)."""
-        with patch.object(sys, "argv", [
-            "wt-compiler", "scaffold", "init",
-            "--no-interactive",
-            "--workflow-id", "my_workflow",
-            "--workflow-name", "My Workflow",
-            "--author-name", "Author",
-            "--requirements", '{"name":"numpy","version":">>>bad<<<","channel":"conda-forge"}',
-        ]), pytest.raises(SystemExit) as exc_info:
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "my_workflow",
+                    "--workflow-name",
+                    "My Workflow",
+                    "--author-name",
+                    "Author",
+                    "--requirements",
+                    '{"name":"numpy","version":">>>bad<<<","channel":"conda-forge"}',
+                ],
+            ),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             main()
 
         assert exc_info.value.code == 2
@@ -719,15 +944,29 @@ class TestInitCommand:
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """--requirements with invalid version spec is rejected by argparse (exit 2)."""
-        with patch.object(sys, "argv", [
-            "wt-compiler", "scaffold", "init",
-            "--no-interactive",
-            "--workflow-id", "my_workflow",
-            "--workflow-name", "My Workflow",
-            "--author-name", "Author",
-            "--requirements", '{"name":"numpy","version":"*","channel":"conda-forge"}',
-            "--requirements", '{"name":"geopandas","version":">>>bad<<<","channel":"conda-forge"}',
-        ]), pytest.raises(SystemExit) as exc_info:
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "my_workflow",
+                    "--workflow-name",
+                    "My Workflow",
+                    "--author-name",
+                    "Author",
+                    "--requirements",
+                    '{"name":"numpy","version":"*","channel":"conda-forge"}',
+                    "--requirements",
+                    '{"name":"geopandas","version":">>>bad<<<","channel":"conda-forge"}',
+                ],
+            ),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             main()
 
         assert exc_info.value.code == 2
@@ -740,15 +979,29 @@ class TestInitCommand:
         def capture_dump(self: DefaultWizardProvider, workdir: Path) -> None:
             captured_provider.append(self)
 
-        with patch.object(sys, "argv", [
-            "wt-compiler", "scaffold", "init",
-            "--no-interactive",
-            "--workflow-id", "my_wf",
-            "--workflow-name", "My Workflow",
-            "--author-name", "Author",
-            "--requirements", '{"name":"mypackage","path":"/home/user/mypackage"}',
-            "--output-dir", str(tmp_path),
-        ]), patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump", capture_dump):
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "my_wf",
+                    "--workflow-name",
+                    "My Workflow",
+                    "--author-name",
+                    "Author",
+                    "--requirements",
+                    '{"name":"mypackage","path":"/home/user/mypackage"}',
+                    "--output-dir",
+                    str(tmp_path),
+                ],
+            ),
+            patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump", capture_dump),
+        ):
             main()
 
         reqs = captured_provider[0].answers["requirements"]
@@ -768,17 +1021,29 @@ class TestInitCommand:
         def capture_dump(self: DefaultWizardProvider, workdir: Path) -> None:
             captured_provider.append(self)
 
-        with patch.object(sys, "argv", [
-            "wt-compiler", "scaffold", "init",
-            "--no-interactive",
-            "--workflow-id", "my_wf",
-            "--workflow-name", "My Workflow",
-            "--author-name", "Author",
-            "--requirements", (
-                '{"name":"mypkg","git":"https://github.com/org/pkg.git","branch":"main"}'
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "my_wf",
+                    "--workflow-name",
+                    "My Workflow",
+                    "--author-name",
+                    "Author",
+                    "--requirements",
+                    ('{"name":"mypkg","git":"https://github.com/org/pkg.git","branch":"main"}'),
+                    "--output-dir",
+                    str(tmp_path),
+                ],
             ),
-            "--output-dir", str(tmp_path),
-        ]), patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump", capture_dump):
+            patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump", capture_dump),
+        ):
             main()
 
         reqs = captured_provider[0].answers["requirements"]
@@ -793,31 +1058,58 @@ class TestInitCommand:
 
     def test_init_batch_invalid_path(self, capsys: pytest.CaptureFixture[str]) -> None:
         """--requirements with relative path is rejected by argparse (exit 2)."""
-        with patch.object(sys, "argv", [
-            "wt-compiler", "scaffold", "init",
-            "--no-interactive",
-            "--workflow-id", "my_workflow",
-            "--workflow-name", "My Workflow",
-            "--author-name", "Author",
-            "--requirements", '{"name":"mypkg","path":"relative/path"}',
-        ]), pytest.raises(SystemExit) as exc_info:
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "my_workflow",
+                    "--workflow-name",
+                    "My Workflow",
+                    "--author-name",
+                    "Author",
+                    "--requirements",
+                    '{"name":"mypkg","path":"relative/path"}',
+                ],
+            ),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             main()
 
         assert exc_info.value.code == 2
 
     def test_init_batch_invalid_url(self, capsys: pytest.CaptureFixture[str]) -> None:
         """--requirements with invalid URL is rejected by argparse (exit 2)."""
-        with patch.object(sys, "argv", [
-            "wt-compiler", "scaffold", "init",
-            "--no-interactive",
-            "--workflow-id", "my_workflow",
-            "--workflow-name", "My Workflow",
-            "--author-name", "Author",
-            "--requirements", '{"name":"mypkg","url":"ftp://example.com/pkg"}',
-        ]), pytest.raises(SystemExit) as exc_info:
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "my_workflow",
+                    "--workflow-name",
+                    "My Workflow",
+                    "--author-name",
+                    "Author",
+                    "--requirements",
+                    '{"name":"mypkg","url":"ftp://example.com/pkg"}',
+                ],
+            ),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             main()
 
         assert exc_info.value.code == 2
+
 
 class TestModuleEntryPoint:
     """Tests for python -m wt_compiler entry point."""
@@ -843,9 +1135,7 @@ class _MinimalProvider(AbstractWizardProvider):
 class TestInitCommandWithProvider:
     """Tests for wt-compiler init <PROVIDER> path."""
 
-    def test_init_help_shows_provider_flag(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_init_help_shows_provider_flag(self, capsys: pytest.CaptureFixture[str]) -> None:
         """init --help shows --provider flag."""
         with patch.object(sys, "argv", ["wt-compiler", "scaffold", "init", "--help"]):
             with pytest.raises(SystemExit) as exc_info:
@@ -869,7 +1159,15 @@ class TestInitCommandWithProvider:
             with patch.object(
                 sys,
                 "argv",
-                ["wt-compiler", "scaffold", "init", "--provider", "my-provider", "--output-dir", str(tmp_path)],
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--provider",
+                    "my-provider",
+                    "--output-dir",
+                    str(tmp_path),
+                ],
             ):
                 with patch("questionary.text", text_mock):
                     with patch("questionary.confirm", confirm_mock):
@@ -887,24 +1185,26 @@ class TestInitCommandWithProvider:
         mock_providers = make_mock_providers(
             load_provider_class=MagicMock(return_value=_MinimalProvider)
         )
-        with patch("wt_compiler.cli.wt_providers", mock_providers), patch.object(
-            sys,
-            "argv",
-            [
-                "wt-compiler",
-                "scaffold",
-                "init",
-                "--provider",
-                "my-provider",
-                "--no-interactive",
-                "--workflow-id",
-                "my_wf",
-                "--output-dir",
-                str(tmp_path),
-            ],
-        ), patch(
-            "wt_compiler.wizard.abstract.AbstractWizardProvider.dump"
-        ) as mock_dump:
+        with (
+            patch("wt_compiler.cli.wt_providers", mock_providers),
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--provider",
+                    "my-provider",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "my_wf",
+                    "--output-dir",
+                    str(tmp_path),
+                ],
+            ),
+            patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump") as mock_dump,
+        ):
             main()
         mock_dump.assert_called_once_with(tmp_path / "my_wf")
 
@@ -915,25 +1215,38 @@ class TestInitCommandWithProvider:
         mock_providers = make_mock_providers(
             load_provider_class=MagicMock(return_value=_MinimalProvider)
         )
-        with patch("wt_compiler.cli.wt_providers", mock_providers), patch.object(
-            sys,
-            "argv",
-            ["wt-compiler", "scaffold", "init", "--provider", "my-provider", "--no-interactive"],
-        ), pytest.raises(SystemExit) as exc_info:
+        with (
+            patch("wt_compiler.cli.wt_providers", mock_providers),
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--provider",
+                    "my-provider",
+                    "--no-interactive",
+                ],
+            ),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             main()
         assert exc_info.value.code == 1
         assert "--no-interactive requires" in capsys.readouterr().err
 
-    def test_init_with_unknown_provider_error(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_init_with_unknown_provider_error(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Unknown provider name → exit 1 with 'not registered' on stderr."""
         mock_providers = make_mock_providers(
             load_provider_class=MagicMock(side_effect=ValueError("not registered"))
         )
-        with patch("wt_compiler.cli.wt_providers", mock_providers), patch.object(
-            sys, "argv", ["wt-compiler", "scaffold", "init", "--provider", "unknown-provider"]
-        ), pytest.raises(SystemExit) as exc_info:
+        with (
+            patch("wt_compiler.cli.wt_providers", mock_providers),
+            patch.object(
+                sys, "argv", ["wt-compiler", "scaffold", "init", "--provider", "unknown-provider"]
+            ),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             main()
         assert exc_info.value.code == 1
         assert "not registered" in capsys.readouterr().err
@@ -945,9 +1258,13 @@ class TestInitCommandWithProvider:
         mock_providers = make_mock_providers(
             load_provider_class=MagicMock(side_effect=TypeError("not a subclass"))
         )
-        with patch("wt_compiler.cli.wt_providers", mock_providers), patch.object(
-            sys, "argv", ["wt-compiler", "scaffold", "init", "--provider", "bad-provider"]
-        ), pytest.raises(SystemExit) as exc_info:
+        with (
+            patch("wt_compiler.cli.wt_providers", mock_providers),
+            patch.object(
+                sys, "argv", ["wt-compiler", "scaffold", "init", "--provider", "bad-provider"]
+            ),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             main()
         assert exc_info.value.code == 1
         assert "not a subclass" in capsys.readouterr().err
@@ -965,22 +1282,26 @@ class TestInitCommandWithProvider:
         confirm_mock = MagicMock()
         confirm_mock.return_value.ask.return_value = False
 
-        with patch("wt_compiler.cli.wt_providers", mock_providers), patch.object(
-            sys,
-            "argv",
-            [
-                "wt-compiler",
-                "scaffold",
-                "init",
-                "--provider",
-                "my-provider",
-                "--output-dir",
-                str(tmp_path),
-                "--clobber",
-            ],
-        ), patch("questionary.text", text_mock), patch("questionary.confirm", confirm_mock), patch(
-            "wt_compiler.wizard.abstract.AbstractWizardProvider.dump"
-        ) as mock_dump:
+        with (
+            patch("wt_compiler.cli.wt_providers", mock_providers),
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--provider",
+                    "my-provider",
+                    "--output-dir",
+                    str(tmp_path),
+                    "--clobber",
+                ],
+            ),
+            patch("questionary.text", text_mock),
+            patch("questionary.confirm", confirm_mock),
+            patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump") as mock_dump,
+        ):
             main()
 
         mock_dump.assert_called_once()
@@ -995,7 +1316,6 @@ class _ConditionalProvider(AbstractWizardProvider):
     """Provider with a top-level conditional question for testing _batch_init."""
 
     def get_questions(self) -> list:  # type: ignore[override]
-
         return [
             SingleWizardQuestion(
                 dest="workflow_id",
@@ -1031,18 +1351,28 @@ class TestBatchInitConditionalQuestions:
         mock_providers = make_mock_providers(
             load_provider_class=MagicMock(return_value=_ConditionalProvider)
         )
-        with patch("wt_compiler.cli.wt_providers", mock_providers), patch.object(
-            sys,
-            "argv",
-            [
-                "wt-compiler", "scaffold", "init",
-                "--provider", "my-provider",
-                "--no-interactive",
-                "--workflow-id", "my_wf",
-                "--include-widget", "no",
-                "--output-dir", str(tmp_path),
-            ],
-        ), patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump", capture_dump):
+        with (
+            patch("wt_compiler.cli.wt_providers", mock_providers),
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--provider",
+                    "my-provider",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "my_wf",
+                    "--include-widget",
+                    "no",
+                    "--output-dir",
+                    str(tmp_path),
+                ],
+            ),
+            patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump", capture_dump),
+        ):
             main()
 
         p = captured[0]
@@ -1061,18 +1391,28 @@ class TestBatchInitConditionalQuestions:
         mock_providers = make_mock_providers(
             load_provider_class=MagicMock(return_value=_ConditionalProvider)
         )
-        with patch("wt_compiler.cli.wt_providers", mock_providers), patch.object(
-            sys,
-            "argv",
-            [
-                "wt-compiler", "scaffold", "init",
-                "--provider", "my-provider",
-                "--no-interactive",
-                "--workflow-id", "my_wf",
-                "--include-widget", "yes",
-                "--output-dir", str(tmp_path),
-            ],
-        ), patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump", capture_dump):
+        with (
+            patch("wt_compiler.cli.wt_providers", mock_providers),
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--provider",
+                    "my-provider",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "my_wf",
+                    "--include-widget",
+                    "yes",
+                    "--output-dir",
+                    str(tmp_path),
+                ],
+            ),
+            patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump", capture_dump),
+        ):
             main()
 
         p = captured[0]
@@ -1090,19 +1430,30 @@ class TestBatchInitConditionalQuestions:
         mock_providers = make_mock_providers(
             load_provider_class=MagicMock(return_value=_ConditionalProvider)
         )
-        with patch("wt_compiler.cli.wt_providers", mock_providers), patch.object(
-            sys,
-            "argv",
-            [
-                "wt-compiler", "scaffold", "init",
-                "--provider", "my-provider",
-                "--no-interactive",
-                "--workflow-id", "my_wf",
-                "--include-widget", "yes",
-                "--widget-title", "My Widget",
-                "--output-dir", str(tmp_path),
-            ],
-        ), patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump", capture_dump):
+        with (
+            patch("wt_compiler.cli.wt_providers", mock_providers),
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--provider",
+                    "my-provider",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "my_wf",
+                    "--include-widget",
+                    "yes",
+                    "--widget-title",
+                    "My Widget",
+                    "--output-dir",
+                    str(tmp_path),
+                ],
+            ),
+            patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump", capture_dump),
+        ):
             main()
 
         p = captured[0]
@@ -1117,12 +1468,12 @@ class TestBatchInitConditionalQuestions:
 class TestInitProviderSelection:
     """Tests for the interactive provider selection prompt in wt-compiler init."""
 
-    def test_shows_selector_and_uses_selected_provider(
-        self, tmp_path: Path
-    ) -> None:
+    def test_shows_selector_and_uses_selected_provider(self, tmp_path: Path) -> None:
         """Shows selector when providers are registered; selected provider is loaded."""
         mock_providers = make_mock_providers(
-            get_available_providers=MagicMock(return_value=[{"name": "my-provider", "package": "pkg"}]),
+            get_available_providers=MagicMock(
+                return_value=[{"name": "my-provider", "package": "pkg"}]
+            ),
             load_provider_class=MagicMock(return_value=_MinimalProvider),
         )
         select_mock = MagicMock()
@@ -1132,24 +1483,27 @@ class TestInitProviderSelection:
         confirm_mock = MagicMock()
         confirm_mock.return_value.ask.return_value = False
 
-        with patch("wt_compiler.cli.wt_providers", mock_providers), patch.object(
-            sys, "argv", ["wt-compiler", "scaffold", "init", "--output-dir", str(tmp_path)]
-        ), patch("questionary.select", select_mock), patch("questionary.text", text_mock):
+        with (
+            patch("wt_compiler.cli.wt_providers", mock_providers),
+            patch.object(
+                sys, "argv", ["wt-compiler", "scaffold", "init", "--output-dir", str(tmp_path)]
+            ),
+            patch("questionary.select", select_mock),
+            patch("questionary.text", text_mock),
+        ):
             with patch("questionary.confirm", confirm_mock):
-                with patch(
-                    "wt_compiler.wizard.abstract.AbstractWizardProvider.dump"
-                ):
+                with patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump"):
                     main()
 
         select_mock.assert_called_once()
         mock_providers.load_provider_class.assert_called_once_with("my-provider")
 
-    def test_default_selection_uses_default_provider(
-        self, tmp_path: Path
-    ) -> None:
+    def test_default_selection_uses_default_provider(self, tmp_path: Path) -> None:
         """Selecting 'default' does not call load_provider_class."""
         mock_providers = make_mock_providers(
-            get_available_providers=MagicMock(return_value=[{"name": "my-provider", "package": "pkg"}]),
+            get_available_providers=MagicMock(
+                return_value=[{"name": "my-provider", "package": "pkg"}]
+            ),
             load_provider_class=MagicMock(return_value=_MinimalProvider),
         )
         select_mock = MagicMock()
@@ -1159,13 +1513,16 @@ class TestInitProviderSelection:
         confirm_mock = MagicMock()
         confirm_mock.return_value.ask.return_value = False
 
-        with patch("wt_compiler.cli.wt_providers", mock_providers), patch.object(
-            sys, "argv", ["wt-compiler", "scaffold", "init", "--output-dir", str(tmp_path)]
-        ), patch("questionary.select", select_mock), patch("questionary.text", text_mock):
+        with (
+            patch("wt_compiler.cli.wt_providers", mock_providers),
+            patch.object(
+                sys, "argv", ["wt-compiler", "scaffold", "init", "--output-dir", str(tmp_path)]
+            ),
+            patch("questionary.select", select_mock),
+            patch("questionary.text", text_mock),
+        ):
             with patch("questionary.confirm", confirm_mock):
-                with patch(
-                    "wt_compiler.wizard.abstract.AbstractWizardProvider.dump"
-                ):
+                with patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump"):
                     main()
 
         mock_providers.load_provider_class.assert_not_called()
@@ -1173,7 +1530,9 @@ class TestInitProviderSelection:
     def test_ctrl_c_on_selector_exits_1(self) -> None:
         """Ctrl+C on selector (ask() returns None) exits with code 1."""
         mock_providers = make_mock_providers(
-            get_available_providers=MagicMock(return_value=[{"name": "my-provider", "package": "pkg"}]),
+            get_available_providers=MagicMock(
+                return_value=[{"name": "my-provider", "package": "pkg"}]
+            ),
         )
         select_mock = MagicMock()
         select_mock.return_value.ask.return_value = None
@@ -1189,30 +1548,35 @@ class TestInitProviderSelection:
     def test_no_interactive_skips_selector(self, tmp_path: Path) -> None:
         """--no-interactive skips the provider selection prompt."""
         mock_providers = make_mock_providers(
-            get_available_providers=MagicMock(return_value=[{"name": "my-provider", "package": "pkg"}]),
+            get_available_providers=MagicMock(
+                return_value=[{"name": "my-provider", "package": "pkg"}]
+            ),
             load_provider_class=MagicMock(return_value=_MinimalProvider),
         )
         select_mock = MagicMock()
 
-        with patch("wt_compiler.cli.wt_providers", mock_providers), patch.object(
-            sys,
-            "argv",
-            [
-                "wt-compiler",
-                "scaffold",
-                "init",
-                "--no-interactive",
-                "--workflow-id",
-                "my_wf",
-                "--workflow-name",
-                "My Workflow",
-                "--author-name",
-                "Author",
-                "--output-dir",
-                str(tmp_path),
-            ],
-        ), patch("questionary.select", select_mock), patch(
-            "wt_compiler.wizard.abstract.AbstractWizardProvider.dump"
+        with (
+            patch("wt_compiler.cli.wt_providers", mock_providers),
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "scaffold",
+                    "init",
+                    "--no-interactive",
+                    "--workflow-id",
+                    "my_wf",
+                    "--workflow-name",
+                    "My Workflow",
+                    "--author-name",
+                    "Author",
+                    "--output-dir",
+                    str(tmp_path),
+                ],
+            ),
+            patch("questionary.select", select_mock),
+            patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump"),
         ):
             main()
 
@@ -1229,13 +1593,16 @@ class TestInitProviderSelection:
         confirm_mock = MagicMock()
         confirm_mock.return_value.ask.return_value = False
 
-        with patch("wt_compiler.cli.wt_providers", mock_providers), patch.object(
-            sys, "argv", ["wt-compiler", "scaffold", "init", "--output-dir", str(tmp_path)]
-        ), patch("questionary.select", select_mock), patch("questionary.text", text_mock):
+        with (
+            patch("wt_compiler.cli.wt_providers", mock_providers),
+            patch.object(
+                sys, "argv", ["wt-compiler", "scaffold", "init", "--output-dir", str(tmp_path)]
+            ),
+            patch("questionary.select", select_mock),
+            patch("questionary.text", text_mock),
+        ):
             with patch("questionary.confirm", confirm_mock):
-                with patch(
-                    "wt_compiler.wizard.abstract.AbstractWizardProvider.dump"
-                ):
+                with patch("wt_compiler.wizard.abstract.AbstractWizardProvider.dump"):
                     main()
 
         select_mock.assert_not_called()
@@ -1243,7 +1610,9 @@ class TestInitProviderSelection:
     def test_help_skips_selector(self, capsys: pytest.CaptureFixture[str]) -> None:
         """--help skips the provider selection prompt."""
         mock_providers = make_mock_providers(
-            get_available_providers=MagicMock(return_value=[{"name": "my-provider", "package": "pkg"}]),
+            get_available_providers=MagicMock(
+                return_value=[{"name": "my-provider", "package": "pkg"}]
+            ),
         )
         select_mock = MagicMock()
 
