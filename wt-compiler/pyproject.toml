@@ -68,10 +68,10 @@ root = ".."
 version_file = "src/wt_compiler/_version.py"
 git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--match", "wt-compiler/v*"]
 
-[tool.uv.sources]
-# Development override - uses local editable wt-contracts
-# Published packages will reference PyPI version normally
-wt-contracts = { path = "../wt-contracts", editable = true }
+# [tool.uv.sources]
+# # Development override - uses local editable wt-contracts
+# # Published packages will reference PyPI version normally
+# wt-contracts = { path = "../wt-contracts", editable = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
