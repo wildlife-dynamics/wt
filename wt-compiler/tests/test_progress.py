@@ -131,31 +131,33 @@ class TestCliNoProgressFlag:
     def test_no_progress_passed_to_compile(self, tmp_path: "pathlib.Path") -> None:
         """Test that --no-progress passes progress=False to compile_workflow_from_yaml."""
 
-
-
         spec_file = tmp_path / "spec.yaml"
         spec_file.write_text("id: test-workflow\n")
 
         mock_artifacts = MagicMock()
         mock_artifacts.release_dir = tmp_path / "test-workflow"
 
-        with patch.object(
-            sys,
-            "argv",
-            ["wt-compiler", "compile", "--spec", str(spec_file), "--no-progress"],
-        ), patch(
-            "wt_compiler.cli.compile_workflow_from_yaml", return_value=mock_artifacts
-        ) as mock_compile:
+        with (
+            patch.object(
+                sys,
+                "argv",
+                ["wt-compiler", "compile", "--spec", str(spec_file), "--no-progress"],
+            ),
+            patch(
+                "wt_compiler.cli.compile_workflow_from_yaml", return_value=mock_artifacts
+            ) as mock_compile,
+        ):
             main()
 
         mock_compile.assert_called_once_with(
-            str(spec_file.resolve()), progress=False, pkg_name_prefix="wt", results_env_var="WT_RESULTS"
+            str(spec_file.resolve()),
+            progress=False,
+            pkg_name_prefix="wt",
+            results_env_var="WT_RESULTS",
         )
 
     def test_progress_default_true(self, tmp_path: "pathlib.Path") -> None:
         """Test that progress defaults to True (no --no-progress flag)."""
-
-
 
         spec_file = tmp_path / "spec.yaml"
         spec_file.write_text("id: test-workflow\n")
@@ -170,7 +172,10 @@ class TestCliNoProgressFlag:
                 main()
 
         mock_compile.assert_called_once_with(
-            str(spec_file.resolve()), progress=True, pkg_name_prefix="wt", results_env_var="WT_RESULTS"
+            str(spec_file.resolve()),
+            progress=True,
+            pkg_name_prefix="wt",
+            results_env_var="WT_RESULTS",
         )
 
 

@@ -104,7 +104,6 @@ class TestKnownTask:
         assert "y" not in schema["properties"]
         assert "x" in schema["properties"]
 
-
     def test_parameters_jsonschema_returns_independent_copies(self):
         """Test that multiple calls return independent dicts, not shared references.
 
@@ -153,6 +152,7 @@ class TestKnownTaskSerialization:
         assert ir["function"] == "my_func"
         # Always uses "as" clause for explicit re-export semantics
         assert ir["statement"] == "from mymodule.tasks import my_func as my_func"
+
     def test_importable_reference_serialization_with_registry_ref(self):
         """Test serialization with registry_ref > 0 uses safe_reference with suffix."""
         task = KnownTask(
@@ -400,9 +400,7 @@ class TestPyPIRequirement:
 
     def test_to_pip_install_arg_git_with_extras(self):
         """Test pip install arg for git requirement with extras."""
-        req = PyPIRequirement(
-            name="foo", git="https://github.com/org/foo.git", extras=["dev"]
-        )
+        req = PyPIRequirement(name="foo", git="https://github.com/org/foo.git", extras=["dev"])
         assert req.to_pip_install_arg() == "foo[dev] @ git+https://github.com/org/foo.git"
 
     def test_to_pip_install_arg_path(self):
@@ -584,9 +582,9 @@ class TestInlineValue:
 
     def test_string_with_both_quote_types(self):
         """String with both quote types is safely repr'd with escaping."""
-        val = InlineValue(value="it's a \"test\"")
+        val = InlineValue(value='it\'s a "test"')
         result = val.model_dump()
-        assert result["asstr"] == repr("it's a \"test\"")
+        assert result["asstr"] == repr('it\'s a "test"')
 
     def test_integer(self):
         """Integer value uses f-string formatting (no quotes)."""

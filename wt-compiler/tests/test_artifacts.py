@@ -97,17 +97,18 @@ class TestPixiToml:
         finally:
             Path(temp_path).unlink()
 
-
     def test_pixi_toml_with_pypi_dependencies(self):
         """Test PixiToml with pypi-dependencies."""
         workspace = PixiWorkspace(name="test-workflow")
         pixi_toml = PixiToml(
             workspace=workspace,
             dependencies={"python": ">=3.10"},
-            **{"pypi-dependencies": {
-                "foo": {"git": "https://github.com/org/foo.git", "tag": "v1.0"},
-                "bar": {"path": "./bar", "editable": True},
-            }},
+            **{
+                "pypi-dependencies": {
+                    "foo": {"git": "https://github.com/org/foo.git", "tag": "v1.0"},
+                    "bar": {"path": "./bar", "editable": True},
+                }
+            },
         )
         assert "foo" in pixi_toml.pypi_dependencies
         assert "bar" in pixi_toml.pypi_dependencies
@@ -131,9 +132,11 @@ class TestPixiToml:
         original = PixiToml(
             workspace=workspace,
             dependencies={"python": ">=3.10"},
-            **{"pypi-dependencies": {
-                "foo": {"git": "https://github.com/org/foo.git"},
-            }},
+            **{
+                "pypi-dependencies": {
+                    "foo": {"git": "https://github.com/org/foo.git"},
+                }
+            },
         )
         toml_str = original.to_toml()
         loaded = PixiToml.from_text(toml_str)
@@ -170,11 +173,13 @@ class TestWorkflowArtifacts:
         )
         workspace = PixiWorkspace(name="test")
         pixi_toml = PixiToml(workspace=workspace, dependencies={})
-        tests = Tests(**{
-            "conftest.py": "# conftest",
-            "test_metadata.py": "# test metadata",
-            "test_results.py": "# test results",
-        })
+        tests = Tests(
+            **{
+                "conftest.py": "# conftest",
+                "test_metadata.py": "# test metadata",
+                "test_results.py": "# test results",
+            }
+        )
 
         artifacts = WorkflowArtifacts(
             spec_relpath="spec.yaml",
@@ -218,11 +223,13 @@ class TestWorkflowArtifacts:
         )
         workspace = PixiWorkspace(name="test")
         pixi_toml = PixiToml(workspace=workspace, dependencies={"python": ">=3.10"})
-        tests = Tests(**{
-            "conftest.py": "# conftest",
-            "test_metadata.py": "# test metadata",
-            "test_results.py": "# test results",
-        })
+        tests = Tests(
+            **{
+                "conftest.py": "# conftest",
+                "test_metadata.py": "# test metadata",
+                "test_results.py": "# test results",
+            }
+        )
 
         artifacts = WorkflowArtifacts(
             spec_relpath="spec.yaml",

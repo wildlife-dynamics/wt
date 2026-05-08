@@ -189,7 +189,6 @@ class TestPyPIInstallErrorInDiscovery:
         assert "some stdout" in msg
         assert "some stderr" in msg
 
-
     @pytest.mark.asyncio
     @patch("wt_compiler.pypi_source.detect_pypi_source", return_value=(None, "0.1.0"))
     @patch("wt_compiler.discovery.subprocess.run")

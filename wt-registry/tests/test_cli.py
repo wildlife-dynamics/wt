@@ -554,7 +554,6 @@ class TestDiscoverPublicPaths:
         # Create a simple namespace object to act as a module
         mock_module = types.SimpleNamespace(__name__="pkg.tasks", my_func=my_func)
 
-
         with (
             patch.object(importlib, "import_module", return_value=mock_module),
             patch.object(
@@ -591,7 +590,6 @@ class TestDiscoverPublicPaths:
         # Create a simple namespace object that does NOT re-export the function
         mock_module = types.SimpleNamespace(__name__="pkg.tasks")
 
-
         with (
             patch.object(importlib, "import_module", return_value=mock_module),
             patch.object(cli_module, "getmembers", return_value=[]),
@@ -604,7 +602,6 @@ class TestDiscoverPublicPaths:
     def test_discover_public_paths_handles_import_error(self) -> None:
         """Test that discover_public_paths handles ImportError gracefully."""
         registry: dict[str, RegistryEntry] = {}
-
 
         with patch.object(
             importlib,
@@ -697,7 +694,6 @@ class TestSerializeEntriesPublicPaths:
         # Create simple namespace object that re-exports the function
         mock_module = types.SimpleNamespace(__name__="pkg.tasks", my_func=my_func)
 
-
         with (
             patch.object(importlib, "import_module", return_value=mock_module),
             patch.object(
@@ -775,7 +771,9 @@ class TestAutoDiscover:
         mock_ep.name = "my-pkg"
         mock_ep.value = "my_pkg.tasks"
 
-        with patch("wt_registry.cli.importlib.metadata.entry_points", return_value=[mock_ep]) as mock_eps:
+        with patch(
+            "wt_registry.cli.importlib.metadata.entry_points", return_value=[mock_ep]
+        ) as mock_eps:
             with patch("wt_registry.cli.importlib.import_module") as mock_import:
                 result = auto_discover()
 
@@ -814,7 +812,9 @@ class TestAutoDiscover:
             if module_path == "bad_pkg.tasks":
                 raise ImportError("No module named 'bad_pkg'")
 
-        with patch("wt_registry.cli.importlib.metadata.entry_points", return_value=[ep_good, ep_bad]):
+        with patch(
+            "wt_registry.cli.importlib.metadata.entry_points", return_value=[ep_good, ep_bad]
+        ):
             with patch("wt_registry.cli.importlib.import_module", side_effect=side_effect):
                 result = auto_discover()
 
@@ -839,7 +839,9 @@ class TestAutoDiscover:
 
         mock_ad.assert_called_once()
 
-    def test_main_combines_auto_discover_and_packages(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_main_combines_auto_discover_and_packages(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """main() combines auto-discovered and --package modules for public path discovery."""
 
         def test_func(x: int) -> str:
