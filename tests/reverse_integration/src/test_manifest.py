@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import RepoConfig, get_repo_configs
+from conftest import RepoConfig, get_repo_configs, load_manifest
 from generate_matrix import generate_matrix
 
 
@@ -91,6 +91,43 @@ class TestGetRepoConfigs:
         assert len(configs) == 1
         assert configs[0].diff_allowlist == ["README.md"]
         assert configs[0].tests == ["recompile"]
+
+
+class TestManifestAnchors:
+    """Tests that the real ``manifest.yaml`` correctly applies its two
+    merge-key anchors (``*compile_only`` / ``*env_overrides``) to every
+    repo entry.
+    """
+
+    def test_compile_only_entries_use_strict_pixi_toml_allowlist(self) -> None:
+        """Compile-only entries must restrict ``pixi.toml`` to the single
+        ``version = "..."`` regex — no file-level allow, no extra patterns.
+        """
+        cfgs = get_repo_configs(load_manifest())
+        compile_only = [c for c in cfgs if "env-overrides" not in c.id]
+        assert compile_only, "Expected at least one compile-only entry"
+        for cfg in compile_only:
+            pixi_entries = [
+                e
+                for e in cfg.diff_allowlist
+                if (isinstance(e, dict) and e.get("file") == "pixi.toml") or e == "pixi.toml"
+            ]
+            assert pixi_entries == [
+                {"file": "pixi.toml", "allowed_variance": [r'(?<=version = ")[^"]*']}
+            ], f"{cfg.id}: unexpected pixi.toml entry: {pixi_entries!r}"
+
+    def test_env_overrides_entries_allow_pixi_toml_at_file_level(self) -> None:
+        """Env-overrides entries must allow ``pixi.toml`` at the file level
+        (string entry), since the injected blocks are too large to launder
+        through line-by-line variance.
+        """
+        cfgs = get_repo_configs(load_manifest())
+        env_over = [c for c in cfgs if "env-overrides" in c.id]
+        assert env_over, "Expected at least one env-overrides entry"
+        for cfg in env_over:
+            assert "pixi.toml" in cfg.diff_allowlist, (
+                f"{cfg.id}: expected unconditional 'pixi.toml' string entry"
+            )
 
 
 class TestGenerateMatrix:
