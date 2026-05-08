@@ -15,7 +15,6 @@ def dispatch(
         case ("sequential", True):
             from .dags.run_sequential_mock_io import main as dispatcher
 
-            dispatcher = run_sequential_mock_io
         case ("sequential", False):
             from .dags.run_sequential import main as dispatcher
 
