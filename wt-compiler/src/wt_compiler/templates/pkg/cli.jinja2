@@ -14,18 +14,6 @@ import click
 RELEASE_NAME = "{{ release_name }}"
 
 
-def to_windows_safe_path(path: str) -> str:
-    """
-    Convert path to Windows extended-length format.
-    Prevents module import failures in deeply nested folder structures.
-    Returns the path unchanged if the prefix is already applied.
-    """
-    if path.startswith("\\\\?\\") or "site-packages" not in path:
-        return path
-    abs_path = os.path.abspath(path)
-    return f"\\\\?\\{abs_path}"
-
-
 @click.group()
 def cli() -> None:
     pass
@@ -247,6 +235,4 @@ def convert(
 
 
 if __name__ == "__main__":
-    if sys.platform == "win32":
-        sys.path = [to_windows_safe_path(p) for p in sys.path]
     cli()
