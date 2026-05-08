@@ -16,11 +16,8 @@ collision detection, and a per-feature merge helper that the compiler uses
 to combine the bundled :mod:`wt_compiler.default-env-injections.toml`
 baseline with a user-supplied ``--env-overrides`` file.
 
-The base :class:`PixiTomlFragment` recognizes only real pixi.toml feature
-names — ``default``, ``runner``, ``test``. The wt-compiler-only
-``discovery`` pseudo-feature is exclusive to
-:mod:`wt_compiler.env_overrides`'s thin wrapper, which extends the
-recognized-feature set.
+The recognized features are the real pixi.toml feature names —
+``default``, ``runner``, and ``test``.
 """
 
 from __future__ import annotations

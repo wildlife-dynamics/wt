@@ -6,17 +6,20 @@
 # directory (matching pixi.toml semantics), so `../../wt-task` points to the
 # wt-task package at the monorepo root.
 #
-# See docs/content/reference/wt-compiler.md#injected-dependencies for the
-# full file format.
+# The merged `feature.default` dep set is the source of truth for both the
+# compiled package's runtime [dependencies] / [pypi-dependencies] AND the
+# wt-compiler discovery env, so schema generation runs against the same wt-*
+# versions the workflow will execute against.
+#
+# Only LEAF wt-* packages may be declared as path sources here. Packages
+# brought in transitively via a sibling's [tool.uv.sources] (e.g. wt-contracts
+# via wt-task) must NOT also appear here — pixi #5847 produces conflicting
+# URL forms otherwise. See docs/content/reference/wt-compiler.md for the full
+# rule and audit.
 
-# Discovery env overlay (wt-compiler-only pseudo-feature; never emitted into
-# the compiled pixi.toml). Forces the discovery env's wt-* sources to local.
-[feature.discovery.pypi-dependencies]
-wt-registry  = { path = "../../wt-registry"  }
-wt-task      = { path = "../../wt-task"      }
-wt-contracts = { path = "../../wt-contracts" }
-
-# Default feature — emitted as top-level [pypi-dependencies] in pixi.toml.
+# Default feature — emitted as top-level [pypi-dependencies] in pixi.toml,
+# AND fed into the discovery env so wt-registry's schema extraction runs
+# against these wt-* sources.
 [feature.default.pypi-dependencies]
 wt-task      = { path = "../../wt-task", extras = ["gcp"] }
 wt-registry  = { path = "../../wt-registry"               }

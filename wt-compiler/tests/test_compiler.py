@@ -21,7 +21,7 @@ from wt_compiler.compiler import (
     _parse_requirements_from_yaml,
     _remove_functionally_irrelevant_keys,
 )
-from wt_compiler.env_overrides import EnvOverrides
+from wt_compiler.env_overrides import load_env_overrides_file
 from wt_compiler.requirements import WT_LOCAL_CHANNEL
 from wt_compiler.spec import (
     KnownTask,
@@ -288,7 +288,7 @@ class TestDagCompiler:
         override_file.write_text(
             '[feature.default.pypi-dependencies]\nwt-task = { path = "wt-task", editable = true }\n'
         )
-        env_overrides = EnvOverrides.from_file(override_file)
+        env_overrides = load_env_overrides_file(override_file)
 
         spec = Spec(
             id="test_spec",
@@ -316,7 +316,7 @@ class TestDagCompiler:
             "[feature.runner.pypi-dependencies]\n"
             'wt-runner = { path = "wt-runner", editable = true, extras = ["gcp"] }\n'
         )
-        env_overrides = EnvOverrides.from_file(override_file)
+        env_overrides = load_env_overrides_file(override_file)
 
         spec = Spec(
             id="test_spec",
@@ -367,6 +367,55 @@ class TestDagCompiler:
         assert "pydantic" in pixi_toml.dependencies
         # Spec-supplied version wins over the bundled default's >=2.0,<3.0.
         assert ">=2.5" in str(pixi_toml.dependencies["pydantic"].version)
+
+    def test_variant_suffix_applied_after_override_merge(self, tmp_path):
+        """A pypi override of wt-task suppresses wt-task-gcp under --variant=gcp.
+
+        The variant suffix is applied to the merged result, not to the
+        bundled base. So an env-overrides entry for ``wt-task`` (path
+        source, with ``extras = ["gcp"]``) displaces the bundled
+        ``wt-task`` entry by un-suffixed name BEFORE the suffix rewrite
+        — preventing both the path source and a phantom ``wt-task-gcp``
+        conda entry from landing in the compiled pixi.toml.
+        """
+        wt_task_dir = tmp_path / "wt-task"
+        wt_task_dir.mkdir()
+        override_file = tmp_path / "wt-compiler-env-overrides.toml"
+        override_file.write_text(
+            "[feature.default.pypi-dependencies]\n"
+            f'wt-task = {{ path = "{wt_task_dir}", extras = ["gcp"] }}\n'
+        )
+        env_overrides = load_env_overrides_file(override_file)
+
+        spec = Spec(
+            id="test_spec",
+            requirements=[{"requirement": "python>=3.10"}],
+            workflow=[],
+        )
+        compiler = DagCompiler(spec=spec, env_overrides=env_overrides, variant="gcp")
+        pixi_toml = compiler.get_pixi_toml()
+
+        # The pypi-side path entry is what landed.
+        assert "wt-task" in pixi_toml.pypi_dependencies
+        assert pixi_toml.pypi_dependencies["wt-task"]["extras"] == ["gcp"]
+        # The conda side has neither wt-task nor wt-task-gcp — the override
+        # displaces the bundled entry before the suffix rewrite.
+        assert "wt-task" not in pixi_toml.dependencies
+        assert "wt-task-gcp" not in pixi_toml.dependencies
+
+    def test_variant_suffix_without_override_still_applied(self):
+        """Without an override, --variant=gcp still rewrites wt-task to wt-task-gcp."""
+        spec = Spec(
+            id="test_spec",
+            requirements=[{"requirement": "python>=3.10"}],
+            workflow=[],
+        )
+        compiler = DagCompiler(spec=spec, variant="gcp")
+        pixi_toml = compiler.get_pixi_toml()
+
+        assert "wt-task-gcp" in pixi_toml.dependencies
+        assert "wt-task" not in pixi_toml.dependencies
+        assert "wt-runner-gcp" in pixi_toml.feature["runner"].dependencies
 
     def test_props_and_defs_from_task_instance(self):
         """Test extracting properties and definitions from a task instance."""

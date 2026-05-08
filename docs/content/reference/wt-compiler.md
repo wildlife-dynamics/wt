@@ -22,7 +22,7 @@ The core engine that transforms a validated `Spec` into workflow artifacts.
 ```python
 DagCompiler(
     spec: Spec,
-    env_overrides: EnvOverrides | None = None,
+    env_overrides: PixiTomlFragment | None = None,
     installed_requirement_names: set[str] = set(),
     variant: str | None = None,
     jinja_templates_dir: Path = TEMPLATES,
@@ -34,7 +34,7 @@ DagCompiler(
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `spec` | `Spec` | *(required)* | Validated workflow specification |
-| `env_overrides` | `EnvOverrides \| None` | `None` | Parsed user-supplied override file. See [Injected Dependencies](#injected-dependencies). |
+| `env_overrides` | `PixiTomlFragment \| None` | `None` | Parsed user-supplied override file. See [Injected Dependencies](#injected-dependencies). |
 | `installed_requirement_names` | `set[str]` | `set()` | Names supplied by the spec's transitive solve, used to suppress same-name baseline entries. |
 | `variant` | `str \| None` | `None` | Platform variant suffix (e.g. `"gcp"`) — appended to `wt-task` / `wt-runner` package names |
 | `jinja_templates_dir` | `Path` | `TEMPLATES` | Path to Jinja2 templates (built-in default) |
@@ -127,20 +127,26 @@ without importing task code into the compiler process.
 
 1. Solve conda dependencies using py-rattler's async `solve()`.
 2. Install conda packages with py-rattler's async `install()`.
-3. If PyPI requirements are present, install them via a single bulk
+3. The merged `feature.default` dep set (bundled defaults +
+   `--env-overrides` + spec-yaml suppressions) is folded into the
+   discovery inputs alongside the spec's own conda / pypi requirements.
+   Schema-affecting libraries (pydantic, ruamel.yaml, wt-task, …) thus
+   resolve to the same versions in discovery as in runtime, so generated
+   JSON schemas validate the way runtime expects.
+4. If PyPI requirements are present, install them via a single bulk
    `uv pip install --reinstall-package <name> ...` into the conda
    environment. The bulk call ensures all path/git/url sources resolve
    together; `--reinstall-package` forces uv to replace any conda-installed
    `.dist-info` with the explicit source.
-4. If a `--env-overrides` file declares a `feature.discovery` section, its
-   conda deps are added to the rattler match-specs and its pypi deps are
-   merged into the bulk install. On a per-package collision with
-   `spec.yaml`'s `requirements:`, the override wins and a one-line warning
-   is logged.
 5. Execute `wt-registry --format json` in the ephemeral environment.
 6. Parse output against `RegistryOutput` from wt-contracts.
 7. Convert entries to `KnownTask` models.
 8. Update the global `known_tasks` dict.
+
+Different solvers (rattler+uv for discovery, pixi for runtime) and the
+absence of a shared lockfile mean version coherence is best-effort under
+tight pins, not strict byte equality — but the coupled override flow is
+meaningfully stronger than parallel knobs.
 
 ### Functions
 
@@ -261,27 +267,18 @@ declaring `wt-task` in `feature.runner.pypi-dependencies` displaces any
 `wt-task` entry in the runner feature's conda or pypi sub-section, but
 does not affect `wt-task` in *other* features.
 
-### Discovery overlay (Layer C only)
-
-Layer C may additionally declare a `[feature.discovery.*]` block that
-the compiler overlays onto its own discovery env via
-`uv pip install --reinstall-package`. Discovery is a wt-compiler-only
-pseudo-feature: it is parsed from `--env-overrides` files but is
-**never emitted into the compiled pixi.toml**, and it is rejected in
-any other context (e.g. it's invalid in
-`default-env-injections.toml`).
-
 ### Where each feature lands
 
 The `default`, `runner`, and `test` features map onto pixi.toml as you
-would expect:
+would expect. The merged `default` feature is *also* folded into the
+wt-compiler discovery env, so JSON-schema generation runs against the
+same dep set as the compiled package's runtime.
 
 | Feature | Where it lands in the compiled `pixi.toml` |
 |---------|--------------------------------------------|
-| `default` | top-level `[dependencies]` and `[pypi-dependencies]` |
+| `default` | top-level `[dependencies]` and `[pypi-dependencies]` (and the wt-compiler discovery env) |
 | `runner` | `[feature.runner.dependencies]` and `[feature.runner.pypi-dependencies]` |
 | `test` | `[feature.test.dependencies]` and `[feature.test.pypi-dependencies]` |
-| `discovery` | wt-compiler discovery env only (never emitted into pixi.toml) |
 
 ### Section types and supported syntax
 
@@ -318,35 +315,65 @@ When an override entry collides by name with a `spec.yaml requirements:`
 entry on either side (conda or pypi), the override wins and a one-line
 warning is logged so the supersession is visible in CI logs.
 
+### Leaf-only path sources
+
+Pixi
+[#5847](https://github.com/prefix-dev/pixi/issues/5847) established that
+you cannot declare the same package as a path source in BOTH a pixi-side
+manifest entry AND in a sibling's `[tool.uv.sources]`. Pixi registers
+the path as non-editable into uv's resolver while uv's transitive build
+of the sibling registers it as editable, producing a "conflicting URLs"
+error.
+
+For env-overrides files this means: **only LEAF dependencies (those not
+transitively pulled in via another declared path source's
+`[tool.uv.sources]`) may be declared as path sources in
+`[feature.<name>.pypi-dependencies]`.** Transitively-supplied path
+sources must be omitted.
+
+Audit of the wt monorepo's `[tool.uv.sources]` blocks:
+
+| Package | uv.sources brings in (editable) |
+|---------|----------------------------------|
+| `wt-task` | `wt-contracts` |
+| `wt-registry` | `wt-contracts` |
+| `wt-invokers` | `wt-contracts` |
+| `wt-runner` | `wt-contracts`, `wt-invokers` |
+
+So `wt-contracts` and `wt-invokers` must NOT appear as path sources in
+env-overrides; `wt-task`, `wt-registry`, and `wt-runner` are leaf and
+may. The wt-compiler env-overrides loader enforces this rule with a
+parse-time guard — when a path source's `pyproject.toml` brings in
+another env-overrides path source via `[tool.uv.sources]`, the loader
+errors with a pointer to the conflicting peer and pixi #5847.
+
+If you author your own env-overrides file, audit each candidate path
+source's `[tool.uv.sources]` block and remove any package brought in by
+a peer.
+
 ### Worked example
 
 The reverse-integration harness ships its own override file at
 `tests/reverse_integration/wt-compiler-env-overrides.toml`:
 
 ```toml
-# Discovery env overlay (never emitted into the compiled pixi.toml).
-# Forces the discovery env's wt-* sources to local.
-[feature.discovery.pypi-dependencies]
-wt-registry  = { path = "../../wt-registry",  editable = true }
-wt-task      = { path = "../../wt-task",      editable = true }
-wt-contracts = { path = "../../wt-contracts", editable = true }
-
-# Default feature — emitted as top-level [pypi-dependencies] in pixi.toml.
+# Default feature — emitted as top-level [pypi-dependencies] in pixi.toml,
+# AND fed into the wt-compiler discovery env so schema generation matches
+# runtime.
 [feature.default.pypi-dependencies]
-wt-task      = { path = "../../wt-task",      editable = true, extras = ["gcp"] }
-wt-contracts = { path = "../../wt-contracts", editable = true }
-wt-registry  = { path = "../../wt-registry",  editable = true }
+wt-task      = { path = "../../wt-task", extras = ["gcp"] }
+wt-registry  = { path = "../../wt-registry"               }
 
 # Runner feature — emitted as [feature.runner.pypi-dependencies].
 [feature.runner.pypi-dependencies]
-wt-runner    = { path = "../../wt-runner",    editable = true, extras = ["gcp"] }
-wt-task      = { path = "../../wt-task",      editable = true, extras = ["gcp"] }
-wt-invokers  = { path = "../../wt-invokers",  editable = true, extras = ["gcp"] }
-wt-contracts = { path = "../../wt-contracts", editable = true }
+wt-runner    = { path = "../../wt-runner",   extras = ["gcp"] }
+wt-task      = { path = "../../wt-task",     extras = ["gcp"] }
 ```
 
 Because the file lives in `tests/reverse_integration/`, the
-`../..`-relative paths resolve to the monorepo root.
+`../..`-relative paths resolve to the monorepo root. Note the absence
+of `wt-contracts` and `wt-invokers` — both are pulled in transitively
+via the leaf packages' `[tool.uv.sources]` (see the audit table above).
 
 ---
 

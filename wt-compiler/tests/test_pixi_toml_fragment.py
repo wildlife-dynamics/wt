@@ -31,9 +31,9 @@ class TestPixiTomlFragmentParsing:
         assert set(frag.features) == {"default", "runner", "test"}
 
     def test_unknown_feature_rejected(self, tmp_path):
-        """Unknown feature names (including discovery) are rejected by the base class."""
+        """Unknown feature names are rejected."""
         f = tmp_path / "frag.toml"
-        f.write_text("[feature.discovery.dependencies]\nfoo = '*'\n")
+        f.write_text("[feature.bogus.dependencies]\nfoo = '*'\n")
         with pytest.raises(ValueError, match="unrecognized feature"):
             PixiTomlFragment.from_file(f)
 
@@ -128,13 +128,13 @@ class TestPixiTomlFragmentParsing:
             PixiTomlFragment.from_file(tmp_path / "missing.toml")
 
     def test_recognized_features_kwarg_extension(self, tmp_path):
-        """Callers may extend the recognized-feature set (for wrappers)."""
+        """Callers may extend the recognized-feature set."""
         f = tmp_path / "frag.toml"
-        f.write_text("[feature.discovery.dependencies]\nfoo = '*'\n")
+        f.write_text("[feature.extra.dependencies]\nfoo = '*'\n")
         frag = PixiTomlFragment.from_file(
-            f, recognized_features=("default", "runner", "test", "discovery")
+            f, recognized_features=("default", "runner", "test", "extra")
         )
-        assert "discovery" in frag.features
+        assert "extra" in frag.features
 
 
 class TestMergeFeatures:

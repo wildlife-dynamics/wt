@@ -400,19 +400,20 @@ workflow: []
 
     @pytest.mark.asyncio
     @patch("wt_compiler.compiler.populate_known_tasks", new_callable=AsyncMock)
-    async def test_env_overrides_discovery_overlay(self, mock_populate, tmp_path):
-        """env-overrides feature.discovery deps are passed through to discovery.
+    async def test_default_feature_overrides_reach_discovery(self, mock_populate, tmp_path):
+        """env-overrides feature.default deps are folded into the discovery inputs.
 
-        Conda deps are added to the rattler match-specs and pypi deps to the
-        pypi_requirements list. Collision with spec.yaml requirements logs a
-        warning and override wins.
+        The merged default-feature dep set drives both runtime and
+        discovery, so a path override in feature.default must reach
+        populate_known_tasks. Override-wins on per-name collision with
+        spec.yaml requirements.
         """
         wt_registry_dir = tmp_path / "wt-registry"
         wt_registry_dir.mkdir()
 
         override = tmp_path / "wt-compiler-env-overrides.toml"
         override.write_text(
-            "[feature.discovery.pypi-dependencies]\n"
+            "[feature.default.pypi-dependencies]\n"
             f'wt-registry = {{ path = "{wt_registry_dir}", editable = true }}\n'
         )
 
@@ -442,6 +443,51 @@ workflow: []
         assert names.count("wt-registry") == 1
         wt_registry_req = next(r for r in passed_pypi if r.name == "wt-registry")
         assert wt_registry_req.path == str(wt_registry_dir)
+
+    @pytest.mark.asyncio
+    @patch("wt_compiler.compiler.populate_known_tasks", new_callable=AsyncMock)
+    async def test_default_feature_pin_reaches_discovery_conda(self, mock_populate, tmp_path):
+        """A conda pin in feature.default reaches the discovery match-specs.
+
+        Schema-affecting libraries (pydantic, ruamel.yaml, wt-task, ...)
+        ship as conda deps in the bundled defaults; an env-overrides pin
+        of pydantic in feature.default must show up in the discovery env
+        so JSON-schema generation runs against the same version.
+        """
+        override = tmp_path / "wt-compiler-env-overrides.toml"
+        override.write_text('[feature.default.dependencies]\npydantic = ">=2.5,<2.6"\n')
+
+        spec_yaml = tmp_path / "spec.yaml"
+        spec_yaml.write_text(
+            """
+id: test-workflow
+requirements:
+  - name: python
+    version: ">=3.10"
+    channel: conda-forge
+workflow: []
+"""
+        )
+
+        mock_populate.return_value = DiscoveryResult(tasks={}, records=[])
+
+        try:
+            await compile_workflow_from_yaml(spec_yaml, env_overrides_path=override)
+        except Exception:
+            pass  # Spec validation may fail because workflow is empty
+
+        mock_populate.assert_called_once()
+        call_args = mock_populate.call_args
+        # populate_known_tasks(match_specs, ...) — first positional arg
+        passed_match_specs = call_args.args[0]
+        pydantic_specs = [
+            ms
+            for ms in passed_match_specs
+            if ms.name is not None and str(ms.name.normalized) == "pydantic"
+        ]
+        assert len(pydantic_specs) == 1
+        # The override pin is what flows into discovery.
+        assert ">=2.5,<2.6" in str(pydantic_specs[0].version)
 
 
 class TestDiscoveryErrors:

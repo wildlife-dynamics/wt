@@ -1,15 +1,18 @@
-"""Tests for the env_overrides parser."""
+"""Tests for the env-overrides loader."""
 
 from __future__ import annotations
 
 import pytest
 
-from wt_compiler.env_overrides import EnvOverrides
-from wt_compiler.spec import PyPIRequirement
+from wt_compiler.env_overrides import (
+    load_env_overrides_file,
+    validate_leaf_only_path_sources,
+)
+from wt_compiler.pixi_toml_fragment import PixiTomlFragment
 
 
-class TestEnvOverridesFromFile:
-    """Tests for EnvOverrides.from_file."""
+class TestLoadEnvOverridesFile:
+    """Tests for load_env_overrides_file."""
 
     def test_recognized_features(self, tmp_path):
         """All recognized features parse without error."""
@@ -19,31 +22,39 @@ class TestEnvOverridesFromFile:
         wt_runner_dir.mkdir()
         f = tmp_path / "ov.toml"
         f.write_text(
-            "[feature.discovery.pypi-dependencies]\n"
-            f'wt-task = {{ path = "{wt_task_dir}", editable = true }}\n'
             "[feature.default.pypi-dependencies]\n"
             f'wt-task = {{ path = "{wt_task_dir}", editable = true }}\n'
             "[feature.runner.pypi-dependencies]\n"
             f'wt-runner = {{ path = "{wt_runner_dir}", editable = true }}\n'
             "[feature.test.pypi-dependencies]\n"
         )
-        overrides = EnvOverrides.from_file(f)
-        assert {"discovery", "default", "runner", "test"} <= set(overrides.features)
-        assert overrides.get_feature_pypi_deps("default")[0].name == "wt-task"
-        assert overrides.get_feature_pypi_deps("runner")[0].name == "wt-runner"
-        assert overrides.get_feature_pypi_deps("test") == []
+        fragment = load_env_overrides_file(f)
+        assert {"default", "runner", "test"} <= set(fragment.features)
+        assert fragment.get_feature("default").pypi[0].name == "wt-task"
+        assert fragment.get_feature("runner").pypi[0].name == "wt-runner"
+        assert fragment.get_feature("test").pypi == []
+
+    def test_discovery_feature_rejected_with_helpful_message(self, tmp_path):
+        """A [feature.discovery.*] block is rejected with a pointer to feature.default."""
+        f = tmp_path / "ov.toml"
+        f.write_text("[feature.discovery.pypi-dependencies]\nwt-task = '*'\n")
+        with pytest.raises(ValueError, match=r"feature\.discovery") as exc_info:
+            load_env_overrides_file(f)
+        # The error must direct users at feature.default, not just say
+        # "unrecognized feature".
+        assert "feature.default" in str(exc_info.value)
 
     def test_unknown_feature_rejected(self, tmp_path):
         """Unknown feature names produce a clear error."""
         f = tmp_path / "ov.toml"
         f.write_text("[feature.bogus.pypi-dependencies]\nfoo = '*'\n")
         with pytest.raises(ValueError, match="unrecognized feature"):
-            EnvOverrides.from_file(f)
+            load_env_overrides_file(f)
 
     def test_missing_file_raises(self, tmp_path):
         """A missing override file raises FileNotFoundError."""
         with pytest.raises(FileNotFoundError):
-            EnvOverrides.from_file(tmp_path / "nope.toml")
+            load_env_overrides_file(tmp_path / "nope.toml")
 
     def test_relative_path_resolves_against_override_dir(self, tmp_path):
         """Relative pypi paths resolve against the override file's directory."""
@@ -53,9 +64,8 @@ class TestEnvOverridesFromFile:
         f.write_text(
             '[feature.default.pypi-dependencies]\nwt-task = { path = "wt-task", editable = true }\n'
         )
-        overrides = EnvOverrides.from_file(f)
-        req = overrides.get_feature_pypi_deps("default")[0]
-        assert isinstance(req, PyPIRequirement)
+        fragment = load_env_overrides_file(f)
+        req = fragment.get_feature("default").pypi[0]
         assert req.path == str(sibling.resolve())
         assert req.editable is True
 
@@ -63,8 +73,8 @@ class TestEnvOverridesFromFile:
         """[feature.<x>.dependencies] entries are parsed as MatchSpecs."""
         f = tmp_path / "ov.toml"
         f.write_text('[feature.default.dependencies]\nfoo = ">=1.0,<2.0"\nbar = "*"\n')
-        overrides = EnvOverrides.from_file(f)
-        conda = overrides.get_feature_conda_deps("default")
+        fragment = load_env_overrides_file(f)
+        conda = fragment.get_feature("default").conda
         names = sorted(str(spec.name.normalized) for spec in conda if spec.name)
         assert names == ["bar", "foo"]
 
@@ -77,26 +87,99 @@ class TestEnvOverridesFromFile:
             "[feature.runner.pypi-dependencies]\n"
             'wt-task = { path = "wt-task", editable = true, extras = ["gcp"] }\n'
         )
-        overrides = EnvOverrides.from_file(f)
-        req = overrides.get_feature_pypi_deps("runner")[0]
+        fragment = load_env_overrides_file(f)
+        req = fragment.get_feature("runner").pypi[0]
         assert req.extras == ["gcp"]
 
-    def test_bare_version_string_accepted(self, tmp_path):
-        """Bare version strings in pypi-dependencies become version-only PyPIRequirements."""
-        f = tmp_path / "ov.toml"
-        f.write_text('[feature.default.pypi-dependencies]\nfoo = "*"\nbar = ">=1.0"\n')
-        overrides = EnvOverrides.from_file(f)
-        deps = {r.name: r for r in overrides.get_feature_pypi_deps("default")}
-        assert deps["foo"].version == "*"
-        assert deps["bar"].version == ">=1.0"
-        assert deps["foo"].path is None
-        assert deps["foo"].git is None
-        assert deps["foo"].url is None
 
-    def test_get_feature_returns_empty_for_undeclared(self, tmp_path):
-        """get_feature for a feature not declared in the file returns empties."""
+class TestLeafOnlyPathSourceGuard:
+    """Tests for validate_leaf_only_path_sources."""
+
+    def test_no_path_sources_passes_trivially(self, tmp_path):
+        """An env-overrides file with no path sources passes the guard."""
         f = tmp_path / "ov.toml"
-        f.write_text("[feature.default.pypi-dependencies]\n")
-        overrides = EnvOverrides.from_file(f)
-        assert overrides.get_feature_pypi_deps("runner") == []
-        assert overrides.get_feature_conda_deps("runner") == []
+        f.write_text('[feature.default.pypi-dependencies]\nfoo = ">=1.0"\nbar = "*"\n')
+        fragment = load_env_overrides_file(f)
+        # Should not raise.
+        validate_leaf_only_path_sources(fragment)
+
+    def test_path_source_without_pyproject_skips(self, tmp_path):
+        """A path source whose target lacks pyproject.toml is skipped."""
+        sibling = tmp_path / "wt-task"
+        sibling.mkdir()
+        f = tmp_path / "ov.toml"
+        f.write_text(f'[feature.default.pypi-dependencies]\nwt-task = {{ path = "{sibling}" }}\n')
+        fragment = load_env_overrides_file(f)
+        validate_leaf_only_path_sources(fragment)
+
+    def test_path_source_without_uv_sources_passes(self, tmp_path):
+        """A path source whose pyproject lacks [tool.uv.sources] passes."""
+        sibling = tmp_path / "wt-task"
+        sibling.mkdir()
+        (sibling / "pyproject.toml").write_text("[project]\nname = 'wt-task'\n")
+        f = tmp_path / "ov.toml"
+        f.write_text(f'[feature.default.pypi-dependencies]\nwt-task = {{ path = "{sibling}" }}\n')
+        fragment = load_env_overrides_file(f)
+        validate_leaf_only_path_sources(fragment)
+
+    def test_transitive_path_source_conflict_rejected(self, tmp_path):
+        """Declaring both wt-task AND wt-contracts is rejected (wt-task brings wt-contracts via uv.sources)."""
+        wt_task = tmp_path / "wt-task"
+        wt_task.mkdir()
+        (wt_task / "pyproject.toml").write_text(
+            "[project]\nname = 'wt-task'\n\n"
+            "[tool.uv.sources]\n"
+            'wt-contracts = { path = "../wt-contracts", editable = true }\n'
+        )
+        wt_contracts = tmp_path / "wt-contracts"
+        wt_contracts.mkdir()
+        (wt_contracts / "pyproject.toml").write_text("[project]\nname = 'wt-contracts'\n")
+
+        f = tmp_path / "ov.toml"
+        f.write_text(
+            "[feature.default.pypi-dependencies]\n"
+            f'wt-task      = {{ path = "{wt_task}" }}\n'
+            f'wt-contracts = {{ path = "{wt_contracts}" }}\n'
+        )
+        with pytest.raises(ValueError, match="wt-contracts") as exc_info:
+            load_env_overrides_file(f)
+        msg = str(exc_info.value)
+        assert "wt-task" in msg
+        assert "5847" in msg
+        assert "uv.sources" in msg
+
+    def test_self_referential_uv_source_does_not_trigger(self, tmp_path):
+        """A package's own [tool.uv.sources] referencing itself is not flagged."""
+        # Edge case: foo's pyproject says [tool.uv.sources] foo = "..."
+        # That's a self-reference, not a peer-bringing-foo-in.
+        wt_task = tmp_path / "wt-task"
+        wt_task.mkdir()
+        (wt_task / "pyproject.toml").write_text(
+            "[project]\nname = 'wt-task'\n\n"
+            "[tool.uv.sources]\n"
+            'wt-task = { path = ".", editable = true }\n'
+        )
+        f = tmp_path / "ov.toml"
+        f.write_text(f'[feature.default.pypi-dependencies]\nwt-task = {{ path = "{wt_task}" }}\n')
+        fragment = load_env_overrides_file(f)
+        # Should not raise: wt-task referencing itself is harmless.
+        validate_leaf_only_path_sources(fragment)
+
+    def test_monorepo_fixture_passes(self):
+        """The repo's reverse-integration env-overrides fixture passes the guard.
+
+        Sanity-check that the audited fixture continues to satisfy the
+        leaf-only rule as the monorepo's uv.sources blocks evolve.
+        """
+        from pathlib import Path  # noqa: PLC0415  # local import: only this test needs the path
+
+        repo_root = Path(__file__).resolve().parents[2]
+        fixture = repo_root / "tests" / "reverse_integration" / "wt-compiler-env-overrides.toml"
+        if not fixture.exists():
+            pytest.skip(f"reverse-integration fixture not found at {fixture}")
+        fragment = PixiTomlFragment.from_data(
+            __import__("tomllib").load(fixture.open("rb")),
+            source_path=fixture,
+            diagnostic_label="reverse-integration fixture",
+        )
+        validate_leaf_only_path_sources(fragment)

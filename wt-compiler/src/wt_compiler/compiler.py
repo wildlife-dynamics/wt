@@ -43,7 +43,7 @@ from wt_compiler.artifacts import (
     Environment as PixiEnvironment,
 )
 from wt_compiler.discovery import populate_known_tasks
-from wt_compiler.env_overrides import EnvOverrides
+from wt_compiler.env_overrides import load_env_overrides_file
 from wt_compiler.formatting import ruff_formatted
 from wt_compiler.jsonschema import ReactJSONSchemaFormConfiguration, find_referenced_defs
 from wt_compiler.pixi_toml_fragment import (
@@ -292,7 +292,8 @@ class DagCompiler(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     spec: Spec
-    env_overrides: EnvOverrides | None = Field(default=None, exclude=True)
+    env_overrides: PixiTomlFragment | None = Field(default=None, exclude=True)
+    precomputed_default_feature: FeatureSection | None = Field(default=None, exclude=True)
     installed_requirement_names: set[str] = Field(default_factory=set, exclude=True)
     variant: str | None = None
     jinja_templates_dir: pathlib.Path = TEMPLATES
@@ -324,7 +325,13 @@ class DagCompiler(BaseModel):
         """Resolve the merged :class:`FeatureSection` for *feature_name*.
 
         Layering: bundled defaults → spec.yaml-suppressions → user
-        env-overrides. See ``merge_features`` for the algorithm.
+        env-overrides. The variant suffix is applied to the merged result
+        — so an env-overrides entry for ``wt-task`` displaces the bundled
+        ``wt-task`` baseline by name BEFORE the suffix rewrite, allowing a
+        local-path override of ``wt-task[gcp]`` to suppress the otherwise-
+        injected ``wt-task-gcp`` conda entry under ``--variant=gcp``.
+
+        See ``merge_features`` for the algorithm.
 
         Args:
             feature_name: Name of the pixi feature to resolve.
@@ -334,16 +341,17 @@ class DagCompiler(BaseModel):
                 dropped from *defaults*.
 
         Returns:
-            A :class:`FeatureSection` with the variant suffix applied and
-            user overrides layered on top.
+            A :class:`FeatureSection` with user overrides layered in and
+            the variant suffix applied.
         """
-        base = _apply_variant_suffix(defaults.get_feature(feature_name), self.variant)
+        base = defaults.get_feature(feature_name)
         overrides = (
             self.env_overrides.get_feature(feature_name)
             if self.env_overrides is not None
             else FeatureSection()
         )
-        return merge_features(base=base, overrides=overrides, suppress_names=suppress_names)
+        merged = merge_features(base=base, overrides=overrides, suppress_names=suppress_names)
+        return _apply_variant_suffix(merged, self.variant)
 
     @property
     def per_taskinstance_omit_args(
@@ -527,9 +535,15 @@ class DagCompiler(BaseModel):
             | set(self.installed_requirement_names)
         )
 
-        default_section = self._resolved_feature(
-            "default", defaults=defaults, suppress_names=spec_supplied_names
-        )
+        if self.precomputed_default_feature is not None:
+            # Reuse the merged default feature computed up-front in
+            # compile_workflow_from_yaml (so the same dep set ran through
+            # discovery). Variant suffix still has to be applied here.
+            default_section = _apply_variant_suffix(self.precomputed_default_feature, self.variant)
+        else:
+            default_section = self._resolved_feature(
+                "default", defaults=defaults, suppress_names=spec_supplied_names
+            )
         runner_section = self._resolved_feature(
             "runner", defaults=defaults, suppress_names=spec_supplied_names
         )
@@ -1065,7 +1079,8 @@ def _warn_on_override_collisions(
 def compile_workflow(
     spec: Spec,
     spec_relpath: str,
-    env_overrides: EnvOverrides | None = None,
+    env_overrides: PixiTomlFragment | None = None,
+    precomputed_default_feature: FeatureSection | None = None,
     installed_requirements: list[SpecRequirement] | None = None,
     on_progress: Callable[[str], None] | None = None,
     **compiler_kwargs: Any,  # noqa: ANN401  # forwarded to DagCompiler subclasses
@@ -1079,9 +1094,13 @@ def compile_workflow(
     Args:
         spec: Workflow specification (must have known_tasks already populated)
         spec_relpath: Relative path to spec file
-        env_overrides: Optional parsed env-overrides file. Layered on top
-            of the bundled defaults; see "Injected Dependencies" in the
-            wt-compiler reference docs.
+        env_overrides: Optional parsed env-overrides fragment. Layered on
+            top of the bundled defaults; see "Injected Dependencies" in
+            the wt-compiler reference docs.
+        precomputed_default_feature: Optional merged default-feature
+            section, already computed once and shared between the
+            discovery env and the emitted ``pixi.toml``. When set, the
+            compiler reuses it instead of re-merging.
         installed_requirements: Optional list of solved/pinned requirements.
             Names from this list (the transitive solve of
             ``spec.yaml requirements:``) are added to the suppression set
@@ -1108,6 +1127,7 @@ def compile_workflow(
     compiler = DagCompiler(
         spec=spec,
         env_overrides=env_overrides,
+        precomputed_default_feature=precomputed_default_feature,
         installed_requirement_names=installed_names,
         **compiler_kwargs,
     )
@@ -1174,18 +1194,22 @@ async def compile_workflow_from_yaml(
     This async function is the recommended entry point for compilation. It handles
     the complete workflow:
     1. Parse requirements from YAML (without full Spec validation)
-    2. Discover tasks via wt-registry CLI in ephemeral rattler environment
-    3. Validate full Spec (now works because known_tasks is populated)
-    4. Compile to workflow artifacts
+    2. Compute the merged default-feature dep set (bundled defaults +
+       env-overrides) — this is the dep set the compiled package's
+       runtime sees, and the same set is fed into the discovery env so
+       JSON-schema generation matches runtime
+    3. Discover tasks via wt-registry CLI in ephemeral rattler environment
+    4. Validate full Spec (now works because known_tasks is populated)
+    5. Compile to workflow artifacts (reusing the merged default feature)
 
     Args:
         yaml_path: Path to spec.yaml file
         progress: Whether to display a progress spinner on stderr (default: True).
             Automatically disabled when stderr is not a TTY.
-        env_overrides_path: Optional path to a wt-compiler env-overrides toml
-            file. When set, the file's ``feature.discovery`` section is
-            overlaid onto the discovery env, and its ``default`` /
-            ``runner`` / ``test`` sections are merged into the compiled
+        env_overrides_path: Optional path to a wt-compiler env-overrides
+            toml file. Recognized features are ``default`` / ``runner`` /
+            ``test``; the merged ``default`` feature is fed into the
+            discovery env, and all three are layered into the compiled
             pixi.toml on top of the bundled defaults.
         **compiler_kwargs: Additional arguments for DagCompiler
 
@@ -1204,9 +1228,9 @@ async def compile_workflow_from_yaml(
     """
     yaml_path = Path(yaml_path)
 
-    env_overrides: EnvOverrides | None = None
+    env_overrides: PixiTomlFragment | None = None
     if env_overrides_path is not None:
-        env_overrides = EnvOverrides.from_file(env_overrides_path)
+        env_overrides = load_env_overrides_file(env_overrides_path)
 
     with spinner(progress) as sp:
         # Phase 1: Parse requirements from YAML
@@ -1215,11 +1239,36 @@ async def compile_workflow_from_yaml(
         conda_requirements = parsed_reqs.conda
         pypi_requirements = parsed_reqs.pypi
 
-        # Phase 2: Convert SpecRequirements to MatchSpecs and discover tasks
+        # Phase 2: Compute the merged default-feature dep set. Computed
+        # ONCE here and shared between the discovery env and the emitted
+        # pixi.toml so schema generation sees the same library versions
+        # the compiled package will run against. Suppression here uses
+        # only spec.yaml-declared names (the transitive-solve closure is
+        # not yet known); the merged set excludes them so spec.yaml
+        # requirements are not double-supplied.
+        defaults = _load_default_injections()
+        spec_yaml_names = {r.name for r in conda_requirements} | {r.name for r in pypi_requirements}
+        default_overrides = (
+            env_overrides.get_feature("default") if env_overrides is not None else FeatureSection()
+        )
+        merged_default = merge_features(
+            base=defaults.get_feature("default"),
+            overrides=default_overrides,
+            suppress_names=spec_yaml_names,
+        )
+        if env_overrides is not None:
+            _warn_on_override_collisions(
+                feature_name="default",
+                spec_conda_names={r.name for r in conda_requirements},
+                spec_pypi_names={r.name for r in pypi_requirements},
+                overrides_section=default_overrides,
+            )
+
+        # Phase 3: Convert SpecRequirements to MatchSpecs and discover tasks
         # Build MatchSpec strings: "{channel}::{name} {version}"
         # Use base_url (not name) to ensure custom channels are correctly identified
         # Also collect channels to pass to the discovery function
-        match_specs = []
+        match_specs: list[MatchSpec] = []
         channels = []
         for req in conda_requirements:
             # Use base_url for the matchspec to correctly identify custom channels
@@ -1253,40 +1302,29 @@ async def compile_workflow_from_yaml(
             # PyPI-only: just need conda-forge for python + uv
             unique_channels = [CONDA_FORGE_CHANNEL]
 
-        # Overlay discovery-feature deps from the env-overrides file onto the
-        # discovery env. Conda deps add to the rattler match-specs; pypi deps
-        # are passed through as pypi_requirements with override-wins
-        # collision resolution against any same-named entries from spec.yaml.
-        if env_overrides is not None:
-            discovery_section = env_overrides.discovery
-            _warn_on_override_collisions(
-                feature_name="discovery",
-                spec_conda_names={r.name for r in conda_requirements},
-                spec_pypi_names={r.name for r in pypi_requirements},
-                overrides_section=discovery_section,
-            )
-            overlay_pypi_names = {req.name for req in discovery_section.pypi}
-            overlay_conda_names = {
-                str(spec.name.normalized)
-                for spec in discovery_section.conda
-                if spec.name is not None
-            }
-            overlay_names = overlay_pypi_names | overlay_conda_names
-            pypi_requirements = [
-                req for req in pypi_requirements if req.name not in overlay_names
-            ] + list(discovery_section.pypi)
-            match_specs = [
-                ms
-                for ms in match_specs
-                if ms.name is None or str(ms.name.normalized) not in overlay_names
-            ]
-            match_specs.extend(discovery_section.conda)
+        # Fold merged_default into the discovery inputs. merged_default's
+        # entries displace any same-name spec.yaml requirement on either
+        # side (mirroring the runtime behavior of pixi.toml's top-level
+        # [dependencies] / [pypi-dependencies]).
+        merged_default_names = {r.name for r in merged_default.pypi} | {
+            str(spec.name.normalized) for spec in merged_default.conda if spec.name is not None
+        }
+        match_specs = [
+            ms
+            for ms in match_specs
+            if ms.name is None or str(ms.name.normalized) not in merged_default_names
+        ]
+        discovery_pypi: list[PyPIRequirement] = [
+            req for req in pypi_requirements if req.name not in merged_default_names
+        ]
+        match_specs.extend(merged_default.conda)
+        discovery_pypi.extend(merged_default.pypi)
 
         # Discover tasks and populate global known_tasks
         discovery_result = await populate_known_tasks(
             match_specs,
             channels=unique_channels,
-            pypi_requirements=pypi_requirements or None,
+            pypi_requirements=discovery_pypi or None,
             on_progress=sp.update,
         )
         records = discovery_result.records
@@ -1294,19 +1332,21 @@ async def compile_workflow_from_yaml(
         # Build installed requirements from solved records
         installed_requirements = _build_installed_requirements(conda_requirements, records)
 
-        # Phase 3: Now we can safely validate the full Spec
+        # Phase 4: Now we can safely validate the full Spec
         sp.update("Validating spec...")
         with yaml_path.open() as f:  # noqa: ASYNC230  # spec is a small local file
             data = yaml.load(f)
         spec = Spec.model_validate(data)
 
-        # Phase 4: Compile
+        # Phase 5: Compile (reusing merged_default so the runtime pixi.toml
+        # carries the same dep set we just ran through discovery).
         sp.update("Compiling artifacts...")
         spec_relpath = str(yaml_path)
         return compile_workflow(
             spec,
             spec_relpath,
             env_overrides=env_overrides,
+            precomputed_default_feature=merged_default,
             installed_requirements=installed_requirements,
             on_progress=sp.update,
             **compiler_kwargs,
