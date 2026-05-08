@@ -59,16 +59,12 @@ class TestGenerated:
     def test_pixi_install_succeeds(
         self,
         pixi_installed_workspace: tuple[Workspace, PixiInstallResult],
-        request: pytest.FixtureRequest,
     ) -> None:
         """Verify that pixi install succeeds in the generated package.
 
         This test ensures the generated pixi.toml is valid and dependencies
         can be resolved.
         """
-        if request.config.getoption("--skip-generated-tests"):
-            pytest.skip("Skipping generated tests (--skip-generated-tests)")
-
         workspace, pixi_result = pixi_installed_workspace
 
         if workspace.compile_result is None or not workspace.compile_result.success:
@@ -83,16 +79,12 @@ class TestGenerated:
         self,
         pixi_installed_workspace: tuple[Workspace, PixiInstallResult],
         test_cases: list[str],
-        request: pytest.FixtureRequest,
     ) -> None:
         """Run pytest on the generated workflow tests for each test case.
 
         This test executes the generated test suite to verify the workflow
         works correctly after recompilation.
         """
-        if request.config.getoption("--skip-generated-tests"):
-            pytest.skip("Skipping generated tests (--skip-generated-tests)")
-
         if not test_cases:
             pytest.skip("No test cases found in test-cases.yaml")
 
@@ -143,16 +135,12 @@ class TestGenerated:
         self,
         pixi_installed_workspace: tuple[Workspace, PixiInstallResult],
         test_cases: list[str],
-        request: pytest.FixtureRequest,
     ) -> None:
         """Run the generated metadata tests.
 
         This test specifically runs test_metadata.py to verify workflow
         metadata is correctly generated.
         """
-        if request.config.getoption("--skip-generated-tests"):
-            pytest.skip("Skipping generated tests (--skip-generated-tests)")
-
         workspace, pixi_result = pixi_installed_workspace
 
         if workspace.compile_result is None or not workspace.compile_result.success:
@@ -189,7 +177,6 @@ class TestGenerated:
     def test_wt_package_resolves_to_local_path(
         self,
         pixi_installed_workspace: tuple[Workspace, PixiInstallResult],
-        request: pytest.FixtureRequest,
         env_name: str,
         pkg: str,
     ) -> None:
@@ -199,9 +186,6 @@ class TestGenerated:
         ``pixi run -e <env>`` and confirm ``<module>.__file__`` is under the
         monorepo root.
         """
-        if request.config.getoption("--skip-generated-tests"):
-            pytest.skip("Skipping generated tests (--skip-generated-tests)")
-
         workspace, pixi_result = pixi_installed_workspace
         if not _has_env_overrides(workspace):
             pytest.skip("Repo does not declare env_overrides — local-source check N/A")
@@ -227,9 +211,7 @@ class TestGenerated:
             timeout=120,
         )
         if result.returncode != 0:
-            pytest.fail(
-                f"Failed to import {pkg} in env={env_name}: {result.stderr}"
-            )
+            pytest.fail(f"Failed to import {pkg} in env={env_name}: {result.stderr}")
         resolved = Path(result.stdout.strip()).resolve()
         assert str(MONOREPO_ROOT) in str(resolved), (
             f"{pkg} in env={env_name} resolved to {resolved}, "
@@ -240,7 +222,6 @@ class TestGenerated:
     def test_wt_package_dist_info_is_path_source(
         self,
         pixi_installed_workspace: tuple[Workspace, PixiInstallResult],
-        request: pytest.FixtureRequest,
         env_name: str,
         pkg: str,
     ) -> None:
@@ -252,9 +233,6 @@ class TestGenerated:
         so the presence of ``dir_info`` proves the install came from local
         path and not from the registry.
         """
-        if request.config.getoption("--skip-generated-tests"):
-            pytest.skip("Skipping generated tests (--skip-generated-tests)")
-
         workspace, pixi_result = pixi_installed_workspace
         if not _has_env_overrides(workspace):
             pytest.skip("Repo does not declare env_overrides — local-source check N/A")
@@ -280,8 +258,7 @@ class TestGenerated:
         )
         if result.returncode != 0:
             pytest.fail(
-                f"Failed to read direct_url.json for {pkg} in env={env_name}: "
-                f"{result.stderr}"
+                f"Failed to read direct_url.json for {pkg} in env={env_name}: {result.stderr}"
             )
         raw = result.stdout.strip()
         assert raw, (
