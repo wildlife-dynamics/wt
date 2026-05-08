@@ -18,6 +18,12 @@ MONOREPO_ROOT = Path(__file__).resolve().parents[3]
 
 # Packages and the envs that should resolve them to local sources when the
 # reverse-integration env-overrides file is in effect.
+#
+# wt-registry is only declared in the ``default`` feature of the env-overrides
+# file. The ``runner`` and ``test`` envs are emitted with ``no_default_feature
+# = True`` (see ``wt_compiler/compiler.py``) and neither wt-runner nor wt-task
+# depends on wt-registry at runtime — it is a compile-time discovery library —
+# so it is correctly absent from those envs.
 _LOCAL_SOURCE_PARAMS = [
     ("default", "wt_contracts"),
     ("default", "wt_task"),
@@ -25,12 +31,10 @@ _LOCAL_SOURCE_PARAMS = [
     ("runner", "wt_runner"),
     ("runner", "wt_task"),
     ("runner", "wt_contracts"),
-    ("runner", "wt_registry"),
     ("runner", "wt_invokers"),
     ("test", "wt_runner"),
     ("test", "wt_task"),
     ("test", "wt_contracts"),
-    ("test", "wt_registry"),
     ("test", "wt_invokers"),
 ]
 
@@ -174,17 +178,25 @@ class TestGenerated:
             )
 
     @pytest.mark.parametrize(("env_name", "pkg"), _LOCAL_SOURCE_PARAMS)
-    def test_wt_package_resolves_to_local_path(
+    def test_wt_package_direct_url_points_to_monorepo(
         self,
         pixi_installed_workspace: tuple[Workspace, PixiInstallResult],
         env_name: str,
         pkg: str,
     ) -> None:
-        """Each wt-* import in each env should resolve to the local monorepo path.
+        """Each wt-* dist-info ``direct_url.json`` must point under the monorepo root.
 
-        This is the first half of the airtight check: import the module via
-        ``pixi run -e <env>`` and confirm ``<module>.__file__`` is under the
-        monorepo root.
+        Together with ``test_wt_package_dist_info_is_path_source`` this forms an
+        airtight pair: ``dist_info`` proves "installed from a directory at all,"
+        and this test proves "that directory is under the wt monorepo root."
+
+        Note that ``<module>.__file__`` is not a usable probe here. Per pixi
+        issue #5847, pixi registers path sources as non-editable URLs into uv's
+        resolver, so even when the install came from a local path the package
+        is materialized into ``.pixi/envs/.../site-packages/`` and ``__file__``
+        resolves there rather than to the source tree. The ``url`` field of
+        ``direct_url.json`` retains the original ``file://`` source location
+        and is the correct invariant to assert against.
         """
         workspace, pixi_result = pixi_installed_workspace
         if not _has_env_overrides(workspace):
@@ -195,27 +207,37 @@ class TestGenerated:
             pytest.skip(f"pixi install failed: {pixi_result.stderr}")
 
         generated_path = workspace.compile_result.generated_path
+        dist_name = pkg.replace("_", "-")
+        script = (
+            "import importlib.metadata, json\n"
+            f"d = importlib.metadata.distribution({dist_name!r})\n"
+            "raw = d.read_text('direct_url.json') or ''\n"
+            "print(raw)\n"
+        )
         result = subprocess.run(
-            [
-                "pixi",
-                "run",
-                "-e",
-                env_name,
-                "python",
-                "-c",
-                f"import {pkg}; print({pkg}.__file__)",
-            ],
+            ["pixi", "run", "-e", env_name, "python", "-c", script],
             cwd=generated_path,
             capture_output=True,
             text=True,
             timeout=120,
         )
         if result.returncode != 0:
-            pytest.fail(f"Failed to import {pkg} in env={env_name}: {result.stderr}")
-        resolved = Path(result.stdout.strip()).resolve()
-        assert str(MONOREPO_ROOT) in str(resolved), (
-            f"{pkg} in env={env_name} resolved to {resolved}, "
-            f"expected under monorepo root {MONOREPO_ROOT}"
+            pytest.fail(
+                f"Failed to read direct_url.json for {pkg} in env={env_name}: {result.stderr}"
+            )
+        raw = result.stdout.strip()
+        assert raw, (
+            f"{pkg} in env={env_name} has no direct_url.json — installed from "
+            f"registry instead of local path."
+        )
+        direct_url = json.loads(raw)
+        url = direct_url.get("url", "")
+        assert url.startswith("file://"), (
+            f"{pkg} in env={env_name} direct_url.json url is not a file:// URL: {url!r}"
+        )
+        assert str(MONOREPO_ROOT) in url, (
+            f"{pkg} in env={env_name} direct_url.json url={url!r} does not point "
+            f"under monorepo root {MONOREPO_ROOT}"
         )
 
     @pytest.mark.parametrize(("env_name", "pkg"), _LOCAL_SOURCE_PARAMS)
