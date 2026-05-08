@@ -57,11 +57,11 @@ dev = [
     "ruff>=0.1.0",
 ]
 
-# [tool.uv.sources]
-# # Development override - uses local editable packages
-# # Published packages will reference PyPI version normally
-# wt-contracts = { path = "../wt-contracts", editable = true }
-# wt-invokers = { path = "../wt-invokers", editable = true }
+[tool.uv.sources]
+# Development override - uses local editable packages
+# Published packages will reference PyPI version normally
+wt-contracts = { path = "../wt-contracts", editable = true }
+wt-invokers = { path = "../wt-invokers", editable = true }
 
 [tool.setuptools.packages.find]
 where = ["src"]

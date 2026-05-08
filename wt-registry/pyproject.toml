@@ -39,10 +39,10 @@ dev = [
     "pre-commit>=3.0.0",
 ]
 
-# [tool.uv.sources]
-# # Development override - uses local editable wt-contracts
-# # Published packages will reference PyPI version normally
-# wt-contracts = { path = "../wt-contracts", editable = true }
+[tool.uv.sources]
+# Development override - uses local editable wt-contracts
+# Published packages will reference PyPI version normally
+wt-contracts = { path = "../wt-contracts", editable = true }
 
 [tool.setuptools.packages.find]
 where = ["src"]

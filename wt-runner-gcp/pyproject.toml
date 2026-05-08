@@ -25,11 +25,11 @@ dependencies = [
     "stamina>=25.1.0,<26",
 ]
 
-# [tool.uv.sources]
-# wt-runner = { path = "../wt-runner", editable = true }
-# wt-contracts = { path = "../wt-contracts", editable = true }
-# wt-invokers = { path = "../wt-invokers", editable = true }
-# wt-invokers-gcp = { path = "../wt-invokers-gcp", editable = true }
+[tool.uv.sources]
+wt-runner = { path = "../wt-runner", editable = true }
+wt-contracts = { path = "../wt-contracts", editable = true }
+wt-invokers = { path = "../wt-invokers", editable = true }
+wt-invokers-gcp = { path = "../wt-invokers-gcp", editable = true }
 
 [dependency-groups]
 dev = [
