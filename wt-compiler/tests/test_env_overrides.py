@@ -81,12 +81,17 @@ class TestEnvOverridesFromFile:
         req = overrides.get_feature_pypi_deps("runner")[0]
         assert req.extras == ["gcp"]
 
-    def test_bare_version_string_rejected(self, tmp_path):
-        """Bare version strings in pypi-dependencies are unsupported."""
+    def test_bare_version_string_accepted(self, tmp_path):
+        """Bare version strings in pypi-dependencies become version-only PyPIRequirements."""
         f = tmp_path / "ov.toml"
-        f.write_text("[feature.default.pypi-dependencies]\nfoo = '*'\n")
-        with pytest.raises(ValueError, match="bare-version shorthand"):
-            EnvOverrides.from_file(f)
+        f.write_text('[feature.default.pypi-dependencies]\nfoo = "*"\nbar = ">=1.0"\n')
+        overrides = EnvOverrides.from_file(f)
+        deps = {r.name: r for r in overrides.get_feature_pypi_deps("default")}
+        assert deps["foo"].version == "*"
+        assert deps["bar"].version == ">=1.0"
+        assert deps["foo"].path is None
+        assert deps["foo"].git is None
+        assert deps["foo"].url is None
 
     def test_get_feature_returns_empty_for_undeclared(self, tmp_path):
         """get_feature for a feature not declared in the file returns empties."""

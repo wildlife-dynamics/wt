@@ -905,15 +905,21 @@ class PyPIRequirement(_ForbidExtra):
     url: str | None = None
     subdirectory: str | None = None
     extras: list[str] | None = None
+    version: str | None = None
 
     @model_validator(mode="after")
     def validate_source(self) -> Self:
-        """Validate that exactly one source is set and options are compatible."""
+        """Validate that at most one source is set and options are compatible."""
         sources = [s for s in (self.git, self.path, self.url) if s is not None]
-        if len(sources) != 1:
+        if len(sources) > 1:
             raise ValueError(
-                f"Exactly one of 'git', 'path', or 'url' must be set for PyPI requirement "
+                f"At most one of 'git', 'path', or 'url' may be set for PyPI requirement "
                 f"'{self.name}', got {len(sources)}."
+            )
+        if not sources and self.version is None:
+            raise ValueError(
+                f"PyPI requirement '{self.name}' must declare one of 'git', 'path', "
+                f"'url', or 'version'."
             )
         if any(v is not None for v in (self.rev, self.branch, self.tag)) and self.git is None:
             raise ValueError(
@@ -977,6 +983,10 @@ class PyPIRequirement(_ForbidExtra):
             d["subdirectory"] = self.subdirectory
         if self.extras is not None:
             d["extras"] = self.extras
+        if self.version is not None and not any(
+            v is not None for v in (self.git, self.path, self.url)
+        ):
+            d["version"] = self.version
         return d
 
     def to_pip_install_arg(self) -> str:

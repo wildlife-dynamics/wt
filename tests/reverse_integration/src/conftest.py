@@ -83,10 +83,21 @@ def _derive_spec_name(spec_path: str) -> str:
 
 
 def _resolve_env_overrides(compile_flags: dict[str, str] | None) -> dict[str, str] | None:
-    """Resolve a relative ``env_overrides`` path against ``MANIFEST_PATH.parent``.
+    """Resolve the *manifest-relative* ``env_overrides`` path to absolute.
 
-    Paths inside the override file remain relative to the override file's own
-    directory; this only resolves the manifest-level reference.
+    Two distinct anchors, two distinct phases — name them explicitly so the
+    distinction doesn't get lost:
+
+    1. **Manifest-relative (this function).** The manifest entry's
+       ``env_overrides`` value is interpreted relative to the manifest
+       file's own directory (``MANIFEST_PATH.parent``). We resolve it to an
+       absolute path so the compiler sees a stable location regardless of
+       cwd.
+    2. **Override-file-relative (handled by the compiler).** Once the
+       compiler reads the override file, any ``path = "..."`` entries
+       inside it resolve against that *override file's own directory*
+       (matching pixi.toml semantics). This function does not touch those
+       inner paths.
 
     Args:
         compile_flags: Dict of compile flags from a manifest entry, or None.

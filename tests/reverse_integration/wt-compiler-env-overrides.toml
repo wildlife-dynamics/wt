@@ -6,7 +6,8 @@
 # directory (matching pixi.toml semantics), so `../../wt-task` points to the
 # wt-task package at the monorepo root.
 #
-# See docs/content/reference/env-overrides.md for the full file format.
+# See docs/content/reference/wt-compiler.md#injected-dependencies for the
+# full file format.
 
 # Discovery env overlay (wt-compiler-only pseudo-feature; never emitted into
 # the compiled pixi.toml). Forces the discovery env's wt-* sources to local.
@@ -29,4 +30,3 @@ wt-runner    = { path = "../../wt-runner",    editable = true, extras = ["gcp"] 
 wt-task      = { path = "../../wt-task",      editable = true, extras = ["gcp"] }
 wt-invokers  = { path = "../../wt-invokers",  editable = true, extras = ["gcp"] }
 wt-contracts = { path = "../../wt-contracts", editable = true }
-wt-registry  = { path = "../../wt-registry",  editable = true }

@@ -90,9 +90,7 @@ class TestDagCompiler:
             requirements=[],
             workflow=[],
         )
-        compiler = DagCompiler(
-            spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/"
-        )
+        compiler = DagCompiler(spec=spec)
         # Release name: prefix-{id with _ replaced by -}-workflow
         assert compiler.release_name == "wt-my-workflow-workflow"
         # Package name: release name with - replaced by _
@@ -107,7 +105,6 @@ class TestDagCompiler:
         )
         compiler = DagCompiler(
             spec=spec,
-            wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/",
             pkg_name_prefix="custom",
         )
         assert compiler.release_name == "custom-my-workflow-workflow"
@@ -146,9 +143,7 @@ class TestDagCompiler:
                 requirements=[],
                 workflow=[instance1, instance2],
             )
-            compiler = DagCompiler(
-                spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/"
-            )
+            compiler = DagCompiler(spec=spec)
 
             omit_args = compiler.per_taskinstance_omit_args
             assert "task1" in omit_args
@@ -177,9 +172,7 @@ class TestDagCompiler:
                 requirements=[],
                 workflow=[instance1],
             )
-            compiler = DagCompiler(
-                spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/"
-            )
+            compiler = DagCompiler(spec=spec)
 
             graph = compiler.build_pydot_graph()
             assert graph.get_name() == "test_spec"
@@ -199,9 +192,7 @@ class TestDagCompiler:
             ],
             workflow=[],
         )
-        compiler = DagCompiler(
-            spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/"
-        )
+        compiler = DagCompiler(spec=spec)
         pixi_toml = compiler.get_pixi_toml()
 
         # Workspace name should be the release name (underscores replaced by dashes)
@@ -234,7 +225,7 @@ class TestDagCompiler:
             ],
             workflow=[],
         )
-        compiler = DagCompiler(spec=spec, wt_runner_channel=WT_LOCAL_CHANNEL.base_url)
+        compiler = DagCompiler(spec=spec)
         pixi_toml = compiler.get_pixi_toml()
 
         # Runner feature should have wt-runner
@@ -261,9 +252,7 @@ class TestDagCompiler:
             ],
             workflow=[],
         )
-        compiler = DagCompiler(
-            spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/"
-        )
+        compiler = DagCompiler(spec=spec)
         pixi_toml = compiler.get_pixi_toml()
 
         # Conda deps should be in dependencies
@@ -284,9 +273,7 @@ class TestDagCompiler:
             requirements=[{"requirement": "python>=3.10"}],
             workflow=[],
         )
-        compiler = DagCompiler(
-            spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/"
-        )
+        compiler = DagCompiler(spec=spec)
         pixi_toml = compiler.get_pixi_toml()
 
         assert pixi_toml.pypi_dependencies == {}
@@ -310,7 +297,6 @@ class TestDagCompiler:
         )
         compiler = DagCompiler(
             spec=spec,
-            wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/",
             env_overrides=env_overrides,
         )
         pixi_toml = compiler.get_pixi_toml()
@@ -339,7 +325,6 @@ class TestDagCompiler:
         )
         compiler = DagCompiler(
             spec=spec,
-            wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/",
             env_overrides=env_overrides,
         )
         pixi_toml = compiler.get_pixi_toml()
@@ -350,8 +335,8 @@ class TestDagCompiler:
         assert runner_feature.pypi_dependencies["wt-runner"]["extras"] == ["gcp"]
         assert "wt-runner" not in runner_feature.dependencies
 
-    def test_get_pixi_toml_no_runner_channel_skips_auto_injection(self):
-        """When wt_runner_channel is None, no wt-task / wt-runner conda deps are auto-injected."""
+    def test_get_pixi_toml_defaults_always_injected(self):
+        """The bundled default-env-injections.toml is always layered in."""
         spec = Spec(
             id="test_spec",
             requirements=[
@@ -359,12 +344,29 @@ class TestDagCompiler:
             ],
             workflow=[],
         )
-        compiler = DagCompiler(spec=spec, wt_runner_channel=None)
+        compiler = DagCompiler(spec=spec)
         pixi_toml = compiler.get_pixi_toml()
 
-        # Without a runner channel, no wt-task / wt-runner conda deps should be emitted.
-        assert "wt-task" not in pixi_toml.dependencies
-        assert "wt-runner" not in pixi_toml.feature["runner"].dependencies
+        # Defaults always provide wt-task in the default feature and wt-runner
+        # in the runner feature.
+        assert "wt-task" in pixi_toml.dependencies
+        assert "wt-runner" in pixi_toml.feature["runner"].dependencies
+
+    def test_get_pixi_toml_spec_requirements_suppress_defaults(self):
+        """A spec.yaml requirements: entry with the same name suppresses the default."""
+        spec = Spec(
+            id="test_spec",
+            requirements=[
+                {"requirement": "pydantic >=2.5,<3.0"},
+            ],
+            workflow=[],
+        )
+        compiler = DagCompiler(spec=spec)
+        pixi_toml = compiler.get_pixi_toml()
+
+        assert "pydantic" in pixi_toml.dependencies
+        # Spec-supplied version wins over the bundled default's >=2.0,<3.0.
+        assert ">=2.5" in str(pixi_toml.dependencies["pydantic"].version)
 
     def test_props_and_defs_from_task_instance(self):
         """Test extracting properties and definitions from a task instance."""
@@ -811,9 +813,7 @@ class TestRenderDag:
                 ),
             ],
         )
-        return DagCompiler(
-            spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/"
-        )
+        return DagCompiler(spec=spec)
 
     def test_sequential_mock_io_skips_validate_for_io_tasks(self):
         """With mock_io=True, IO tasks should NOT have .validate(), non-IO tasks should."""
@@ -942,9 +942,7 @@ class TestRenderDag:
                 ),
             ],
         )
-        return DagCompiler(
-            spec=spec, wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/"
-        )
+        return DagCompiler(spec=spec)
 
     def test_sequential_realistic_validate_count(self):
         """mock_io=True: 4 .validate() calls and 1 'validation omitted' comment."""

@@ -56,6 +56,9 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+wt_compiler = ["default-env-injections.toml", "templates/**/*"]
+
 [tool.setuptools_scm]
 # Version comes from git tags matching this pattern
 tag_regex = "^wt-compiler/v(?P<version>[0-9.]+)$"

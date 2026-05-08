@@ -30,8 +30,8 @@ The harness invokes `wt-compiler` with
 the local monorepo via `../..`-relative paths, so every `wt-*` import in
 both the discovery env and the compiled package's envs resolves to the
 local checkout — never to a released conda or PyPI package. See
-[Env Overrides](../../docs/content/reference/env-overrides.md) for the
-full file format.
+[Injected Dependencies](../../docs/content/reference/wt-compiler.md#injected-dependencies)
+for the full file format.
 
 ## CLI Options
 

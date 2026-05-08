@@ -43,7 +43,6 @@ nav:
     - wt-registry: reference/wt-registry.md
     - wt-task: reference/wt-task.md
     - wt-compiler: reference/wt-compiler.md
-    - "Env Overrides": reference/env-overrides.md
     - wt-invokers: reference/wt-invokers.md
     - wt-runner: reference/wt-runner.md
   - Architecture: architecture.md
