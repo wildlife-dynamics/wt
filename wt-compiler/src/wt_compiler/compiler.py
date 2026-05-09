@@ -328,7 +328,6 @@ class DagCompiler(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     spec: Spec
-    precomputed_default_feature: FeatureSection = Field(exclude=True)
     env_overrides: PixiTomlFragment | None = Field(default=None, exclude=True)
     installed_requirement_names: set[str] = Field(default_factory=set, exclude=True)
     variant: str | None = None
@@ -537,7 +536,7 @@ class DagCompiler(BaseModel):
         # TODO: Implement based on params schema
         return "# TODO: Generate fillable params YAML\n"
 
-    def get_pixi_toml(self) -> PixiToml:
+    def get_pixi_toml(self, *, merged_default_feature: FeatureSection) -> PixiToml:
         """Generate pixi.toml for the workflow.
 
         Builds a complete pixi.toml with:
@@ -550,8 +549,8 @@ class DagCompiler(BaseModel):
           3. ``--env-overrides`` (final say, displaces by name across the
              conda and pypi sub-sections)
 
-          The merged ``default`` feature is supplied up-front via
-          :attr:`precomputed_default_feature` (the result of
+          The merged ``default`` feature is supplied via the required
+          *merged_default_feature* parameter (the result of
           :func:`compute_merged_default_feature`), so the same dep set
           fed into the discovery env is reused here. The variant suffix
           is applied in this method.
@@ -559,6 +558,12 @@ class DagCompiler(BaseModel):
           feature; test feature carries the test tasks
         - Environments: default, runner, test
         - Tasks: docker-build (if local artifacts) and workflow CLI
+
+        Args:
+            merged_default_feature: Merged default-feature section
+                produced by :func:`compute_merged_default_feature`.
+                Required so the same dep set the discovery env saw is
+                emitted into the compiled ``pixi.toml``.
 
         Returns:
             PixiToml model with all dependencies and configuration
@@ -580,7 +585,7 @@ class DagCompiler(BaseModel):
         # Reuse the merged default feature computed up-front (so the
         # discovery env saw the same dep set). Variant suffix still has
         # to be applied here.
-        default_section = _apply_variant_suffix(self.precomputed_default_feature, self.variant)
+        default_section = _apply_variant_suffix(merged_default_feature, self.variant)
         runner_section = self._resolved_feature(
             "runner", defaults=defaults, suppress_names=spec_supplied_names
         )
@@ -928,6 +933,8 @@ class DagCompiler(BaseModel):
     def compile(
         self,
         spec_relpath: str,
+        *,
+        merged_default_feature: FeatureSection,
         installed_requirements: list[SpecRequirement] | None = None,
         on_progress: Callable[[str], None] | None = None,
     ) -> WorkflowArtifacts:
@@ -937,6 +944,10 @@ class DagCompiler(BaseModel):
 
         Args:
             spec_relpath: Relative path to the spec file
+            merged_default_feature: Merged default-feature section
+                produced by :func:`compute_merged_default_feature`,
+                forwarded to :meth:`get_pixi_toml` so the emitted
+                ``pixi.toml`` carries the same dep set fed into discovery.
             installed_requirements: Optional list of solved/pinned requirements
             on_progress: Optional callback invoked with a status message at each sub-step
 
@@ -1028,7 +1039,7 @@ class DagCompiler(BaseModel):
         )
 
         # Generate pixi.toml
-        pixi_toml = self.get_pixi_toml()
+        pixi_toml = self.get_pixi_toml(merged_default_feature=merged_default_feature)
 
         # Generate Dockerfile
         dockerfile = self.plainrender(
@@ -1116,7 +1127,7 @@ def _warn_on_override_collisions(
 def compile_workflow(
     spec: Spec,
     spec_relpath: str,
-    precomputed_default_feature: FeatureSection,
+    merged_default_feature: FeatureSection,
     env_overrides: PixiTomlFragment | None = None,
     installed_requirements: list[SpecRequirement] | None = None,
     on_progress: Callable[[str], None] | None = None,
@@ -1131,7 +1142,7 @@ def compile_workflow(
     Args:
         spec: Workflow specification (must have known_tasks already populated)
         spec_relpath: Relative path to spec file
-        precomputed_default_feature: Merged default-feature section,
+        merged_default_feature: Merged default-feature section,
             already computed via :func:`compute_merged_default_feature`
             and shared between the discovery env and the emitted
             ``pixi.toml``. Required so the "discovery and runtime see
@@ -1165,12 +1176,14 @@ def compile_workflow(
     compiler = DagCompiler(
         spec=spec,
         env_overrides=env_overrides,
-        precomputed_default_feature=precomputed_default_feature,
         installed_requirement_names=installed_names,
         **compiler_kwargs,
     )
     return compiler.compile(
-        spec_relpath, installed_requirements=installed_requirements, on_progress=on_progress
+        spec_relpath,
+        merged_default_feature=merged_default_feature,
+        installed_requirements=installed_requirements,
+        on_progress=on_progress,
     )
 
 
@@ -1381,7 +1394,7 @@ async def compile_workflow_from_yaml(
             spec,
             spec_relpath,
             env_overrides=env_overrides,
-            precomputed_default_feature=merged_default,
+            merged_default_feature=merged_default,
             installed_requirements=installed_requirements,
             on_progress=sp.update,
             **compiler_kwargs,

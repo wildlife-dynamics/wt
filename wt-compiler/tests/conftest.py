@@ -14,14 +14,15 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture
-def default_feature() -> FeatureSection:
+def merged_default_feature() -> FeatureSection:
     """Merged default feature with no env-overrides and no spec-supplied suppressions.
 
     Equivalent to what ``compile_workflow_from_yaml`` produces for a
     spec whose ``requirements:`` list has no overlap with the bundled
-    ``default-env-injections.toml`` baseline. Use this in
-    :class:`DagCompiler` test sites that don't explicitly exercise the
-    env-overrides or spec-supplied-suppression paths.
+    ``default-env-injections.toml`` baseline. Pass this to
+    :meth:`DagCompiler.compile` / :meth:`DagCompiler.get_pixi_toml` in
+    test sites that don't explicitly exercise the env-overrides or
+    spec-supplied-suppression paths.
     """
     return compute_merged_default_feature(
         _load_default_injections(),

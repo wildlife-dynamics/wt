@@ -84,7 +84,7 @@ class TestRemoveFunctionallyIrrelevantKeys:
 class TestDagCompiler:
     """Tests for DagCompiler class."""
 
-    def test_package_name_generation(self, default_feature):
+    def test_package_name_generation(self):
         """Test package name generation from spec ID."""
         # Create a minimal spec (spec ID must be valid Python identifier)
         spec = Spec(
@@ -92,13 +92,13 @@ class TestDagCompiler:
             requirements=[],
             workflow=[],
         )
-        compiler = DagCompiler(spec=spec, precomputed_default_feature=default_feature)
+        compiler = DagCompiler(spec=spec)
         # Release name: prefix-{id with _ replaced by -}-workflow
         assert compiler.release_name == "wt-my-workflow-workflow"
         # Package name: release name with - replaced by _
         assert compiler.package_name == "wt_my_workflow_workflow"
 
-    def test_custom_pkg_name_prefix(self, default_feature):
+    def test_custom_pkg_name_prefix(self):
         """Test custom package name prefix."""
         spec = Spec(
             id="my_workflow",
@@ -107,13 +107,12 @@ class TestDagCompiler:
         )
         compiler = DagCompiler(
             spec=spec,
-            precomputed_default_feature=default_feature,
             pkg_name_prefix="custom",
         )
         assert compiler.release_name == "custom-my-workflow-workflow"
         assert compiler.package_name == "custom_my_workflow_workflow"
 
-    def test_per_taskinstance_omit_args(self, default_feature):
+    def test_per_taskinstance_omit_args(self):
         """Test omit_args calculation for task instances."""
         # Register tasks in the global registry
         task1 = KnownTask(
@@ -146,7 +145,7 @@ class TestDagCompiler:
                 requirements=[],
                 workflow=[instance1, instance2],
             )
-            compiler = DagCompiler(spec=spec, precomputed_default_feature=default_feature)
+            compiler = DagCompiler(spec=spec)
 
             omit_args = compiler.per_taskinstance_omit_args
             assert "task1" in omit_args
@@ -155,7 +154,7 @@ class TestDagCompiler:
         finally:
             known_tasks.clear()
 
-    def test_build_pydot_graph(self, default_feature):
+    def test_build_pydot_graph(self):
         """Test building a pydot graph from spec."""
         task1 = KnownTask(
             importable_reference="mod.func1",
@@ -175,7 +174,7 @@ class TestDagCompiler:
                 requirements=[],
                 workflow=[instance1],
             )
-            compiler = DagCompiler(spec=spec, precomputed_default_feature=default_feature)
+            compiler = DagCompiler(spec=spec)
 
             graph = compiler.build_pydot_graph()
             assert graph.get_name() == "test_spec"
@@ -185,7 +184,7 @@ class TestDagCompiler:
         finally:
             known_tasks.clear()
 
-    def test_get_pixi_toml(self, default_feature):
+    def test_get_pixi_toml(self, merged_default_feature):
         """Test pixi.toml generation."""
         spec = Spec(
             id="test_spec",
@@ -195,8 +194,8 @@ class TestDagCompiler:
             ],
             workflow=[],
         )
-        compiler = DagCompiler(spec=spec, precomputed_default_feature=default_feature)
-        pixi_toml = compiler.get_pixi_toml()
+        compiler = DagCompiler(spec=spec)
+        pixi_toml = compiler.get_pixi_toml(merged_default_feature=merged_default_feature)
 
         # Workspace name should be the release name (underscores replaced by dashes)
         assert pixi_toml.workspace.name == "wt-test-spec-workflow"
@@ -218,7 +217,7 @@ class TestDagCompiler:
         # Check tasks (task name is the release_name)
         assert "wt-test-spec-workflow" in pixi_toml.tasks
 
-    def test_get_pixi_toml_with_wt_registry(self, default_feature):
+    def test_get_pixi_toml_with_wt_registry(self, merged_default_feature):
         """Test pixi.toml generation with wt-registry dependency."""
 
         spec = Spec(
@@ -228,8 +227,8 @@ class TestDagCompiler:
             ],
             workflow=[],
         )
-        compiler = DagCompiler(spec=spec, precomputed_default_feature=default_feature)
-        pixi_toml = compiler.get_pixi_toml()
+        compiler = DagCompiler(spec=spec)
+        pixi_toml = compiler.get_pixi_toml(merged_default_feature=merged_default_feature)
 
         # Runner feature should have wt-runner
         assert "runner" in pixi_toml.feature
@@ -244,7 +243,7 @@ class TestDagCompiler:
         assert "test-all" in pixi_toml.feature["test"].tasks
         assert "playwright-install" in pixi_toml.feature["test"].tasks
 
-    def test_get_pixi_toml_with_pypi_deps(self, default_feature):
+    def test_get_pixi_toml_with_pypi_deps(self, merged_default_feature):
         """Test pixi.toml generation with mixed conda and pypi requirements."""
         spec = Spec(
             id="test_spec",
@@ -255,8 +254,8 @@ class TestDagCompiler:
             ],
             workflow=[],
         )
-        compiler = DagCompiler(spec=spec, precomputed_default_feature=default_feature)
-        pixi_toml = compiler.get_pixi_toml()
+        compiler = DagCompiler(spec=spec)
+        pixi_toml = compiler.get_pixi_toml(merged_default_feature=merged_default_feature)
 
         # Conda deps should be in dependencies
         assert "python" in pixi_toml.dependencies
@@ -269,15 +268,15 @@ class TestDagCompiler:
         assert pixi_toml.pypi_dependencies["bar"]["path"] == "/opt/bar"
         assert pixi_toml.pypi_dependencies["bar"]["editable"] is True
 
-    def test_get_pixi_toml_no_pypi_deps(self, default_feature):
+    def test_get_pixi_toml_no_pypi_deps(self, merged_default_feature):
         """Test pixi.toml with no pypi deps doesn't include pypi-dependencies section."""
         spec = Spec(
             id="test_spec",
             requirements=[{"requirement": "python>=3.10"}],
             workflow=[],
         )
-        compiler = DagCompiler(spec=spec, precomputed_default_feature=default_feature)
-        pixi_toml = compiler.get_pixi_toml()
+        compiler = DagCompiler(spec=spec)
+        pixi_toml = compiler.get_pixi_toml(merged_default_feature=merged_default_feature)
 
         assert pixi_toml.pypi_dependencies == {}
         toml_str = pixi_toml.to_toml()
@@ -306,9 +305,8 @@ class TestDagCompiler:
         compiler = DagCompiler(
             spec=spec,
             env_overrides=env_overrides,
-            precomputed_default_feature=merged_default,
         )
-        pixi_toml = compiler.get_pixi_toml()
+        pixi_toml = compiler.get_pixi_toml(merged_default_feature=merged_default)
 
         # wt-task is now in pypi_dependencies, not in conda dependencies
         assert "wt-task" in pixi_toml.pypi_dependencies
@@ -316,7 +314,7 @@ class TestDagCompiler:
         assert pixi_toml.pypi_dependencies["wt-task"]["editable"] is True
         assert "wt-task" not in pixi_toml.dependencies
 
-    def test_get_pixi_toml_with_env_overrides_runner_pypi(self, tmp_path, default_feature):
+    def test_get_pixi_toml_with_env_overrides_runner_pypi(self, tmp_path, merged_default_feature):
         """Override file replaces auto-injected wt-runner in runner deps with a pypi entry."""
         wt_runner_dir = tmp_path / "wt-runner"
         wt_runner_dir.mkdir()
@@ -335,9 +333,8 @@ class TestDagCompiler:
         compiler = DagCompiler(
             spec=spec,
             env_overrides=env_overrides,
-            precomputed_default_feature=default_feature,
         )
-        pixi_toml = compiler.get_pixi_toml()
+        pixi_toml = compiler.get_pixi_toml(merged_default_feature=merged_default_feature)
 
         runner_feature = pixi_toml.feature["runner"]
         assert "wt-runner" in runner_feature.pypi_dependencies
@@ -345,7 +342,7 @@ class TestDagCompiler:
         assert runner_feature.pypi_dependencies["wt-runner"]["extras"] == ["gcp"]
         assert "wt-runner" not in runner_feature.dependencies
 
-    def test_get_pixi_toml_defaults_always_injected(self, default_feature):
+    def test_get_pixi_toml_defaults_always_injected(self, merged_default_feature):
         """The bundled default-env-injections.toml is always layered in."""
         spec = Spec(
             id="test_spec",
@@ -354,8 +351,8 @@ class TestDagCompiler:
             ],
             workflow=[],
         )
-        compiler = DagCompiler(spec=spec, precomputed_default_feature=default_feature)
-        pixi_toml = compiler.get_pixi_toml()
+        compiler = DagCompiler(spec=spec)
+        pixi_toml = compiler.get_pixi_toml(merged_default_feature=merged_default_feature)
 
         # Defaults always provide wt-task in the default feature and wt-runner
         # in the runner feature.
@@ -375,8 +372,8 @@ class TestDagCompiler:
             _load_default_injections(),
             spec_supplied_names={"pydantic"},
         )
-        compiler = DagCompiler(spec=spec, precomputed_default_feature=merged_default)
-        pixi_toml = compiler.get_pixi_toml()
+        compiler = DagCompiler(spec=spec)
+        pixi_toml = compiler.get_pixi_toml(merged_default_feature=merged_default)
 
         assert "pydantic" in pixi_toml.dependencies
         # Spec-supplied version wins over the bundled default's >=2.0,<3.0.
@@ -414,10 +411,9 @@ class TestDagCompiler:
         compiler = DagCompiler(
             spec=spec,
             env_overrides=env_overrides,
-            precomputed_default_feature=merged_default,
             variant="gcp",
         )
-        pixi_toml = compiler.get_pixi_toml()
+        pixi_toml = compiler.get_pixi_toml(merged_default_feature=merged_default)
 
         # The pypi-side path entry is what landed.
         assert "wt-task" in pixi_toml.pypi_dependencies
@@ -427,17 +423,15 @@ class TestDagCompiler:
         assert "wt-task" not in pixi_toml.dependencies
         assert "wt-task-gcp" not in pixi_toml.dependencies
 
-    def test_variant_suffix_without_override_still_applied(self, default_feature):
+    def test_variant_suffix_without_override_still_applied(self, merged_default_feature):
         """Without an override, --variant=gcp still rewrites wt-task to wt-task-gcp."""
         spec = Spec(
             id="test_spec",
             requirements=[{"requirement": "python>=3.10"}],
             workflow=[],
         )
-        compiler = DagCompiler(
-            spec=spec, precomputed_default_feature=default_feature, variant="gcp"
-        )
-        pixi_toml = compiler.get_pixi_toml()
+        compiler = DagCompiler(spec=spec, variant="gcp")
+        pixi_toml = compiler.get_pixi_toml(merged_default_feature=merged_default_feature)
 
         assert "wt-task-gcp" in pixi_toml.dependencies
         assert "wt-task" not in pixi_toml.dependencies
@@ -853,7 +847,7 @@ class TestBuildInstalledRequirements:
 class TestRenderDag:
     """Tests for DagCompiler.render_dag with validate skipping for mocked IO tasks."""
 
-    def _setup_tasks_and_compiler(self, default_feature):
+    def _setup_tasks_and_compiler(self):
         """Register an IO task and a non-IO task, build a Spec and DagCompiler.
 
         Returns:
@@ -888,12 +882,12 @@ class TestRenderDag:
                 ),
             ],
         )
-        return DagCompiler(spec=spec, precomputed_default_feature=default_feature)
+        return DagCompiler(spec=spec)
 
-    def test_sequential_mock_io_skips_validate_for_io_tasks(self, default_feature):
+    def test_sequential_mock_io_skips_validate_for_io_tasks(self):
         """With mock_io=True, IO tasks should NOT have .validate(), non-IO tasks should."""
         try:
-            compiler = self._setup_tasks_and_compiler(default_feature)
+            compiler = self._setup_tasks_and_compiler()
             rendered = compiler.render_dag("sequential", mock_io=True)
 
             # Non-IO task should still have .validate()
@@ -907,10 +901,10 @@ class TestRenderDag:
         finally:
             known_tasks.clear()
 
-    def test_sequential_no_mock_io_validates_all_tasks(self, default_feature):
+    def test_sequential_no_mock_io_validates_all_tasks(self):
         """With mock_io=False, ALL tasks should have .validate()."""
         try:
-            compiler = self._setup_tasks_and_compiler(default_feature)
+            compiler = self._setup_tasks_and_compiler()
             rendered = compiler.render_dag("sequential", mock_io=False)
 
             # Both tasks should have .validate()
@@ -921,10 +915,10 @@ class TestRenderDag:
         finally:
             known_tasks.clear()
 
-    def test_async_mock_io_skips_validate_for_io_tasks(self, default_feature):
+    def test_async_mock_io_skips_validate_for_io_tasks(self):
         """With mock_io=True, async IO tasks should NOT have .validate()."""
         try:
-            compiler = self._setup_tasks_and_compiler(default_feature)
+            compiler = self._setup_tasks_and_compiler()
             rendered = compiler.render_dag("async", mock_io=True)
 
             # Non-IO task should still have .validate()
@@ -938,10 +932,10 @@ class TestRenderDag:
         finally:
             known_tasks.clear()
 
-    def test_async_no_mock_io_validates_all_tasks(self, default_feature):
+    def test_async_no_mock_io_validates_all_tasks(self):
         """With mock_io=False, async ALL tasks should have .validate()."""
         try:
-            compiler = self._setup_tasks_and_compiler(default_feature)
+            compiler = self._setup_tasks_and_compiler()
             rendered = compiler.render_dag("async", mock_io=False)
 
             # Both tasks should have .validate()
@@ -952,7 +946,7 @@ class TestRenderDag:
         finally:
             known_tasks.clear()
 
-    def _setup_realistic_workflow(self, default_feature):
+    def _setup_realistic_workflow(self):
         """Register 4 non-IO + 1 IO task with a dependency chain.
 
         Returns:
@@ -1017,12 +1011,12 @@ class TestRenderDag:
                 ),
             ],
         )
-        return DagCompiler(spec=spec, precomputed_default_feature=default_feature)
+        return DagCompiler(spec=spec)
 
-    def test_sequential_realistic_validate_count(self, default_feature):
+    def test_sequential_realistic_validate_count(self):
         """mock_io=True: 4 .validate() calls and 1 'validation omitted' comment."""
         try:
-            compiler = self._setup_realistic_workflow(default_feature)
+            compiler = self._setup_realistic_workflow()
             rendered = compiler.render_dag("sequential", mock_io=True)
 
             assert rendered.count(".validate()") == 4
@@ -1030,10 +1024,10 @@ class TestRenderDag:
         finally:
             known_tasks.clear()
 
-    def test_async_realistic_validate_count(self, default_feature):
+    def test_async_realistic_validate_count(self):
         """mock_io=True async: 4 .validate() calls and 1 'validation omitted' comment."""
         try:
-            compiler = self._setup_realistic_workflow(default_feature)
+            compiler = self._setup_realistic_workflow()
             rendered = compiler.render_dag("async", mock_io=True)
 
             assert rendered.count(".validate()") == 4
@@ -1041,10 +1035,10 @@ class TestRenderDag:
         finally:
             known_tasks.clear()
 
-    def test_sequential_no_mock_realistic_validates_all(self, default_feature):
+    def test_sequential_no_mock_realistic_validates_all(self):
         """mock_io=False: all 5 tasks should have .validate()."""
         try:
-            compiler = self._setup_realistic_workflow(default_feature)
+            compiler = self._setup_realistic_workflow()
             rendered = compiler.render_dag("sequential", mock_io=False)
 
             assert rendered.count(".validate()") == 5
@@ -1052,10 +1046,10 @@ class TestRenderDag:
         finally:
             known_tasks.clear()
 
-    def test_is_mocked_flag_in_serialized_dag_config(self, default_feature):
+    def test_is_mocked_flag_in_serialized_dag_config(self):
         """Inspect get_dag_config() output: is_mocked=True only for the IO task."""
         try:
-            compiler = self._setup_realistic_workflow(default_feature)
+            compiler = self._setup_realistic_workflow()
             config = compiler.get_dag_config("sequential", mock_io=True)
 
             tasks = config["spec"]["flat_workflow"]
@@ -1076,10 +1070,10 @@ class TestRenderDag:
         finally:
             known_tasks.clear()
 
-    def test_is_mocked_flag_false_when_mock_io_disabled(self, default_feature):
+    def test_is_mocked_flag_false_when_mock_io_disabled(self):
         """All tasks have is_mocked=False when mock_io=False."""
         try:
-            compiler = self._setup_realistic_workflow(default_feature)
+            compiler = self._setup_realistic_workflow()
             config = compiler.get_dag_config("sequential", mock_io=False)
 
             tasks = config["spec"]["flat_workflow"]
