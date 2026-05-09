@@ -60,6 +60,10 @@ jobs:
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
 
+      - name: Check lockfile (and fail fast if it's stale)
+        working-directory: ${{ matrix.package }}
+        run: uv lock --check
+
       - name: Install dependencies
         working-directory: ${{ matrix.package }}
         run: uv sync ${{ matrix.extras }} --dev
