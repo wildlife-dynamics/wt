@@ -298,19 +298,9 @@ class LocalSubprocessInvoker(AbstractInvoker):
         if self._process is None:
             raise RuntimeError("Process not started. Call run() first.")
         try:
-            stdout, stderr = self._process.communicate(timeout=timeout)
+            return self._process.wait(timeout=timeout)
         except TimeoutExpired as e:
             raise InvocationTimeoutError(error_msg or str(e)) from e
-        returncode = self._process.returncode
-        if returncode != 0:
-            stderr_text = (stderr or b"").decode("utf-8", errors="replace")
-            stdout_text = (stdout or b"").decode("utf-8", errors="replace")
-            raise RuntimeError(
-                f"Workflow subprocess exited with code {returncode}.\n"
-                f"STDERR:\n{stderr_text}\n"
-                f"STDOUT:\n{stdout_text}"
-            )
-        return returncode
 
     async def check_output(self, command: list[str], stdin: str | None = None) -> str:
         """Get the output of a subprocess command.
