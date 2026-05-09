@@ -1,6 +1,7 @@
 """Tests for wt_contracts.formdata."""
 
 import json
+from typing import ClassVar
 
 import jsonschema
 import pytest
@@ -92,7 +93,8 @@ class TestFormdataToParams:
         with pytest.raises(ValidationError) as exc_info:
             formdata_to_params(bad, RJSF_SCHEMA, PARAMS_SCHEMA)
         errors = exc_info.value.errors
-        assert errors and isinstance(errors[0], dict)
+        assert errors
+        assert isinstance(errors[0], dict)
         assert "message" in errors[0]
         assert "path" in errors[0]
         assert "input" in errors[0]
@@ -185,7 +187,7 @@ class TestValidationErrorShape:
     shape and JSON-safety of every entry must remain stable.
     """
 
-    EXPECTED_KEYS = {"message", "path", "schema_path", "validator", "input"}
+    EXPECTED_KEYS: ClassVar[set[str]] = {"message", "path", "schema_path", "validator", "input"}
 
     def _trigger_errors(self) -> list[dict]:
         bad = {"fetch_data": {"since": 42}, "summarize": {"name": 7}, "render": {}}
@@ -263,7 +265,7 @@ class TestValidationErrorValidatorVocabulary:
     """
 
     @pytest.mark.parametrize(
-        "subschema, bad_value, expected",
+        ("subschema", "bad_value", "expected"),
         [
             # Surfacing keywords: e.validator equals the keyword itself ----------
             pytest.param(
@@ -753,7 +755,7 @@ class TestValidateNonDictInstance:
     """
 
     # Schema modeled on what wt-compiler emits: no root ``type`` keyword.
-    SCHEMA_WITHOUT_ROOT_TYPE: dict = {
+    SCHEMA_WITHOUT_ROOT_TYPE: ClassVar[dict] = {
         "title": "params",
         "properties": PARAMS_SCHEMA["properties"],
     }

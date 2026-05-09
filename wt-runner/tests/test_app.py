@@ -9,14 +9,15 @@ import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
 from rattler import MatchSpec
+from wt_contracts import ValidationError, ValidationErrorResponse
 
 from wt_runner.app import (
     _convert,
     _get_metadata_attribute,
-    _is_422,
     app,
     extract_payload_from_pubsub_request,
     prepare_invoker_parameters,
+    resolve_invoker,
     resolve_matchspec,
     resolve_results_url,
     upload_error_to_gcs,
@@ -226,8 +227,6 @@ async def test_get_metadata_attribute_invalid_json():
 @pytest.mark.asyncio
 async def test_convert_success():
     """Test successful conversion: envelope ``{"result": ...}`` is unwrapped."""
-    from wt_runner.app import _convert
-
     mock_invoker = AsyncMock()
     mock_invoker.check_output = AsyncMock(return_value='{"result": {"converted": "data"}}')
 
@@ -242,10 +241,6 @@ async def test_convert_success():
 @pytest.mark.asyncio
 async def test_convert_validation_error_envelope():
     """Test ``{"validation_errors": [...]}`` envelope raises ValidationError."""
-    from wt_contracts import ValidationError
-
-    from wt_runner.app import _convert
-
     payload = {
         "validation_errors": [
             {"message": "boom", "path": ["x"], "schema_path": [], "validator": "type"}
@@ -282,8 +277,6 @@ async def test_convert_invalid_json():
 @pytest.mark.asyncio
 async def test_convert_unexpected_envelope():
     """Test envelope missing both keys raises."""
-    from wt_runner.app import _convert
-
     mock_invoker = AsyncMock()
     mock_invoker.check_output = AsyncMock(return_value='{"unknown": "key"}')
 
@@ -296,10 +289,6 @@ def test_convert_endpoint_422_body_matches_validation_error_response(
     client: TestClient, endpoint: str
 ):
     """422 body from convert endpoints conforms to ``ValidationErrorResponse``."""
-    from wt_contracts import ValidationErrorResponse
-
-    from wt_runner.app import resolve_invoker
-
     error_item = {
         "message": "'old' is not of type 'integer'",
         "path": ["age"],

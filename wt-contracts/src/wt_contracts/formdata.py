@@ -88,7 +88,8 @@ class ValidationError(Exception):
             ``input`` keys (see :class:`ValidationErrorItemDict`).
     """
 
-    def __init__(self, errors: list[ValidationErrorItemDict]):
+    def __init__(self, errors: list[ValidationErrorItemDict]) -> None:
+        """Store the serialized error list and build a summary message."""
         self.errors = errors
         super().__init__(f"{len(errors)} validation error(s): {errors}")
 
@@ -109,7 +110,7 @@ def _serialize_errors(
     ]
 
 
-def validate(instance: Any, schema: dict[str, Any]) -> None:
+def validate(instance: object, schema: dict[str, Any]) -> None:
     """Validate ``instance`` against ``schema`` using JSON Schema Draft 2020-12.
 
     Args:
@@ -207,8 +208,7 @@ def formdata_to_params(
         else:
             # rjsf schema groups are flat: inner keys are validated as task IDs
             # by the preceding validate() call, so no recursion is needed.
-            for inner_k, inner_v in v.items():
-                out[inner_k] = inner_v
+            out.update(v)
     return out
 
 

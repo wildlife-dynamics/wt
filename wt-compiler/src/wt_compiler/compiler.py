@@ -931,7 +931,7 @@ class DagCompiler(BaseModel):
                 params_schema_hierarchical
             )
 
-        def _mdump(j: Any) -> dict[str, Any]:
+        def _mdump(j: ReactJSONSchemaFormConfiguration) -> dict[str, Any]:
             result: dict[str, Any] = j.model_dump(by_alias=True, exclude_none=True)
             return result
 
