@@ -104,7 +104,7 @@ repos:
   #   <<: *env_overrides
 
   - url: https://github.com/ecoscope-platform-workflows-releases/events
-    ref: add-pyproject-toml  # FIXME: revert to events@main before merge to wt@main
+    ref: drop-dcg  # FIXME: revert to events@main before merge to wt@main
     spec_path: spec.yaml
     generated_path: ecoscope-workflows-events-workflow
     <<: *env_overrides
