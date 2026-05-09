@@ -19,6 +19,7 @@ dependencies = [
     "wt-contracts>=0.1.0,<1.0.0",
     "wt-invokers>=0.1.0,<1.0.0",
     "fastapi>=0.100.0",
+    "httpx>=0.24.0",  # For public FastAPI testing utils; bundled by default in conda-forge fastapi distro
     "uvicorn>=0.20.0",
     "pydantic>=2.0.0,<3.0.0",
     "py-rattler>=0.8.0",
@@ -52,7 +53,6 @@ dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.0.0",
-    "httpx>=0.24.0",  # For FastAPI testing
     "mypy>=1.0.0",
     "ruff>=0.1.0",
 ]
