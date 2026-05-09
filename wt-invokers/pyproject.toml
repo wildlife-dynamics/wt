@@ -27,7 +27,7 @@ classifiers = [
 dependencies = [
     "wt-contracts>=0.1.0,<1.0.0",
     "py-rattler>=0.8.0",
-    "ruamel.yaml>=0.17.0",
+    "ruamel.yaml>=0.17.0,<0.19.0",  # <0.19.0 pin; xref wt-compiler/src/wt_compiler/default-env-injections.toml for detail
 ]
 
 [project.optional-dependencies]
@@ -198,5 +198,5 @@ pip = "*"
 [tool.pixi.package.run-dependencies]
 python = ">=3.10,<3.16"
 py-rattler = ">=0.8.0"
-"ruamel.yaml" = ">=0.17.0"
+"ruamel.yaml" = ">=0.17.0,<0.19.0"  # <0.19.0 pin; xref wt-compiler/src/wt_compiler/default-env-injections.toml for detail
 wt-contracts = ">=0.1.0,<1.0.0"

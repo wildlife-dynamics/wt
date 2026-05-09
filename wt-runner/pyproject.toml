@@ -23,7 +23,7 @@ dependencies = [
     "uvicorn>=0.20.0",
     "pydantic>=2.0.0,<3.0.0",
     "py-rattler>=0.8.0",
-    "ruamel.yaml>=0.18.0",
+    "ruamel.yaml>=0.18.0,<0.19.0",  # <0.19.0 pin; xref wt-compiler/src/wt_compiler/default-env-injections.toml for detail
     "opentelemetry-api>=1.0.0",
     "opentelemetry-sdk>=1.0.0",
     "obstore>=0.6.0",
@@ -188,7 +188,7 @@ httpx = ">=0.24.0"  # Bundled by conda-forge fastapi distro; explicit restate fo
 uvicorn = ">=0.20.0"
 pydantic = ">=2.0.0,<3.0.0"
 py-rattler = ">=0.8.0"
-"ruamel.yaml" = ">=0.18.0"
+"ruamel.yaml" = ">=0.18.0,<0.19.0"  # <0.19.0 pin; xref wt-compiler/src/wt_compiler/default-env-injections.toml for detail
 opentelemetry-api = ">=1.0.0"
 opentelemetry-sdk = ">=1.0.0"
 obstore = ">=0.6.0"
