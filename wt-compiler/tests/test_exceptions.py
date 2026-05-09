@@ -1,4 +1,5 @@
 """Tests for wt_compiler.exceptions module."""
+# ruff: noqa: S108  # /tmp paths are test data
 
 from pathlib import Path
 

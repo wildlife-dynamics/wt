@@ -8,8 +8,7 @@ from wt_registry.exceptions import ValidationError
 
 
 def validate_function_signature(func: Callable[..., Any]) -> None:
-    """
-    Validate that a function has complete type annotations.
+    """Validate that a function has complete type annotations.
 
     This function ensures that:
     - The function is not async (async functions are not supported)

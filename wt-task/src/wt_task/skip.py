@@ -41,13 +41,14 @@ class SkipSentinel:
     def __get_pydantic_core_schema__(
         cls, source_type: type, handler: GetCoreSchemaHandler
     ) -> cs.CoreSchema:
+        """Return a Pydantic core schema that matches instances of this class."""
         return cs.is_instance_schema(cls)
 
     @classmethod
     def __get_pydantic_json_schema__(
         cls, core_schema: cs.CoreSchema, handler: GetJsonSchemaHandler
     ) -> JsonSchemaValue:
-        # SkipSentinel represents "skipped/no value" - maps to null in JSON Schema
+        """Map this sentinel to JSON Schema null since it represents an absent value."""
         return {"type": "null", "title": "SkipSentinel"}
 
 
@@ -136,12 +137,11 @@ def skipif(
     """
 
     @wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
+    def wrapper(*args: Any, **kwargs: Any) -> Any:  # noqa: ANN401  # generic wrapper passes args through
         argvalues = list(args) + list(kwargs.values())
         to_evaluate = unpack_listlike(argvalues, unpack_depth)
         if any(condition(*to_evaluate) for condition in conditions):
             return SKIP_SENTINEL
-        else:
-            return func(*args, **kwargs)
+        return func(*args, **kwargs)
 
     return wrapper

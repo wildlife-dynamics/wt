@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Example: Basic Function Registration
+"""Example: Basic Function Registration.
 
 This example demonstrates how to register functions with wt-registry
 and view them using the CLI.

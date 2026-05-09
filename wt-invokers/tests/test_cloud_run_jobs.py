@@ -34,7 +34,7 @@ def mock_run_modules(monkeypatch: pytest.MonkeyPatch) -> Any:
     monkeypatch.setattr(module, "RunJobRequest", mock_run_job_request, raising=False)
     monkeypatch.setattr(module, "EnvVar", mock_env_var, raising=False)
 
-    yield MagicMock(
+    return MagicMock(
         JobsAsyncClient=mock_jobs_client_cls,
         RunJobRequest=mock_run_job_request,
         EnvVar=mock_env_var,

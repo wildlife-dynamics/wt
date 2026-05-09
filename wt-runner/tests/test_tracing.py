@@ -86,27 +86,27 @@ def test_configure_tracer_no_exporter():
 
 def test_configure_tracer_with_console_exporter():
     """Test tracer configuration with console exporter."""
-    with patch("wt_runner.tracing.trace.set_tracer_provider") as mock_set_provider:
-        with patch("wt_runner.tracing.ConsoleSpanExporter") as mock_exporter:
-            configure_tracer(
-                name="test-service", version="1.0.0", exporter="console", exporter_kws={}
-            )
+    with (
+        patch("wt_runner.tracing.trace.set_tracer_provider") as mock_set_provider,
+        patch("wt_runner.tracing.ConsoleSpanExporter") as mock_exporter,
+    ):
+        configure_tracer(name="test-service", version="1.0.0", exporter="console", exporter_kws={})
 
-            mock_exporter.assert_called_once_with()
-            mock_set_provider.assert_called_once()
+        mock_exporter.assert_called_once_with()
+        mock_set_provider.assert_called_once()
 
 
 def test_configure_tracer_with_gcp_exporter():
     """Test tracer configuration with GCP exporter."""
-    with patch("wt_runner.tracing.trace.set_tracer_provider") as mock_set_provider:
-        with patch("wt_runner.tracing.HAS_GCP_EXPORTER", True):
-            with patch("wt_runner.tracing.CloudTraceSpanExporter") as mock_exporter:
-                configure_tracer(
-                    name="test-service", version="1.0.0", exporter="gcp", exporter_kws={}
-                )
+    with (
+        patch("wt_runner.tracing.trace.set_tracer_provider") as mock_set_provider,
+        patch("wt_runner.tracing.HAS_GCP_EXPORTER", True),
+        patch("wt_runner.tracing.CloudTraceSpanExporter") as mock_exporter,
+    ):
+        configure_tracer(name="test-service", version="1.0.0", exporter="gcp", exporter_kws={})
 
-                mock_exporter.assert_called_once_with()
-                mock_set_provider.assert_called_once()
+        mock_exporter.assert_called_once_with()
+        mock_set_provider.assert_called_once()
 
 
 def test_configure_tracer_with_unknown_exporter_raises():
@@ -133,32 +133,34 @@ def test_build_context_headers():
 
 def test_attach_context_with_traceparent_only():
     """Test attaching context with only traceparent."""
-    with patch("wt_runner.tracing.propagate.extract") as mock_extract:
-        with patch("wt_runner.tracing.context.attach") as mock_attach:
-            mock_ctx = MagicMock()
-            mock_extract.return_value = mock_ctx
+    with (
+        patch("wt_runner.tracing.propagate.extract") as mock_extract,
+        patch("wt_runner.tracing.context.attach") as mock_attach,
+    ):
+        mock_ctx = MagicMock()
+        mock_extract.return_value = mock_ctx
 
-            attach_context(traceparent="00-test-trace-id-span-id-01")
+        attach_context(traceparent="00-test-trace-id-span-id-01")
 
-            mock_extract.assert_called_once_with(
-                carrier={"traceparent": "00-test-trace-id-span-id-01"}
-            )
-            mock_attach.assert_called_once_with(mock_ctx)
+        mock_extract.assert_called_once_with(carrier={"traceparent": "00-test-trace-id-span-id-01"})
+        mock_attach.assert_called_once_with(mock_ctx)
 
 
 def test_attach_context_with_traceparent_and_tracestate():
     """Test attaching context with both traceparent and tracestate."""
-    with patch("wt_runner.tracing.propagate.extract") as mock_extract:
-        with patch("wt_runner.tracing.context.attach") as mock_attach:
-            mock_ctx = MagicMock()
-            mock_extract.return_value = mock_ctx
+    with (
+        patch("wt_runner.tracing.propagate.extract") as mock_extract,
+        patch("wt_runner.tracing.context.attach") as mock_attach,
+    ):
+        mock_ctx = MagicMock()
+        mock_extract.return_value = mock_ctx
 
-            attach_context(traceparent="00-test-trace-id-span-id-01", tracestate="vendor=value")
+        attach_context(traceparent="00-test-trace-id-span-id-01", tracestate="vendor=value")
 
-            mock_extract.assert_called_once_with(
-                carrier={
-                    "traceparent": "00-test-trace-id-span-id-01",
-                    "tracestate": "vendor=value",
-                }
-            )
-            mock_attach.assert_called_once_with(mock_ctx)
+        mock_extract.assert_called_once_with(
+            carrier={
+                "traceparent": "00-test-trace-id-span-id-01",
+                "tracestate": "vendor=value",
+            }
+        )
+        mock_attach.assert_called_once_with(mock_ctx)

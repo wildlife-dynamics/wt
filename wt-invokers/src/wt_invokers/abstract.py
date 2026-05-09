@@ -18,9 +18,10 @@ import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from rattler import MatchSpec
+if TYPE_CHECKING:
+    from rattler import MatchSpec
 
 
 @dataclass
@@ -128,7 +129,6 @@ class AbstractInvoker(ABC):
             >>> # asyncio.run(invoker.is_installed())
             >>> # True
         """
-        pass
 
     @abstractmethod
     async def install(self) -> None:
@@ -146,7 +146,6 @@ class AbstractInvoker(ABC):
             >>> # invoker = MyInvoker(matchspec=MatchSpec("my-workflow>=1.0.0"))
             >>> # asyncio.run(invoker.install())
         """
-        pass
 
     async def run(
         self,
@@ -159,7 +158,7 @@ class AbstractInvoker(ABC):
         otel_console_exporter_dst: str | None = None,
         extra_env: dict[str, str] | None = None,
         lithops_config_text: str | None = None,
-        **kwargs: Any,
+        **kwargs: Any,  # noqa: ANN401  # subclass-specific extras
     ) -> None:
         """Invoke the workflow, running ``_pre_run`` and then ``_run``.
 
@@ -296,7 +295,6 @@ class AbstractInvoker(ABC):
 
     async def _pre_run(self) -> None:  # noqa: B027
         """Pre-run hook. Default is a no-op; mixins may override."""
-        pass
 
     @abstractmethod
     async def _run(
@@ -318,11 +316,9 @@ class AbstractInvoker(ABC):
         not override :meth:`run` itself; the base ``run`` wrapper manages
         lifecycle state.
         """
-        pass
 
     async def _post_run(self) -> None:  # noqa: B027
         """Post-run hook. Default is a no-op; mixins may override."""
-        pass
 
     @abstractmethod
     async def _wait(
@@ -334,7 +330,6 @@ class AbstractInvoker(ABC):
 
         Called by :meth:`wait`; must return the workflow exit code.
         """
-        pass
 
     @property
     @abstractmethod
@@ -355,7 +350,6 @@ class AbstractInvoker(ABC):
             >>> # invoker.is_waitable
             >>> # False
         """
-        pass
 
     async def check_output(self, command: list[str], stdin: str | None = None) -> str:
         """Get the output of a subprocess command.

@@ -326,7 +326,6 @@ async def _upload_with_retries(tar_path: Path, url: str) -> None:
     from the file's stat size, so the server can validate the request
     without the chunked ``Transfer-Encoding`` fallback.
     """
-
     size = tar_path.stat().st_size
 
     @stamina.retry(

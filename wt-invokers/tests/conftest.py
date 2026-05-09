@@ -24,7 +24,7 @@ class _UploadHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, format: str, *args: Any) -> None:
         return  # silence
 
-    def do_PUT(self) -> None:  # noqa: N802
+    def do_PUT(self) -> None:
         # Simulate transient server failure on first N requests if configured.
         fail_key = "_fail_remaining"
         if self._fail_remaining.get(fail_key, 0) > 0:
@@ -41,13 +41,13 @@ class _UploadHandler(http.server.SimpleHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
 
-    def do_GET(self) -> None:  # noqa: N802
+    def do_GET(self) -> None:
         fail_key = "_fail_remaining"
         if self._fail_remaining.get(fail_key, 0) > 0:
             self._fail_remaining[fail_key] -= 1
             self.send_response(500)
             self.end_headers()
-            return
+            return None
         return super().do_GET()
 
 

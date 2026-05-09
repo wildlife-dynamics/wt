@@ -24,7 +24,9 @@ class SurfacesDescriptionSchema(GenerateJsonSchema):
     """
 
     def generate(
-        self, schema: Any, mode: Literal["validation", "serialization"] = "validation"
+        self,
+        schema: Any,  # noqa: ANN401  # Pydantic CoreSchema is dynamic
+        mode: Literal["validation", "serialization"] = "validation",
     ) -> dict[str, Any]:
         """Generate JSON schema with proper field descriptions."""
         json_schema = super().generate(schema, mode=mode)

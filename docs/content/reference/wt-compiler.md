@@ -22,8 +22,8 @@ The core engine that transforms a validated `Spec` into workflow artifacts.
 ```python
 DagCompiler(
     spec: Spec,
-    wt_runner_channel: str | None = None,
-    wt_pypi_deps: dict[str, str | dict[str, Any]] | None = None,
+    env_overrides: PixiTomlFragment | None = None,
+    installed_requirement_names: set[str] = set(),
     variant: str | None = None,
     jinja_templates_dir: Path = TEMPLATES,
     pkg_name_prefix: str = "wt",
@@ -34,9 +34,9 @@ DagCompiler(
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `spec` | `Spec` | *(required)* | Validated workflow specification |
-| `wt_runner_channel` | `str \| None` | `None` | Channel URL for `wt-runner` package |
-| `wt_pypi_deps` | `dict[str, str \| dict[str, Any]] \| None` | `None` | Additional PyPI dependencies for the compiled workflow |
-| `variant` | `str \| None` | `None` | Platform variant suffix (e.g. `"gcp"`) |
+| `env_overrides` | `PixiTomlFragment \| None` | `None` | Parsed user-supplied override file. See [Injected Dependencies](#injected-dependencies). |
+| `installed_requirement_names` | `set[str]` | `set()` | Names supplied by the spec's transitive solve, used to suppress same-name baseline entries. |
+| `variant` | `str \| None` | `None` | Platform variant suffix (e.g. `"gcp"`) — appended to `wt-task` / `wt-runner` package names |
 | `jinja_templates_dir` | `Path` | `TEMPLATES` | Path to Jinja2 templates (built-in default) |
 | `pkg_name_prefix` | `str` | `"wt"` | Prefix for generated package names |
 | `results_env_var` | `str` | `"WT_RESULTS"` | Environment variable name |
@@ -127,12 +127,27 @@ without importing task code into the compiler process.
 
 1. Solve conda dependencies using py-rattler's async `solve()`.
 2. Install conda packages with py-rattler's async `install()`.
-3. If PyPI requirements are present, install them via `uv pip install` into
-   the conda environment.
-4. Execute `wt-registry --format json` in the ephemeral environment.
-5. Parse output against `RegistryOutput` from wt-contracts.
-6. Convert entries to `KnownTask` models.
-7. Update the global `known_tasks` dict.
+3. The merged `feature.default` dep set (bundled defaults, with
+   spec.yaml suppressions, then `--env-overrides` layered on top) is
+   folded into the discovery inputs alongside the spec's own conda /
+   pypi requirements. Schema-affecting libraries (e.g. `pydantic`) thus
+   resolve to the same versions in discovery as in runtime, so generated
+   JSON schemas validate the way runtime expects.
+4. If PyPI requirements are present, install them via a single bulk
+   `uv pip install --reinstall-package <name> ...` into the conda
+   environment. The bulk call ensures all path/git/url sources resolve
+   together; `--reinstall-package` forces uv to replace any conda-installed
+   `.dist-info` with the explicit source.
+5. Execute `wt-registry --format json` in the ephemeral environment.
+6. Parse output against `RegistryOutput` from wt-contracts.
+7. Convert entries to `KnownTask` models.
+8. Update the global `known_tasks` dict.
+
+Different solvers (rattler+uv for discovery, pixi for runtime) and the
+absence of a shared lockfile mean version coherence is best-effort under
+tight pins, not strict byte equality — but the coupled override flow is
+meaningfully stronger than feeding two independent dep sets into
+discovery and runtime.
 
 ### Functions
 
@@ -149,7 +164,7 @@ without importing task code into the compiler process.
 | `RegistryNotFoundError` | `wt-registry` executable not found in environment |
 | `RegistryExecutionError` | `wt-registry` returned non-zero exit code |
 | `EnvironmentCreationError` | py-rattler failed to solve or install |
-| `PyPIInstallError` | `uv pip install` failed for a PyPI requirement |
+| `PyPIInstallError` | The bulk `uv pip install` failed; the failure is shared across every requirement in the batch |
 
 ---
 
@@ -211,6 +226,179 @@ wt-<id>-workflow/
 
 ---
 
+## Injected Dependencies
+
+`wt-compiler` emits a self-contained `pixi.toml`. On top of whatever the
+workflow author declares in `spec.yaml requirements:`, the compiler also
+injects a fixed set of dependencies needed by the compiled package and
+its tests — `click`, `obstore`, `pydantic`, `ruamel.yaml`,
+`opentelemetry-api`, `wt-task`, `wt-runner`, plus `pandas`, `pyarrow`,
+`pytest`, `playwright`, etc. for the `test` env. These three layers
+combine, in this order:
+
+### Layer A — defaults
+
+Shipped with `wt-compiler` as the package resource
+`default-env-injections.toml`. Same shape as the env-overrides file
+described in Layer C: `[feature.<name>.dependencies]` for conda specs,
+`[feature.<name>.pypi-dependencies]` for pypi entries, organized into
+the `default`, `runner`, and `test` features. The bundled file is the
+source of truth for baseline versions and channels and is inspectable
+in the wt-compiler source tree.
+
+### Layer B — `spec.yaml requirements:`
+
+If a workflow's `requirements:` already declares one of Layer A's names
+(or pulls it in transitively, as seen by the discovery solve), Layer
+A's entry for that name is suppressed. The workflow's pin wins.
+
+### Layer C — `--env-overrides`
+
+A user-supplied TOML fragment with the same shape as Layer A. Intended
+for development and testing of `wt` feature branches — patching or
+debugging workflow issues — not for production. The conventional file
+name is `wt-compiler-env-overrides.toml`, but the file name is a
+convention only; the compiler reads whatever path is passed via
+`--env-overrides=PATH` (no auto-detection).
+
+A name declared in either `[feature.<f>.dependencies]` or
+`[feature.<f>.pypi-dependencies]` of Layer C displaces same-name
+entries on either side of the lower layers. Per-feature, per-name —
+declaring `wt-task` in `feature.runner.pypi-dependencies` displaces any
+`wt-task` entry in the runner feature's conda or pypi sub-section, but
+does not affect `wt-task` in *other* features.
+
+Displacement matches **by distribution name only**. The override entry
+must use the same distribution name as the entry it replaces;
+cross-distribution-name swaps (e.g., a pypi `ecoscope` path source
+intended to replace a conda `ecoscope-platform` that provides the same
+`import ecoscope`) are not supported via env-overrides. Those swaps
+belong in `spec.yaml` directly, where the workflow author declares
+which distribution provides each import — keeping cross-name conflict
+resolution out of the compile-time path, which would otherwise need to
+fetch conda channel metadata or build pypi wheels to spot them.
+
+### Where each feature lands
+
+The `default`, `runner`, and `test` features map onto pixi.toml as you
+would expect. The merged `default` feature is *also* folded into the
+wt-compiler discovery env, so JSON-schema generation runs against the
+same dep set as the compiled package's runtime.
+
+| Feature | Where it lands in the compiled `pixi.toml` |
+|---------|--------------------------------------------|
+| `default` | top-level `[dependencies]` and `[pypi-dependencies]` (and the wt-compiler discovery env) |
+| `runner` | `[feature.runner.dependencies]` and `[feature.runner.pypi-dependencies]` |
+| `test` | `[feature.test.dependencies]` and `[feature.test.pypi-dependencies]` |
+
+### Section types and supported syntax
+
+For every recognized feature, both of the following sections are
+supported:
+
+- `[feature.<f>.dependencies]` — conda deps. Either:
+    - shorthand string: `pkg = ">=1.0,<2.0"` (channel defaults to
+      `conda-forge`), or
+    - longform table: `pkg = { version = "...", channel = "..." }`
+      where channel may be a known name (`conda-forge`,
+      `ecoscope-workflows`, `microsoft`) or a full base URL.
+- `[feature.<f>.pypi-dependencies]` — pypi deps. Either:
+    - longform table with one of `path` / `git` / `url` plus optional
+      `editable`, `extras`, `subdirectory`, `rev` / `branch` / `tag`,
+      or
+    - bare-version shorthand: `pkg = "*"` or `pkg = ">=1.0"`. The
+      shorthand is allowed in env-overrides files; the spec.yaml side
+      does **not** yet accept bare-string pypi entries (see
+      [`spec.yaml` reference](spec-yaml.md)).
+
+### Path resolution
+
+Two distinct anchors, two distinct phases:
+
+- **The `--env-overrides=PATH` flag itself** — relative to the current
+  working directory; resolved to absolute by the CLI before parsing.
+- **`path = "..."` entries inside an override file** — relative to the
+  override file's own directory (matching pixi.toml semantics).
+
+### Conflict warnings
+
+When an override entry collides by name with a `spec.yaml requirements:`
+entry on either side (conda or pypi), the override wins and a one-line
+warning is logged so the supersession is visible in CI logs.
+
+### Leaf-only path sources
+
+Pixi
+[#5847](https://github.com/prefix-dev/pixi/issues/5847) established that
+you cannot declare the same package as a path source AND have it
+reached transitively via another path source's `[tool.uv.sources]`.
+Pixi registers the path as non-editable into uv's resolver while uv's
+transitive build of the peer registers it as editable, producing a
+"conflicting URLs" error.
+
+For env-overrides files this means: **only LEAF dependencies (those not
+transitively pulled in via another declared path source's
+`[tool.uv.sources]`) may be declared as path sources in
+`[feature.<name>.pypi-dependencies]`.** Transitively-supplied path
+sources must be omitted.
+
+Audit of the wt monorepo's `[tool.uv.sources]` blocks:
+
+| Package | uv.sources brings in (editable) |
+|---------|----------------------------------|
+| `wt-task` | `wt-contracts` |
+| `wt-registry` | `wt-contracts` |
+| `wt-invokers` | `wt-contracts` |
+| `wt-runner` | `wt-contracts`, `wt-invokers` |
+| `wt-task-gcp` | `wt-task`, `wt-contracts` |
+| `wt-invokers-gcp` | `wt-invokers`, `wt-contracts` |
+| `wt-runner-gcp` | `wt-runner`, `wt-invokers`, `wt-invokers-gcp`, `wt-contracts` |
+
+So `wt-contracts` and `wt-invokers` must NOT appear as path sources in
+env-overrides; `wt-task`, `wt-registry`, and `wt-runner` are leaf for
+the non-GCP case. For the GCP case, the `*-gcp` metapackages are leaf
+and pull their base packages transitively. The wt-compiler env-overrides
+loader enforces this rule with a parse-time guard — when a path
+source's `pyproject.toml` brings in another env-overrides path source
+via `[tool.uv.sources]`, the loader errors with a pointer to the
+conflicting peer and pixi #5847.
+
+If you author your own env-overrides file, audit each candidate path
+source's `[tool.uv.sources]` block and remove any package brought in by
+a peer.
+
+### Worked example
+
+The reverse-integration harness ships its own override file at
+`tests/reverse_integration/wt-compiler-env-overrides.toml`:
+
+```toml
+# Default feature — emitted as top-level [pypi-dependencies] in pixi.toml,
+# AND fed into the wt-compiler discovery env so schema generation matches
+# runtime.
+[feature.default.pypi-dependencies]
+wt-task-gcp = { path = "../../wt-task-gcp" }
+wt-registry = { path = "../../wt-registry" }
+
+# Runner feature — emitted as [feature.runner.pypi-dependencies].
+[feature.runner.pypi-dependencies]
+wt-runner-gcp = { path = "../../wt-runner-gcp" }
+wt-task-gcp   = { path = "../../wt-task-gcp"   }
+```
+
+Because the file lives in `tests/reverse_integration/`, the
+`../..`-relative paths resolve to the monorepo root. The `*-gcp`
+metapackages are declared directly (rather than the base packages
+with `extras = ["gcp"]`) because `wt-runner-gcp` carries
+`ecoscope-eda-core` as a git-only dependency — `ecoscope-eda-core`
+cannot live in `wt-runner`'s extras since `wt-runner` is published to
+PyPI and PyPI rejects git refs in published metadata. Note the absence
+of `wt-task`, `wt-runner`, `wt-invokers`, `wt-invokers-gcp`, and
+`wt-contracts` — all are pulled in transitively via the metapackages'
+`[tool.uv.sources]` (see the audit table above).
+
+---
+
 ## CLI Reference
 
 `wt-compiler` exposes two subcommands: `compile` and `scaffold`.
@@ -257,6 +445,11 @@ wt-compiler compile --spec spec.yaml --clobber --update
 
 # GCP variant
 wt-compiler compile --spec spec.yaml --variant gcp
+
+# Override wt-* sources for development/testing of feature branches.
+# See "Injected Dependencies" above for the full layering and override file format.
+wt-compiler compile --spec spec.yaml \
+    --env-overrides=wt-compiler-env-overrides.toml
 ```
 
 ---

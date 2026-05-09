@@ -26,7 +26,7 @@ class ConcreteInvoker(AbstractInvoker):
         return True
 
     async def install(self) -> None:
-        pass
+        """Install the workflow."""
 
     async def _run(
         self,
@@ -41,7 +41,7 @@ class ConcreteInvoker(AbstractInvoker):
         lithops_config_text: str | None = None,
         **kwargs: Any,
     ) -> None:
-        pass
+        """Run the workflow."""
 
     async def _wait(
         self,

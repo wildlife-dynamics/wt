@@ -258,7 +258,7 @@ async def test_wait_without_run_raises_error() -> None:
     # call wait() directly — wait() should still detect that no process was
     # started (via the run_state entry) and raise.
     invoker._is_running = True
-    with pytest.raises(RuntimeError, match="Process not started. Call run\\(\\) first"):
+    with pytest.raises(RuntimeError, match=r"Process not started\. Call run\(\) first"):
         await invoker.wait()
 
 
@@ -336,9 +336,11 @@ async def test_check_output_failure() -> None:
     mock_process.communicate.return_value = ("", "error message")
     mock_process.returncode = 1
 
-    with patch.object(subprocess, "Popen", return_value=mock_process):
-        with pytest.raises(RuntimeError, match="Command failed with error"):
-            await invoker.check_output(["--invalid"])
+    with (
+        patch.object(subprocess, "Popen", return_value=mock_process),
+        pytest.raises(RuntimeError, match="Command failed with error"),
+    ):
+        await invoker.check_output(["--invalid"])
 
 
 @pytest.mark.asyncio

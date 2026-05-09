@@ -3,7 +3,8 @@
 from typing import Annotated
 
 import pytest
-from pydantic import Field, ValidationError as PydanticValidationError
+from pydantic import Field
+from pydantic import ValidationError as PydanticValidationError
 
 from wt_registry.models import RegistryEntry, RegistryMetadata
 

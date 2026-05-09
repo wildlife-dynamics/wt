@@ -1,25 +1,27 @@
 """Tests for wizard extensibility — overrides, conditional branching, custom providers."""
+# ruff: noqa: N806, S108  # local class names used as factories; /tmp paths are test data
 
 from __future__ import annotations
 
 import argparse
-import tempfile
-from pathlib import Path
+import importlib
+import sys
 from types import MappingProxyType
-from typing import Any
-
-import pytest
+from typing import TYPE_CHECKING, Any
 
 from conftest import drive_wizard
 
 from wt_compiler.wizard.abstract import (
     AbstractWizardProvider,
-    SingleWizardQuestion,
     WizardQuestion,
-    WizardQuestionLoop,
     with_condition,
 )
 from wt_compiler.wizard.default import DefaultWizardProvider, non_empty_str
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    import pytest
 
 
 class TestCustomProviderConformance:
@@ -186,9 +188,7 @@ class TestConditionalQuestions:
                         "dest": "test_detail",
                         "argparse": {"help": "Test detail", "type": str},
                         "wizard": {
-                            "condition": lambda a: a.get("workflow_id", "").startswith(
-                                "test_"
-                            )
+                            "condition": lambda a: a.get("workflow_id", "").startswith("test_")
                         },
                     },
                 ]
@@ -229,16 +229,12 @@ class TestConditionalQuestions:
                     {
                         "dest": "gcp_project",
                         "argparse": {"help": "GCP project", "type": str},
-                        "wizard": {
-                            "condition": lambda a: a.get("variant") == "gcp"
-                        },
+                        "wizard": {"condition": lambda a: a.get("variant") == "gcp"},
                     },
                     {
                         "dest": "local_path",
                         "argparse": {"help": "Local path", "type": str},
-                        "wizard": {
-                            "condition": lambda a: a.get("variant") == "local"
-                        },
+                        "wizard": {"condition": lambda a: a.get("variant") == "local"},
                     },
                 ]
 
@@ -290,7 +286,9 @@ class TestWithCondition:
 
     def test_with_condition_composes_branches(self) -> None:
         """with_condition() applies condition to both SingleWizardQuestion and WizardQuestionLoop."""
-        cond = lambda a: a.get("mode") == "advanced"
+
+        def cond(a):
+            return a.get("mode") == "advanced"
 
         single_q: WizardQuestion = {
             "dest": "detail",
@@ -338,9 +336,7 @@ class TestWithCondition:
                         "wizard": {},
                     }
                 ]
-                return base + with_condition(
-                    advanced_qs, lambda a: a.get("mode") == "advanced"
-                )
+                return base + with_condition(advanced_qs, lambda a: a.get("mode") == "advanced")
 
         # Advanced mode — extra question asked
         p1 = BranchProvider()
@@ -361,8 +357,6 @@ class TestCustomTemplates:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Subclass provides templates/spec.yaml.jinja2 overriding the default via MRO."""
-        import importlib
-        import sys
 
         pkg_name = "test_override_wiz_pkg"
         pkg_dir = tmp_path / pkg_name
@@ -410,8 +404,6 @@ class TestCustomTemplates:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Subclass adds templates/extra.yaml.jinja2 for a new artifact in addition to defaults."""
-        import importlib
-        import sys
 
         pkg_name = "test_extra_wiz_pkg"
         pkg_dir = tmp_path / pkg_name
@@ -454,8 +446,12 @@ class TestCustomTemplates:
         # Default files also exist
         top_level_files = {f.name for f in out_dir.iterdir() if f.is_file()}
         default_top_files = {
-            "spec.yaml", "test-cases.yaml", "README.md",
-            "LICENSE", ".gitignore", ".gitattributes",
+            "spec.yaml",
+            "test-cases.yaml",
+            "README.md",
+            "LICENSE",
+            ".gitignore",
+            ".gitattributes",
         }
         assert default_top_files.issubset(top_level_files)
         # Extra + 6 defaults at top level = 7 files
@@ -478,7 +474,14 @@ class TestCustomTemplates:
         drive_wizard(provider, answers)
         provider.dump(tmp_path)
 
-        expected_top = {"spec.yaml", "test-cases.yaml", "README.md", "LICENSE", ".gitignore", ".gitattributes"}
+        expected_top = {
+            "spec.yaml",
+            "test-cases.yaml",
+            "README.md",
+            "LICENSE",
+            ".gitignore",
+            ".gitattributes",
+        }
         actual_top = {f.name for f in tmp_path.iterdir() if f.is_file()}
         assert expected_top == actual_top
         # Nested CI files

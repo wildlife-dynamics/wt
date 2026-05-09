@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: ["**"]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.actor }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -71,6 +75,10 @@ jobs:
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
 
+      - name: Check lockfile (and fail fast if it's stale)
+        working-directory: ${{ matrix.package }}
+        run: uv lock --check
+
       - name: Install dependencies
         working-directory: ${{ matrix.package }}
         run: uv sync ${{ matrix.extras }} --dev
@@ -78,12 +86,12 @@ jobs:
       - name: Run ruff check
         if: matrix.package != 'wt-runner-gcp'
         working-directory: ${{ matrix.package }}
-        run: uv run ruff check src/
+        run: uv run ruff check src/ tests/
 
       - name: Run ruff format check
         if: matrix.package != 'wt-runner-gcp'
         working-directory: ${{ matrix.package }}
-        run: uv run ruff format --check src/
+        run: uv run ruff format --check src/ tests/
 
       - name: Run mypy
         if: matrix.package != 'wt-runner-gcp'
@@ -124,4 +132,4 @@ jobs:
 
       - name: Run helper unit tests
         working-directory: tests/reverse_integration
-        run: uv run pytest src/test_diff.py -v
+        run: uv run pytest src/test_diff.py src/test_manifest.py -v
