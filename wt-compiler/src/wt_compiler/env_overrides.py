@@ -60,28 +60,7 @@ def load_env_overrides_file(path: str | Path) -> PixiTomlFragment:
             the conda and pypi sections of one feature, or violates the
             leaf-only path source rule.
     """
-    source_path = Path(path).resolve()
-    if not source_path.exists():
-        raise FileNotFoundError(f"{_DIAGNOSTIC_LABEL} not found: {source_path}")
-
-    # Catch ``[feature.discovery.*]`` ahead of the generic "unrecognized
-    # feature" path so the error names the right replacement explicitly.
-    with source_path.open("rb") as f:
-        data = tomllib.load(f)
-    feature_section = data.get("feature", {})
-    if isinstance(feature_section, dict) and "discovery" in feature_section:
-        raise ValueError(
-            f"{_DIAGNOSTIC_LABEL} {source_path} declares [feature.discovery.*], "
-            "which is not a recognized feature. Move these entries to "
-            "[feature.default.*]: the merged default-feature dep set is fed "
-            "into the discovery env so schema generation matches runtime."
-        )
-
-    fragment = PixiTomlFragment.from_data(
-        data,
-        source_path=source_path,
-        diagnostic_label=_DIAGNOSTIC_LABEL,
-    )
+    fragment = PixiTomlFragment.from_file(path, diagnostic_label=_DIAGNOSTIC_LABEL)
     validate_leaf_only_path_sources(fragment)
     return fragment
 

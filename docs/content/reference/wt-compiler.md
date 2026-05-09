@@ -127,10 +127,10 @@ without importing task code into the compiler process.
 
 1. Solve conda dependencies using py-rattler's async `solve()`.
 2. Install conda packages with py-rattler's async `install()`.
-3. The merged `feature.default` dep set (bundled defaults +
-   `--env-overrides` + spec-yaml suppressions) is folded into the
-   discovery inputs alongside the spec's own conda / pypi requirements.
-   Schema-affecting libraries (pydantic, ruamel.yaml, wt-task, …) thus
+3. The merged `feature.default` dep set (bundled defaults, with
+   spec.yaml suppressions, then `--env-overrides` layered on top) is
+   folded into the discovery inputs alongside the spec's own conda /
+   pypi requirements. Schema-affecting libraries (e.g. `pydantic`) thus
    resolve to the same versions in discovery as in runtime, so generated
    JSON schemas validate the way runtime expects.
 4. If PyPI requirements are present, install them via a single bulk
@@ -146,7 +146,8 @@ without importing task code into the compiler process.
 Different solvers (rattler+uv for discovery, pixi for runtime) and the
 absence of a shared lockfile mean version coherence is best-effort under
 tight pins, not strict byte equality — but the coupled override flow is
-meaningfully stronger than parallel knobs.
+meaningfully stronger than feeding two independent dep sets into
+discovery and runtime.
 
 ### Functions
 
@@ -267,6 +268,16 @@ declaring `wt-task` in `feature.runner.pypi-dependencies` displaces any
 `wt-task` entry in the runner feature's conda or pypi sub-section, but
 does not affect `wt-task` in *other* features.
 
+Displacement matches **by distribution name only**. The override entry
+must use the same distribution name as the entry it replaces;
+cross-distribution-name swaps (e.g., a pypi `ecoscope` path source
+intended to replace a conda `ecoscope-platform` that provides the same
+`import ecoscope`) are not supported via env-overrides. Those swaps
+belong in `spec.yaml` directly, where the workflow author declares
+which distribution provides each import — keeping cross-name conflict
+resolution out of the compile-time path, which would otherwise need to
+fetch conda channel metadata or build pypi wheels to spot them.
+
 ### Where each feature lands
 
 The `default`, `runner`, and `test` features map onto pixi.toml as you
@@ -319,11 +330,11 @@ warning is logged so the supersession is visible in CI logs.
 
 Pixi
 [#5847](https://github.com/prefix-dev/pixi/issues/5847) established that
-you cannot declare the same package as a path source in BOTH a pixi-side
-manifest entry AND in a sibling's `[tool.uv.sources]`. Pixi registers
-the path as non-editable into uv's resolver while uv's transitive build
-of the sibling registers it as editable, producing a "conflicting URLs"
-error.
+you cannot declare the same package as a path source AND have it
+reached transitively via another path source's `[tool.uv.sources]`.
+Pixi registers the path as non-editable into uv's resolver while uv's
+transitive build of the peer registers it as editable, producing a
+"conflicting URLs" error.
 
 For env-overrides files this means: **only LEAF dependencies (those not
 transitively pulled in via another declared path source's

@@ -17,6 +17,7 @@ from wt_compiler.compiler import (
     Fingerprint,
     compile_workflow,
     compile_workflow_from_yaml,
+    compute_merged_default_feature,
 )
 from wt_compiler.discovery import (
     discover_tasks_from_requirements,
@@ -57,6 +58,7 @@ __all__ = [
     "TaskTag",
     "compile_workflow",
     "compile_workflow_from_yaml",
+    "compute_merged_default_feature",
     "discover_tasks_from_requirements",
     "discover_tasks_from_spec_requirements",
     "populate_known_tasks",

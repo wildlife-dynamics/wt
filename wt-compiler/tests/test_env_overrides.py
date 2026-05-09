@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import tomllib
+from pathlib import Path
+
 import pytest
 
 from wt_compiler.env_overrides import (
@@ -33,16 +36,6 @@ class TestLoadEnvOverridesFile:
         assert fragment.get_feature("default").pypi[0].name == "wt-task"
         assert fragment.get_feature("runner").pypi[0].name == "wt-runner"
         assert fragment.get_feature("test").pypi == []
-
-    def test_discovery_feature_rejected_with_helpful_message(self, tmp_path):
-        """A [feature.discovery.*] block is rejected with a pointer to feature.default."""
-        f = tmp_path / "ov.toml"
-        f.write_text("[feature.discovery.pypi-dependencies]\nwt-task = '*'\n")
-        with pytest.raises(ValueError, match=r"feature\.discovery") as exc_info:
-            load_env_overrides_file(f)
-        # The error must direct users at feature.default, not just say
-        # "unrecognized feature".
-        assert "feature.default" in str(exc_info.value)
 
     def test_unknown_feature_rejected(self, tmp_path):
         """Unknown feature names produce a clear error."""
@@ -171,14 +164,14 @@ class TestLeafOnlyPathSourceGuard:
         Sanity-check that the audited fixture continues to satisfy the
         leaf-only rule as the monorepo's uv.sources blocks evolve.
         """
-        from pathlib import Path  # noqa: PLC0415  # local import: only this test needs the path
-
         repo_root = Path(__file__).resolve().parents[2]
         fixture = repo_root / "tests" / "reverse_integration" / "wt-compiler-env-overrides.toml"
         if not fixture.exists():
             pytest.skip(f"reverse-integration fixture not found at {fixture}")
+        with fixture.open("rb") as f:
+            data = tomllib.load(f)
         fragment = PixiTomlFragment.from_data(
-            __import__("tomllib").load(fixture.open("rb")),
+            data,
             source_path=fixture,
             diagnostic_label="reverse-integration fixture",
         )

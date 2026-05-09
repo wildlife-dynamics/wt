@@ -94,6 +94,42 @@ def _load_default_injections() -> PixiTomlFragment:
     )
 
 
+def compute_merged_default_feature(
+    default_env_injections: PixiTomlFragment,
+    spec_supplied_names: set[str],
+    env_overrides: PixiTomlFragment | None = None,
+) -> FeatureSection:
+    """Merge the bundled default feature with env-overrides, suppressing spec-supplied names.
+
+    This is the single point of truth for the merged ``default``-feature
+    dep set: the same :class:`FeatureSection` is fed into the
+    wt-compiler discovery env and into the compiled package's runtime
+    ``pixi.toml``, so JSON schema generation runs against the same
+    library versions the compiled package will run against.
+
+    Args:
+        default_env_injections: Parsed bundled ``default-env-injections.toml``
+            fragment (Layer A).
+        spec_supplied_names: Names already supplied by ``spec.yaml
+            requirements:`` (directly or transitively); these are
+            suppressed from Layer A so the spec wins.
+        env_overrides: Optional parsed env-overrides fragment (Layer C).
+            When provided, its ``default`` feature displaces same-name
+            entries on either side of Layer A.
+
+    Returns:
+        The merged :class:`FeatureSection` for the ``default`` feature.
+    """
+    overrides_default = (
+        env_overrides.get_feature("default") if env_overrides is not None else FeatureSection()
+    )
+    return merge_features(
+        base=default_env_injections.get_feature("default"),
+        overrides=overrides_default,
+        suppress_names=spec_supplied_names,
+    )
+
+
 def _apply_variant_suffix(
     section: FeatureSection,
     variant: str | None,
@@ -292,8 +328,8 @@ class DagCompiler(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     spec: Spec
+    precomputed_default_feature: FeatureSection = Field(exclude=True)
     env_overrides: PixiTomlFragment | None = Field(default=None, exclude=True)
-    precomputed_default_feature: FeatureSection | None = Field(default=None, exclude=True)
     installed_requirement_names: set[str] = Field(default_factory=set, exclude=True)
     variant: str | None = None
     jinja_templates_dir: pathlib.Path = TEMPLATES
@@ -513,6 +549,12 @@ class DagCompiler(BaseModel):
           2. ``spec.yaml requirements:`` (suppresses same-name baseline)
           3. ``--env-overrides`` (final say, displaces by name across the
              conda and pypi sub-sections)
+
+          The merged ``default`` feature is supplied up-front via
+          :attr:`precomputed_default_feature` (the result of
+          :func:`compute_merged_default_feature`), so the same dep set
+          fed into the discovery env is reused here. The variant suffix
+          is applied in this method.
         - feature.runner / feature.test built from the same merge per
           feature; test feature carries the test tasks
         - Environments: default, runner, test
@@ -535,15 +577,10 @@ class DagCompiler(BaseModel):
             | set(self.installed_requirement_names)
         )
 
-        if self.precomputed_default_feature is not None:
-            # Reuse the merged default feature computed up-front in
-            # compile_workflow_from_yaml (so the same dep set ran through
-            # discovery). Variant suffix still has to be applied here.
-            default_section = _apply_variant_suffix(self.precomputed_default_feature, self.variant)
-        else:
-            default_section = self._resolved_feature(
-                "default", defaults=defaults, suppress_names=spec_supplied_names
-            )
+        # Reuse the merged default feature computed up-front (so the
+        # discovery env saw the same dep set). Variant suffix still has
+        # to be applied here.
+        default_section = _apply_variant_suffix(self.precomputed_default_feature, self.variant)
         runner_section = self._resolved_feature(
             "runner", defaults=defaults, suppress_names=spec_supplied_names
         )
@@ -1079,8 +1116,8 @@ def _warn_on_override_collisions(
 def compile_workflow(
     spec: Spec,
     spec_relpath: str,
+    precomputed_default_feature: FeatureSection,
     env_overrides: PixiTomlFragment | None = None,
-    precomputed_default_feature: FeatureSection | None = None,
     installed_requirements: list[SpecRequirement] | None = None,
     on_progress: Callable[[str], None] | None = None,
     **compiler_kwargs: Any,  # noqa: ANN401  # forwarded to DagCompiler subclasses
@@ -1094,13 +1131,14 @@ def compile_workflow(
     Args:
         spec: Workflow specification (must have known_tasks already populated)
         spec_relpath: Relative path to spec file
+        precomputed_default_feature: Merged default-feature section,
+            already computed via :func:`compute_merged_default_feature`
+            and shared between the discovery env and the emitted
+            ``pixi.toml``. Required so the "discovery and runtime see
+            the same dep set" guarantee is encoded at the call signature.
         env_overrides: Optional parsed env-overrides fragment. Layered on
             top of the bundled defaults; see "Injected Dependencies" in
             the wt-compiler reference docs.
-        precomputed_default_feature: Optional merged default-feature
-            section, already computed once and shared between the
-            discovery env and the emitted ``pixi.toml``. When set, the
-            compiler reuses it instead of re-merging.
         installed_requirements: Optional list of solved/pinned requirements.
             Names from this list (the transitive solve of
             ``spec.yaml requirements:``) are added to the suppression set
@@ -1248,20 +1286,17 @@ async def compile_workflow_from_yaml(
         # requirements are not double-supplied.
         defaults = _load_default_injections()
         spec_yaml_names = {r.name for r in conda_requirements} | {r.name for r in pypi_requirements}
-        default_overrides = (
-            env_overrides.get_feature("default") if env_overrides is not None else FeatureSection()
-        )
-        merged_default = merge_features(
-            base=defaults.get_feature("default"),
-            overrides=default_overrides,
-            suppress_names=spec_yaml_names,
+        merged_default = compute_merged_default_feature(
+            defaults,
+            spec_supplied_names=spec_yaml_names,
+            env_overrides=env_overrides,
         )
         if env_overrides is not None:
             _warn_on_override_collisions(
                 feature_name="default",
                 spec_conda_names={r.name for r in conda_requirements},
                 spec_pypi_names={r.name for r in pypi_requirements},
-                overrides_section=default_overrides,
+                overrides_section=env_overrides.get_feature("default"),
             )
 
         # Phase 3: Convert SpecRequirements to MatchSpecs and discover tasks
