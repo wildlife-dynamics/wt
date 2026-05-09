@@ -350,13 +350,18 @@ Audit of the wt monorepo's `[tool.uv.sources]` blocks:
 | `wt-registry` | `wt-contracts` |
 | `wt-invokers` | `wt-contracts` |
 | `wt-runner` | `wt-contracts`, `wt-invokers` |
+| `wt-task-gcp` | `wt-task`, `wt-contracts` |
+| `wt-invokers-gcp` | `wt-invokers`, `wt-contracts` |
+| `wt-runner-gcp` | `wt-runner`, `wt-invokers`, `wt-invokers-gcp`, `wt-contracts` |
 
 So `wt-contracts` and `wt-invokers` must NOT appear as path sources in
-env-overrides; `wt-task`, `wt-registry`, and `wt-runner` are leaf and
-may. The wt-compiler env-overrides loader enforces this rule with a
-parse-time guard — when a path source's `pyproject.toml` brings in
-another env-overrides path source via `[tool.uv.sources]`, the loader
-errors with a pointer to the conflicting peer and pixi #5847.
+env-overrides; `wt-task`, `wt-registry`, and `wt-runner` are leaf for
+the non-GCP case. For the GCP case, the `*-gcp` metapackages are leaf
+and pull their base packages transitively. The wt-compiler env-overrides
+loader enforces this rule with a parse-time guard — when a path
+source's `pyproject.toml` brings in another env-overrides path source
+via `[tool.uv.sources]`, the loader errors with a pointer to the
+conflicting peer and pixi #5847.
 
 If you author your own env-overrides file, audit each candidate path
 source's `[tool.uv.sources]` block and remove any package brought in by
@@ -372,19 +377,25 @@ The reverse-integration harness ships its own override file at
 # AND fed into the wt-compiler discovery env so schema generation matches
 # runtime.
 [feature.default.pypi-dependencies]
-wt-task      = { path = "../../wt-task", extras = ["gcp"] }
-wt-registry  = { path = "../../wt-registry"               }
+wt-task-gcp = { path = "../../wt-task-gcp" }
+wt-registry = { path = "../../wt-registry" }
 
 # Runner feature — emitted as [feature.runner.pypi-dependencies].
 [feature.runner.pypi-dependencies]
-wt-runner    = { path = "../../wt-runner",   extras = ["gcp"] }
-wt-task      = { path = "../../wt-task",     extras = ["gcp"] }
+wt-runner-gcp = { path = "../../wt-runner-gcp" }
+wt-task-gcp   = { path = "../../wt-task-gcp"   }
 ```
 
 Because the file lives in `tests/reverse_integration/`, the
-`../..`-relative paths resolve to the monorepo root. Note the absence
-of `wt-contracts` and `wt-invokers` — both are pulled in transitively
-via the leaf packages' `[tool.uv.sources]` (see the audit table above).
+`../..`-relative paths resolve to the monorepo root. The `*-gcp`
+metapackages are declared directly (rather than the base packages
+with `extras = ["gcp"]`) because `wt-runner-gcp` carries
+`ecoscope-eda-core` as a git-only dependency — `ecoscope-eda-core`
+cannot live in `wt-runner`'s extras since `wt-runner` is published to
+PyPI and PyPI rejects git refs in published metadata. Note the absence
+of `wt-task`, `wt-runner`, `wt-invokers`, `wt-invokers-gcp`, and
+`wt-contracts` — all are pulled in transitively via the metapackages'
+`[tool.uv.sources]` (see the audit table above).
 
 ---
 

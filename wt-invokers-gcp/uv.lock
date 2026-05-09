@@ -686,28 +686,48 @@ wheels = [
 
 [[package]]
 name = "wt-contracts"
-version = "0.1.2"
-source = { registry = "https://pypi.org/simple" }
+source = { editable = "../wt-contracts" }
 dependencies = [
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ad/98/fe7a7255662bb7c443de1c5c59f8e8e92c994cfb3065f5fc430d750fb826/wt_contracts-0.1.2.tar.gz", hash = "sha256:063787e8e2722998ac064e0e66a9eade570fb7722b60a0733b69d3be3fb07cce", size = 56019, upload-time = "2026-03-13T20:13:46.781Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/8f/c6/e6647716d650a7f562b14dffe1948d884f36a29a3e864edf4de6f07fcf2f/wt_contracts-0.1.2-py3-none-any.whl", hash = "sha256:04a0fa4a1d7e9a41d75e921760186ececdcf79ddf9dbe74973f9294ebc77f74f", size = 8859, upload-time = "2026-03-13T20:13:47.944Z" },
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2.0.0,<3.0.0" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.0.0" },
+    { name = "pytest", specifier = ">=7.0.0" },
+    { name = "pytest-cov", specifier = ">=4.0.0" },
+    { name = "ruff", specifier = ">=0.1.0" },
 ]
 
 [[package]]
 name = "wt-invokers"
-version = "0.2.0"
-source = { registry = "https://pypi.org/simple" }
+source = { editable = "../wt-invokers" }
 dependencies = [
     { name = "py-rattler" },
     { name = "ruamel-yaml" },
     { name = "wt-contracts" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/91/27/7afe879d5edeed1fb83c9875606fea7eac27445f12df11a538497d6193c6/wt_invokers-0.2.0.tar.gz", hash = "sha256:989897611a2e22f0c7fa545b42f19c68fbf4dc17ddb2970eb0a2b23478a31e10", size = 83962, upload-time = "2026-04-28T21:31:40.156Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/cd/c0/16f3bb522ccee8e340dcd8cc2394cc8e8076ddbc5a0c680fbd0118397185/wt_invokers-0.2.0-py3-none-any.whl", hash = "sha256:7a075aaaf45daec64555345af0562094e0eee1cdb8e99e322da7cd04fee5ef5b", size = 14128, upload-time = "2026-04-28T21:31:39.042Z" },
+
+[package.metadata]
+requires-dist = [
+    { name = "google-auth", marker = "extra == 'gcp'", specifier = ">=2.0.0" },
+    { name = "google-cloud-batch", marker = "extra == 'gcp'", specifier = ">=0.19.0" },
+    { name = "py-rattler", specifier = ">=0.8.0" },
+    { name = "ruamel-yaml", specifier = ">=0.17.0" },
+    { name = "wt-contracts", editable = "../wt-contracts" },
+]
+provides-extras = ["gcp"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.0.0" },
+    { name = "pytest", specifier = ">=7.0.0" },
+    { name = "pytest-asyncio", specifier = ">=0.21.0" },
+    { name = "pytest-cov", specifier = ">=4.0.0" },
+    { name = "ruff", specifier = ">=0.1.0" },
 ]
 
 [[package]]
@@ -723,5 +743,5 @@ dependencies = [
 requires-dist = [
     { name = "google-auth", specifier = ">=2.0.0" },
     { name = "google-cloud-batch", specifier = ">=0.19.0" },
-    { name = "wt-invokers", specifier = ">=0.1.0,<1.0.0" },
+    { name = "wt-invokers", editable = "../wt-invokers" },
 ]

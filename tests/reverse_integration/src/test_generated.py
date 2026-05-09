@@ -19,23 +19,35 @@ MONOREPO_ROOT = Path(__file__).resolve().parents[3]
 # Packages and the envs that should resolve them to local sources when the
 # reverse-integration env-overrides file is in effect.
 #
+# The env-overrides file declares the ``*-gcp`` metapackages as path sources;
+# their ``[tool.uv.sources]`` redirects pull the base packages (and
+# wt-contracts) from the local monorepo as well, so the path-sourced set
+# extends transitively beyond what is named directly in the overrides file.
+#
 # wt-registry is only declared in the ``default`` feature of the env-overrides
 # file. The ``runner`` and ``test`` envs are emitted with ``no_default_feature
 # = True`` (see ``wt_compiler/compiler.py``) and neither wt-runner nor wt-task
 # depends on wt-registry at runtime — it is a compile-time discovery library —
 # so it is correctly absent from those envs.
 _LOCAL_SOURCE_PARAMS = [
-    ("default", "wt_contracts"),
+    ("default", "wt_task_gcp"),
     ("default", "wt_task"),
     ("default", "wt_registry"),
+    ("default", "wt_contracts"),
+    ("runner", "wt_runner_gcp"),
+    ("runner", "wt_task_gcp"),
     ("runner", "wt_runner"),
     ("runner", "wt_task"),
     ("runner", "wt_contracts"),
     ("runner", "wt_invokers"),
+    ("runner", "wt_invokers_gcp"),
+    ("test", "wt_runner_gcp"),
+    ("test", "wt_task_gcp"),
     ("test", "wt_runner"),
     ("test", "wt_task"),
     ("test", "wt_contracts"),
     ("test", "wt_invokers"),
+    ("test", "wt_invokers_gcp"),
 ]
 
 

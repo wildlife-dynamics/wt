@@ -737,28 +737,49 @@ wheels = [
 
 [[package]]
 name = "wt-contracts"
-version = "0.1.2"
-source = { registry = "https://pypi.org/simple" }
+source = { editable = "../wt-contracts" }
 dependencies = [
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ad/98/fe7a7255662bb7c443de1c5c59f8e8e92c994cfb3065f5fc430d750fb826/wt_contracts-0.1.2.tar.gz", hash = "sha256:063787e8e2722998ac064e0e66a9eade570fb7722b60a0733b69d3be3fb07cce", size = 56019, upload-time = "2026-03-13T20:13:46.781Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/8f/c6/e6647716d650a7f562b14dffe1948d884f36a29a3e864edf4de6f07fcf2f/wt_contracts-0.1.2-py3-none-any.whl", hash = "sha256:04a0fa4a1d7e9a41d75e921760186ececdcf79ddf9dbe74973f9294ebc77f74f", size = 8859, upload-time = "2026-03-13T20:13:47.944Z" },
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2.0.0,<3.0.0" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.0.0" },
+    { name = "pytest", specifier = ">=7.0.0" },
+    { name = "pytest-cov", specifier = ">=4.0.0" },
+    { name = "ruff", specifier = ">=0.1.0" },
 ]
 
 [[package]]
 name = "wt-task"
-version = "0.1.2"
-source = { registry = "https://pypi.org/simple" }
+source = { editable = "../wt-task" }
 dependencies = [
     { name = "pydantic" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'" },
     { name = "wt-contracts" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/6b/a5/65a5ae8b38aba3cd081a2eaddc0723c7f97f525aaa3f984a9d9591c9e837/wt_task-0.1.2.tar.gz", hash = "sha256:96029325617dd5a67164f79f979edefd9307271afb0f417124f89d72a47671c3", size = 90166, upload-time = "2026-03-13T21:01:43.62Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/24/68/1c282cfae21d4f93989cc831e4b9316a3c08aaf3a2d02402a642d722130f/wt_task-0.1.2-py3-none-any.whl", hash = "sha256:a52becb28e94afb9930b3b292db99400eaeef76aa6e243aa8d3438e308a4d80d", size = 25624, upload-time = "2026-03-13T21:01:44.768Z" },
+
+[package.metadata]
+requires-dist = [
+    { name = "opentelemetry-api", marker = "extra == 'gcp'", specifier = ">=1.20.0" },
+    { name = "opentelemetry-exporter-gcp-trace", marker = "extra == 'gcp'", specifier = ">=1.6.0" },
+    { name = "opentelemetry-sdk", marker = "extra == 'gcp'", specifier = ">=1.20.0" },
+    { name = "pydantic", specifier = ">=2.0.0,<3.0.0" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'", specifier = ">=4.0.0" },
+    { name = "wt-contracts", editable = "../wt-contracts" },
+]
+provides-extras = ["gcp"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.0.0" },
+    { name = "pytest", specifier = ">=7.0.0" },
+    { name = "pytest-asyncio", specifier = ">=0.21.0" },
+    { name = "pytest-cov", specifier = ">=4.0.0" },
+    { name = "ruff", specifier = ">=0.1.0" },
 ]
 
 [[package]]
@@ -776,7 +797,7 @@ requires-dist = [
     { name = "opentelemetry-api", specifier = ">=1.20.0" },
     { name = "opentelemetry-exporter-gcp-trace", specifier = ">=1.6.0" },
     { name = "opentelemetry-sdk", specifier = ">=1.20.0" },
-    { name = "wt-task", specifier = ">=0.1.0,<1.0.0" },
+    { name = "wt-task", editable = "../wt-task" },
 ]
 
 [[package]]

@@ -3,30 +3,40 @@
 # This file declares per-feature pypi dependencies that the reverse-integration
 # harness merges into both the wt-compiler discovery env and the compiled
 # package's pixi.toml. Path-based deps resolve relative to this file's own
-# directory (matching pixi.toml semantics), so `../../wt-task` points to the
-# wt-task package at the monorepo root.
+# directory (matching pixi.toml semantics), so `../../wt-task-gcp` points to
+# the wt-task-gcp metapackage at the monorepo root.
 #
 # The merged `feature.default` dep set is the source of truth for both the
 # compiled package's runtime [dependencies] / [pypi-dependencies] AND the
 # wt-compiler discovery env, so schema generation runs against the same wt-*
 # versions the workflow will execute against.
 #
+# We declare the `*-gcp` metapackages directly as path sources rather than
+# their base packages with `extras = ["gcp"]`. The metapackages bundle the
+# GCP dependency set (including `ecoscope-eda-core`, which is a git-only
+# dependency that cannot live in the PyPI-published base package's extras)
+# and carry `[tool.uv.sources]` redirects that route their declared base
+# package deps (e.g. `wt-task`, `wt-runner`) back to the local editable
+# checkouts. This pulls the full transitive wt-* graph from the monorepo
+# while resolving `ecoscope-eda-core` from its git ref via the metapackage's
+# `[project.dependencies]`.
+#
 # Only LEAF wt-* packages may be declared as path sources here. Packages
-# brought in transitively via a sibling's [tool.uv.sources] (e.g. wt-contracts
-# via wt-task) must NOT also appear here — pixi #5847 produces conflicting
-# URL forms otherwise. See docs/content/reference/wt-compiler.md for the full
-# rule and audit.
+# brought in transitively via a sibling's [tool.uv.sources] (e.g. wt-task
+# via wt-task-gcp, or wt-contracts via any wt-* sibling) must NOT also
+# appear here — pixi #5847 produces conflicting URL forms otherwise. See
+# docs/content/reference/wt-compiler.md for the full rule and audit.
 
 # Default feature — emitted as top-level [pypi-dependencies] in pixi.toml,
 # AND fed into the discovery env so wt-registry's schema extraction runs
 # against these wt-* sources.
 [feature.default.pypi-dependencies]
-wt-task      = { path = "../../wt-task", extras = ["gcp"] }
-wt-registry  = { path = "../../wt-registry"               }
+wt-task-gcp = { path = "../../wt-task-gcp" }
+wt-registry = { path = "../../wt-registry" }
 
 # Runner feature — emitted as [feature.runner.pypi-dependencies] in pixi.toml.
 # The compiled `test` env pulls runner via features=["runner","test"], so
 # overrides for cross-cutting wt-* sources live here.
 [feature.runner.pypi-dependencies]
-wt-runner    = { path = "../../wt-runner",   extras = ["gcp"] }
-wt-task      = { path = "../../wt-task",     extras = ["gcp"] }
+wt-runner-gcp = { path = "../../wt-runner-gcp" }
+wt-task-gcp   = { path = "../../wt-task-gcp"   }

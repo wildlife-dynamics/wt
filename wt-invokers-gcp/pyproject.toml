@@ -17,6 +17,12 @@ dependencies = [
     "google-auth>=2.0.0",
 ]
 
+[tool.uv.sources]
+# Development override - uses local editable wt-invokers and wt-contracts
+# Published packages will reference PyPI versions normally
+wt-invokers = { path = "../wt-invokers", editable = true }
+wt-contracts = { path = "../wt-contracts", editable = true }
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
