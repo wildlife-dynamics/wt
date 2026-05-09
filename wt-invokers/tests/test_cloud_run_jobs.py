@@ -13,6 +13,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from rattler import MatchSpec
 
+import wt_invokers.cloud_run_jobs as module
+from wt_invokers.cloud_run_jobs import CloudRunJobsSandboxInvoker
+
 
 @pytest.fixture
 def mock_run_modules(monkeypatch: pytest.MonkeyPatch) -> Any:
@@ -23,8 +26,6 @@ def mock_run_modules(monkeypatch: pytest.MonkeyPatch) -> Any:
     the invoker module references. ``CLOUD_RUN_AVAILABLE`` is also set to True
     so instantiation succeeds.
     """
-    import wt_invokers.cloud_run_jobs as module
-
     mock_jobs_client_cls = MagicMock()
     mock_run_job_request = MagicMock()
     mock_env_var = MagicMock()
@@ -42,20 +43,14 @@ def mock_run_modules(monkeypatch: pytest.MonkeyPatch) -> Any:
 
 
 def test_init_succeeds_when_available(mock_run_modules: Any) -> None:
-    from wt_invokers.cloud_run_jobs import CloudRunJobsSandboxInvoker
-
     inv = CloudRunJobsSandboxInvoker(matchspec=MatchSpec("w>=1.0.0"))
     assert inv.matchspec.name.normalized == "w"
 
 
 def test_init_fails_without_sdk() -> None:
-    import wt_invokers.cloud_run_jobs as module
-
     original = module.CLOUD_RUN_AVAILABLE
     module.CLOUD_RUN_AVAILABLE = False
     try:
-        from wt_invokers.cloud_run_jobs import CloudRunJobsSandboxInvoker
-
         with pytest.raises(ImportError, match="Google Cloud Run"):
             CloudRunJobsSandboxInvoker(matchspec=MatchSpec("w>=1.0.0"))
     finally:
@@ -64,40 +59,30 @@ def test_init_fails_without_sdk() -> None:
 
 @pytest.mark.asyncio
 async def test_is_installed_returns_true(mock_run_modules: Any) -> None:
-    from wt_invokers.cloud_run_jobs import CloudRunJobsSandboxInvoker
-
     inv = CloudRunJobsSandboxInvoker(matchspec=MatchSpec("w>=1.0.0"))
     assert await inv.is_installed() is True
 
 
 @pytest.mark.asyncio
 async def test_install_raises(mock_run_modules: Any) -> None:
-    from wt_invokers.cloud_run_jobs import CloudRunJobsSandboxInvoker
-
     inv = CloudRunJobsSandboxInvoker(matchspec=MatchSpec("w>=1.0.0"))
     with pytest.raises(NotImplementedError):
         await inv.install()
 
 
 def test_is_waitable_false(mock_run_modules: Any) -> None:
-    from wt_invokers.cloud_run_jobs import CloudRunJobsSandboxInvoker
-
     inv = CloudRunJobsSandboxInvoker(matchspec=MatchSpec("w>=1.0.0"))
     assert inv.is_waitable is False
 
 
 @pytest.mark.asyncio
 async def test_wait_returns_zero(mock_run_modules: Any) -> None:
-    from wt_invokers.cloud_run_jobs import CloudRunJobsSandboxInvoker
-
     inv = CloudRunJobsSandboxInvoker(matchspec=MatchSpec("w>=1.0.0"))
     assert await inv.wait() == 0
 
 
 @pytest.mark.asyncio
 async def test_run_triggers_job_with_correct_args(mock_run_modules: Any) -> None:
-    from wt_invokers.cloud_run_jobs import CloudRunJobsSandboxInvoker
-
     # MagicMock(name=...) sets the mock's own ``_mock_name``, NOT its
     # ``.name`` attribute. Assign the attribute explicitly so the invoker's
     # ``operation.metadata.name`` path returns a real resource-name string.
@@ -139,8 +124,6 @@ async def test_run_triggers_job_with_correct_args(mock_run_modules: Any) -> None
 
 @pytest.mark.asyncio
 async def test_run_defaults_region_to_us_central1(mock_run_modules: Any) -> None:
-    from wt_invokers.cloud_run_jobs import CloudRunJobsSandboxInvoker
-
     op = MagicMock()
     op.metadata.name = "projects/p/locations/us-central1/jobs/j/executions/x"
     fake_client = MagicMock()
@@ -171,8 +154,6 @@ async def test_run_defaults_region_to_us_central1(mock_run_modules: Any) -> None
 
 @pytest.mark.asyncio
 async def test_run_missing_required_kwarg_raises(mock_run_modules: Any) -> None:
-    from wt_invokers.cloud_run_jobs import CloudRunJobsSandboxInvoker
-
     inv = CloudRunJobsSandboxInvoker(matchspec=MatchSpec("w>=1.0.0"))
     with pytest.raises(TypeError):
         # missing required kwargs
@@ -189,8 +170,6 @@ async def test_run_missing_required_kwarg_raises(mock_run_modules: Any) -> None:
 async def test_ensure_job_exists_raises_clear_error_on_missing(
     mock_run_modules: Any,
 ) -> None:
-    from wt_invokers.cloud_run_jobs import CloudRunJobsSandboxInvoker
-
     fake_client = MagicMock()
     fake_client.get_job = AsyncMock(side_effect=Exception("NOT FOUND"))
 
@@ -219,8 +198,6 @@ async def test_ensure_job_exists_raises_clear_error_on_missing(
 @pytest.mark.asyncio
 async def test_run_builds_container_args(mock_run_modules: Any) -> None:
     """Container args forwarded to the sandbox CLI include all workflow inputs."""
-    from wt_invokers.cloud_run_jobs import CloudRunJobsSandboxInvoker
-
     captured: dict[str, Any] = {}
 
     fake_client = MagicMock()
@@ -284,10 +261,16 @@ async def test_run_builds_container_args(mock_run_modules: Any) -> None:
     assert len(override.container_overrides) == 1
     args = override.container_overrides[0].args
     assert "--matchspec" in args
-    assert "--workflow-run-id" in args and "run-42" in args
-    assert "--environment-tar-url" in args and "https://e/env.tar" in args
-    assert "--results-upload-url" in args and "https://e/out" in args
-    assert "--results-url" in args and "file:///results" in args
+    assert "--workflow-run-id" in args
+    assert "run-42" in args
+    assert "--environment-tar-url" in args
+    assert "https://e/env.tar" in args
+    assert "--results-upload-url" in args
+    assert "https://e/out" in args
+    assert "--results-url" in args
+    assert "file:///results" in args
     assert "--mock-io" in args
-    assert "--otel-exporter" in args and "http://otel" in args
-    assert "--otel-console-exporter-dst" in args and "stdout" in args
+    assert "--otel-exporter" in args
+    assert "http://otel" in args
+    assert "--otel-console-exporter-dst" in args
+    assert "stdout" in args

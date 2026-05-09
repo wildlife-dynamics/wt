@@ -299,7 +299,7 @@ class CloudBatchInvoker(AbstractInvoker):
 
     async def _wait(
         self,
-        timeout: float | None = None,  # noqa: ARG002  # interface compatibility
+        timeout: float | None = None,  # noqa: ASYNC109, ARG002  # interface compatibility — Cloud Batch is non-waitable
         error_msg: str | None = None,  # noqa: ARG002  # interface compatibility
     ) -> int:
         """Wait for the workflow to finish.

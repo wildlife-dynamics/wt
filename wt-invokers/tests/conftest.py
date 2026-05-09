@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import http.server
 import threading
-from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
+import stamina
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 class _UploadHandler(http.server.SimpleHTTPRequestHandler):
@@ -19,7 +22,7 @@ class _UploadHandler(http.server.SimpleHTTPRequestHandler):
     """
 
     # set by the fixture factory
-    _fail_remaining: dict[str, int] = {}
+    _fail_remaining: ClassVar[dict[str, int]] = {}
 
     def log_message(self, format: str, *args: Any) -> None:
         return  # silence
@@ -62,8 +65,7 @@ def http_server(tmp_path: Path) -> Iterator[tuple[str, Path, dict[str, int]]]:
     fail_state: dict[str, int] = {}
 
     def handler_factory(*args: Any, **kwargs: Any) -> _UploadHandler:
-        h = _UploadHandler(*args, directory=str(tmp_path), **kwargs)
-        return h
+        return _UploadHandler(*args, directory=str(tmp_path), **kwargs)
 
     # Monkey-patch per-instance state via class attr (single-server test scope).
     _UploadHandler._fail_remaining = fail_state
@@ -82,6 +84,4 @@ def http_server(tmp_path: Path) -> Iterator[tuple[str, Path, dict[str, int]]]:
 @pytest.fixture
 def stamina_fast(monkeypatch: pytest.MonkeyPatch) -> None:
     """Speed up stamina retries in tests by disabling the backoff."""
-    import stamina
-
     stamina.set_testing(True, attempts=5)

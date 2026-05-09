@@ -231,7 +231,7 @@ class AbstractInvoker(ABC):
 
     async def wait(
         self,
-        timeout: float | None = None,
+        timeout: float | None = None,  # noqa: ASYNC109  # public timeout API; not an asyncio.timeout() candidate
         error_msg: str | None = None,
     ) -> int:
         """Wait for the workflow to finish, run ``_post_run``, and return the exit code.
@@ -308,7 +308,7 @@ class AbstractInvoker(ABC):
         otel_console_exporter_dst: str | None = None,
         extra_env: dict[str, str] | None = None,
         lithops_config_text: str | None = None,
-        **kwargs: Any,
+        **kwargs: Any,  # noqa: ANN401  # abstract base passes through subclass-specific kwargs
     ) -> None:
         """Concrete per-invoker implementation of the workflow invocation.
 
@@ -323,7 +323,7 @@ class AbstractInvoker(ABC):
     @abstractmethod
     async def _wait(
         self,
-        timeout: float | None = None,
+        timeout: float | None = None,  # noqa: ASYNC109  # mirrors public wait() API
         error_msg: str | None = None,
     ) -> int:
         """Concrete per-invoker implementation of waiting for completion.

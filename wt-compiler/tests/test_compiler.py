@@ -1,5 +1,8 @@
 """Tests for compiler.py - DagCompiler functionality."""
 
+import email.parser
+import subprocess
+import zipfile
 from unittest.mock import MagicMock
 
 import pytest
@@ -1191,10 +1194,6 @@ class TestHatchDynamicVersion:
     @pytest.mark.slow
     def test_hatch_dynamic_version_resolves_from_version_yaml(self, tmp_path, monkeypatch):
         """Build a wheel from the compiled release dir and verify VERSION.yaml-sourced version."""
-        import email.parser
-        import subprocess
-        import zipfile
-
         task = KnownTask(
             importable_reference="mymod.my_func",
             json_schema={"properties": {"x": {"type": "integer"}}},
@@ -1227,8 +1226,8 @@ class TestHatchDynamicVersion:
 
         def _build_and_get_version(build_dir, out_dir):
             """Build a wheel and extract the Version from its metadata."""
-            result = subprocess.run(
-                ["python", "-m", "build", "--wheel", "--no-isolation", f"--outdir={out_dir}"],
+            result = subprocess.run(  # noqa: S603  # static argv; building wheel from tmp dir under our control
+                ["python", "-m", "build", "--wheel", "--no-isolation", f"--outdir={out_dir}"],  # noqa: S607  # python resolved via PATH
                 check=False,
                 cwd=build_dir,
                 capture_output=True,
@@ -1250,8 +1249,6 @@ class TestHatchDynamicVersion:
         assert version == "0.0.0"
 
         # Rewrite VERSION.yaml and rebuild
-        import ruamel.yaml
-
         yaml = ruamel.yaml.YAML()
         yaml.dump(
             {"MAJ": 1, "MIN": 3, "PATCH": 7},

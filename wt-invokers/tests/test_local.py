@@ -110,7 +110,7 @@ async def test_run_creates_results_directory() -> None:
             )
 
             # Check that results directory was created
-            assert Path(tmpdir, "results", "output").exists()
+            assert Path(tmpdir, "results", "output").exists()  # noqa: ASYNC240  # local FS metadata; fast
 
 
 @pytest.mark.asyncio
@@ -203,7 +203,7 @@ async def test_run_with_lithops_config() -> None:
         env = call_kwargs["env"]
 
         assert "LITHOPS_CONFIG_FILE" in env
-        assert Path(env["LITHOPS_CONFIG_FILE"]).exists()
+        assert Path(env["LITHOPS_CONFIG_FILE"]).exists()  # noqa: ASYNC240  # local FS metadata; fast
 
 
 @pytest.mark.asyncio

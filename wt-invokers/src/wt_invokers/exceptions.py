@@ -84,6 +84,7 @@ class PixiUnpackError(InvokerError):
         stdout: bytes | str | None,
         stderr: bytes | str | None,
     ) -> None:
+        """Initialise with stdout/stderr captured from the failed pixi-unpack call."""
         super().__init__(message)
         self.returncode = returncode
         self.stdout = stdout

@@ -188,7 +188,7 @@ class LocalSubprocessInvoker(AbstractInvoker):
         # Create results directory if using file:// URL
         parse_results_url = urlparse(results_url)
         if parse_results_url.scheme in ("file", ""):
-            Path(parse_results_url.path).mkdir(parents=True, exist_ok=True)
+            Path(parse_results_url.path).mkdir(parents=True, exist_ok=True)  # noqa: ASYNC240  # local mkdir; fast metadata op, no event-loop blocking risk
 
         # Setup environment variables
         if extra_env is None:
@@ -261,7 +261,7 @@ class LocalSubprocessInvoker(AbstractInvoker):
 
     async def _wait(
         self,
-        timeout: float | None = None,
+        timeout: float | None = None,  # noqa: ASYNC109  # mirrors abstract _wait signature
         error_msg: str | None = None,
     ) -> int:
         """Wait for the subprocess to finish and return the exit code.

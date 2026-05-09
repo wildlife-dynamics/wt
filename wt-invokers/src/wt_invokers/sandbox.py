@@ -26,6 +26,8 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 from rattler import MatchSpec
 
@@ -82,6 +84,7 @@ class SandboxInvoker(PixiUnpackMixin, UploadResultsArchiveMixin, AbstractInvoker
 
     @property
     def is_waitable(self) -> bool:
+        """Sandbox subprocess can be waited on."""
         return True
 
     def _workflow_name(self) -> str:
@@ -92,7 +95,7 @@ class SandboxInvoker(PixiUnpackMixin, UploadResultsArchiveMixin, AbstractInvoker
 
     async def _run(
         self,
-        workflow_run_id: str,
+        workflow_run_id: str,  # noqa: ARG002  # interface compatibility — sandbox doesn't use the run id
         config_text: str,
         results_url: str,
         execution_mode: str,
@@ -100,8 +103,8 @@ class SandboxInvoker(PixiUnpackMixin, UploadResultsArchiveMixin, AbstractInvoker
         otel_exporter: str | None = None,
         otel_console_exporter_dst: str | None = None,
         extra_env: dict[str, str] | None = None,
-        lithops_config_text: str | None = None,
-        **kwargs: Any,
+        lithops_config_text: str | None = None,  # noqa: ARG002  # interface compatibility — sandbox doesn't run lithops
+        **kwargs: Any,  # noqa: ARG002, ANN401  # interface compatibility — abstract base passes through subclass-specific kwargs
     ) -> None:
         """Start the workflow subprocess after pixi-unpack has activated the env.
 
@@ -149,7 +152,7 @@ class SandboxInvoker(PixiUnpackMixin, UploadResultsArchiveMixin, AbstractInvoker
             env.update(extra_env)
         env[self.results_env_var] = results_url
 
-        self.run_state["process"] = subprocess.Popen(
+        self.run_state["process"] = subprocess.Popen(  # noqa: ASYNC220, S603  # static-shape argv; sandbox owns process lifetime
             cmd,
             shell=False,
             env=env,
@@ -158,7 +161,7 @@ class SandboxInvoker(PixiUnpackMixin, UploadResultsArchiveMixin, AbstractInvoker
 
     async def _wait(
         self,
-        timeout: float | None = None,
+        timeout: float | None = None,  # noqa: ASYNC109  # mirrors abstract _wait signature
         error_msg: str | None = None,
     ) -> int:
         process: subprocess.Popen[bytes] | None = self.run_state.get("process")
@@ -219,13 +222,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 
 async def _amain(args: argparse.Namespace) -> int:
-    from urllib.parse import urlparse
-    from urllib.request import url2pathname
-
+    """Run the sandbox invoker end-to-end and return its exit code."""
     # Ensure the local results dir exists so the workflow can write into it.
     results_parsed = urlparse(args.results_url)
     if results_parsed.scheme in ("file", ""):
-        Path(url2pathname(results_parsed.path)).mkdir(parents=True, exist_ok=True)
+        Path(url2pathname(results_parsed.path)).mkdir(parents=True, exist_ok=True)  # noqa: ASYNC240  # local mkdir; fast metadata op
 
     invoker = SandboxInvoker(matchspec=MatchSpec(args.matchspec))
     await invoker.run(
