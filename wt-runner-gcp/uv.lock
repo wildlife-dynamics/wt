@@ -1022,7 +1022,7 @@ dependencies = [
 requires-dist = [
     { name = "google-auth", specifier = ">=2.0.0" },
     { name = "google-cloud-batch", specifier = ">=0.19.0" },
-    { name = "wt-invokers", specifier = ">=0.1.0,<1.0.0" },
+    { name = "wt-invokers", editable = "../wt-invokers" },
 ]
 
 [[package]]
