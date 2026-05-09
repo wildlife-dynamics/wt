@@ -1112,7 +1112,7 @@ class TestRenderDag:
 class TestPyprojectTomlArtifact:
     """Tests for pyproject.toml and hatch_build.py in compiled artifacts."""
 
-    def _compile_minimal_workflow(self):
+    def _compile_minimal_workflow(self, merged_default_feature):
         """Compile a minimal workflow and return the artifacts."""
         task = KnownTask(
             importable_reference="mymod.my_func",
@@ -1135,39 +1135,42 @@ class TestPyprojectTomlArtifact:
                 spec=spec,
                 wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/",
             )
-            return compiler.compile(spec_relpath="spec.yaml")
+            return compiler.compile(
+                spec_relpath="spec.yaml",
+                merged_default_feature=merged_default_feature,
+            )
         finally:
             known_tasks.clear()
 
-    def test_compile_produces_pyproject_toml_with_release_name(self):
+    def test_compile_produces_pyproject_toml_with_release_name(self, merged_default_feature):
         """Compilation produces a pyproject.toml containing the release name."""
-        artifacts = self._compile_minimal_workflow()
+        artifacts = self._compile_minimal_workflow(merged_default_feature)
         assert 'name = "wt-test-pyproject-workflow"' in artifacts.pyproject_toml
         assert 'dynamic = ["version"]' in artifacts.pyproject_toml
 
-    def test_compile_produces_pyproject_toml_with_script_entry(self):
+    def test_compile_produces_pyproject_toml_with_script_entry(self, merged_default_feature):
         """Compilation produces a pyproject.toml with the correct script entry point."""
-        artifacts = self._compile_minimal_workflow()
+        artifacts = self._compile_minimal_workflow(merged_default_feature)
         assert (
             'wt-test-pyproject-workflow = "wt_test_pyproject_workflow.cli:cli"'
             in artifacts.pyproject_toml
         )
 
-    def test_compile_produces_pyproject_toml_with_hatch_hook(self):
+    def test_compile_produces_pyproject_toml_with_hatch_hook(self, merged_default_feature):
         """Compilation produces a pyproject.toml referencing the custom Hatch hook."""
-        artifacts = self._compile_minimal_workflow()
+        artifacts = self._compile_minimal_workflow(merged_default_feature)
         assert "[tool.hatch.metadata.hooks.custom]" in artifacts.pyproject_toml
         assert 'path = "hatch_build.py"' in artifacts.pyproject_toml
 
-    def test_compile_produces_hatch_build_py_with_version_hook(self):
+    def test_compile_produces_hatch_build_py_with_version_hook(self, merged_default_feature):
         """Compilation produces a hatch_build.py containing VersionYamlHook."""
-        artifacts = self._compile_minimal_workflow()
+        artifacts = self._compile_minimal_workflow(merged_default_feature)
         assert "class VersionYamlHook" in artifacts.hatch_build_py
         assert "VERSION.yaml" in artifacts.hatch_build_py
 
-    def test_pyproject_and_hatch_build_affect_fingerprint(self):
+    def test_pyproject_and_hatch_build_affect_fingerprint(self, merged_default_feature):
         """Changing pyproject_toml or hatch_build_py changes both fingerprint hashes."""
-        artifacts = self._compile_minimal_workflow()
+        artifacts = self._compile_minimal_workflow(merged_default_feature)
 
         spec = Spec(id="test_pyproject", requirements=[], workflow=[])
         fp_original = Fingerprint(spec=spec, wa=artifacts)
@@ -1181,7 +1184,7 @@ class TestPyprojectTomlArtifact:
         assert fp_pyproject.artifacts_sha256_strict != original_strict
 
         # Reset pyproject_toml and mutate hatch_build_py
-        artifacts = self._compile_minimal_workflow()
+        artifacts = self._compile_minimal_workflow(merged_default_feature)
         object.__setattr__(artifacts, "hatch_build_py", artifacts.hatch_build_py + "\n# changed")
         fp_hatch = Fingerprint(spec=spec, wa=artifacts)
         assert fp_hatch.artifacts_sha256_basic != original_basic
@@ -1192,7 +1195,9 @@ class TestHatchDynamicVersion:
     """End-to-end: pyproject.toml + hatch_build.py resolve version from VERSION.yaml."""
 
     @pytest.mark.slow
-    def test_hatch_dynamic_version_resolves_from_version_yaml(self, tmp_path, monkeypatch):
+    def test_hatch_dynamic_version_resolves_from_version_yaml(
+        self, tmp_path, monkeypatch, merged_default_feature
+    ):
         """Build a wheel from the compiled release dir and verify VERSION.yaml-sourced version."""
         task = KnownTask(
             importable_reference="mymod.my_func",
@@ -1216,7 +1221,10 @@ class TestHatchDynamicVersion:
                 wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/",
             )
             monkeypatch.chdir(tmp_path)
-            artifacts = compiler.compile(spec_relpath="spec.yaml")
+            artifacts = compiler.compile(
+                spec_relpath="spec.yaml",
+                merged_default_feature=merged_default_feature,
+            )
             artifacts.dump()
         finally:
             known_tasks.clear()
