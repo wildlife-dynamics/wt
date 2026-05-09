@@ -7,6 +7,10 @@ on:
     branches: ["**"]
     types: [labeled, synchronize]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.actor }}
+  cancel-in-progress: true
+
 jobs:
   check-trigger:
     runs-on: ubuntu-latest
