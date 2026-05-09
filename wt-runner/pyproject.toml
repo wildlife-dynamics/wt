@@ -184,6 +184,7 @@ pip = "*"
 [tool.pixi.package.run-dependencies]
 python = ">=3.13,<3.14"
 fastapi = ">=0.100.0"
+httpx = ">=0.24.0"  # Bundled by conda-forge fastapi distro; explicit restate for dep-sync ci check
 uvicorn = ">=0.20.0"
 pydantic = ">=2.0.0,<3.0.0"
 py-rattler = ">=0.8.0"
