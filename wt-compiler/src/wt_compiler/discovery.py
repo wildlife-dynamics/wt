@@ -8,6 +8,7 @@ direct Python import dependencies on task libraries.
 
 import asyncio
 import errno
+import platform as plat
 import shutil
 import subprocess
 import sys
@@ -38,7 +39,6 @@ class DiscoveryResult(NamedTuple):
 
     tasks: dict[str, dict[str, KnownTask]]
     records: list[Any]  # list[RepoDataRecord] from rattler solve()
-    wt_pypi_deps: dict[str, str | dict[str, Any]] | None = None
 
 
 async def discover_tasks_from_requirements(
@@ -90,8 +90,6 @@ async def discover_tasks_from_requirements(
     if platform is None:
         # Determine current platform
         if sys.platform == "darwin":
-            import platform as plat
-
             platform = Platform("osx-arm64") if plat.machine() == "arm64" else Platform("osx-64")
         elif sys.platform == "linux":
             platform = Platform("linux-64")
@@ -118,7 +116,14 @@ async def discover_tasks_from_requirements(
             env_path, requirements, channels, platform, on_progress=on_progress
         )
 
-        # Install PyPI requirements into the environment via uv
+        # Install PyPI requirements into the environment via uv. We do this as
+        # a single bulk `uv pip install` call so uv resolves all path/git/url
+        # sources together — sequential calls would re-resolve each
+        # requirement's transitive deps independently and could replace
+        # path-installed siblings with registry-installed versions.
+        # `--reinstall-package <name>` forces uv to replace any
+        # already-satisfied install (e.g. a conda-installed wt-* package whose
+        # .dist-info is on sys.path) with the explicit source.
         if pypi_requirements:
             if on_progress is not None:
                 on_progress("Installing PyPI dependencies...")
@@ -132,34 +137,34 @@ async def discover_tasks_from_requirements(
                 if sys.platform == "win32"
                 else env_path / "bin" / "python"
             )
+            uv_args: list[str] = [
+                str(uv_exe),
+                "pip",
+                "install",
+                "--python",
+                str(env_python),
+            ]
+            for pypi_req in pypi_requirements:
+                uv_args.extend(["--reinstall-package", pypi_req.name])
             for pypi_req in pypi_requirements:
                 pip_arg = pypi_req.to_pip_install_arg()
-                # Handle editable installs which start with "-e "
                 if pip_arg.startswith("-e "):
-                    uv_args = [
-                        str(uv_exe),
-                        "pip",
-                        "install",
-                        "--python",
-                        str(env_python),
-                        "-e",
-                        pip_arg[3:],
-                    ]
+                    uv_args.extend(["-e", pip_arg[3:]])
                 else:
-                    uv_args = [str(uv_exe), "pip", "install", "--python", str(env_python), pip_arg]
-                uv_result = subprocess.run(
-                    uv_args,
-                    capture_output=True,
-                    text=True,
-                    check=False,
+                    uv_args.append(pip_arg)
+            uv_result = subprocess.run(  # noqa: ASYNC221, S603  # blocking install is intentional; cmd built from configured tool path
+                uv_args,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if uv_result.returncode != 0:
+                raise PyPIInstallError(
+                    requirements=list(pypi_requirements),
+                    returncode=uv_result.returncode,
+                    stdout=uv_result.stdout,
+                    stderr=uv_result.stderr,
                 )
-                if uv_result.returncode != 0:
-                    raise PyPIInstallError(
-                        requirement=pypi_req,
-                        returncode=uv_result.returncode,
-                        stdout=uv_result.stdout,
-                        stderr=uv_result.stderr,
-                    )
 
         # Determine the executable path based on platform
         if sys.platform == "win32":
@@ -180,7 +185,7 @@ async def discover_tasks_from_requirements(
         # Call wt-registry CLI in the environment
         if on_progress is not None:
             on_progress("Discovering tasks...")
-        result = subprocess.run(
+        result = subprocess.run(  # noqa: ASYNC221, S603  # blocking subprocess is intentional; cmd built from configured tool path
             cli_args,
             capture_output=True,
             text=True,
@@ -202,7 +207,7 @@ async def discover_tasks_from_requirements(
         # Convert to KnownTask instances and populate known_tasks dict
         discovered_tasks: dict[str, dict[str, KnownTask]] = {}
 
-        for _, entry in registry_output.entries.items():
+        for entry in registry_output.entries.values():
             # entry is typed as RegistryEntry from wt-contracts
             # Use public_module_path for imports (via __init__.py re-exports)
             public_module_path = entry.public_module_path
@@ -234,25 +239,7 @@ async def discover_tasks_from_requirements(
                 known_task.registry_ref = len(discovered_tasks[function_name])
                 discovered_tasks[function_name][public_module_path] = known_task
 
-        # Detect if wt-registry came from PyPI (not in conda records)
-        wt_pypi_deps: dict[str, str | dict[str, Any]] | None = None
-        wt_registry_in_conda = any(str(r.name.normalized) == "wt-registry" for r in records)
-        if not wt_registry_in_conda:
-            from wt_compiler.pypi_source import (
-                derive_sibling_pypi_requirement,
-                detect_pypi_source,
-            )
-
-            direct_url, version = detect_pypi_source("wt-registry", env_path)
-            wt_pypi_deps = {}
-            for sibling in ("wt-runner", "wt-task"):
-                req = derive_sibling_pypi_requirement("wt-registry", sibling, direct_url, version)
-                if isinstance(req, str):
-                    wt_pypi_deps[sibling] = req
-                else:
-                    wt_pypi_deps[sibling] = req.to_pixi_dict()
-
-        return DiscoveryResult(tasks=discovered_tasks, records=records, wt_pypi_deps=wt_pypi_deps)
+        return DiscoveryResult(tasks=discovered_tasks, records=records)
 
 
 async def _create_environment(
@@ -273,6 +260,7 @@ async def _create_environment(
         requirements: List of package requirements (MatchSpec)
         channels: List of channels
         platform: Target platform
+        on_progress: Optional callback for progress reporting
 
     Returns:
         List of RepoDataRecord objects from the solved environment
@@ -331,7 +319,7 @@ async def _create_environment(
                 cache_dir=cache_dir,
             )
             return records  # Success
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001  # retry on any rattler install error; classified below
             last_error = e
             # Check if this is a retryable ENOTEMPTY error
             # py-rattler raises its own exception types (LinkError, ExtractError, IoError)
@@ -368,7 +356,7 @@ async def populate_known_tasks(
     channels: list[Channel] | None = None,
     pypi_requirements: list[PyPIRequirement] | None = None,
     on_progress: Callable[[str], None] | None = None,
-    **kwargs: Any,
+    **kwargs: Any,  # noqa: ANN401  # forwarded to discover_tasks_from_requirements
 ) -> DiscoveryResult:
     """Discover tasks and populate the global known_tasks dictionary.
 
@@ -385,7 +373,7 @@ async def populate_known_tasks(
         **kwargs: Additional arguments to pass to discover_tasks_from_requirements
 
     Returns:
-        DiscoveryResult containing tasks, records, and optional wt_pypi_deps
+        DiscoveryResult containing tasks and solved records
 
     Examples:
         >>> from rattler import MatchSpec
@@ -409,7 +397,7 @@ async def populate_known_tasks(
 
 async def discover_tasks_from_spec_requirements(
     spec_requirements: list[Any],  # SpecRequirement from spec.py
-    **kwargs: Any,
+    **kwargs: Any,  # noqa: ANN401  # forwarded to populate_known_tasks
 ) -> DiscoveryResult:
     """Discover tasks from Spec requirements.
 

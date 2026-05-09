@@ -6,7 +6,7 @@ task execution, along with Future types for async results.
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Sequence
-from typing import Generic, ParamSpec, TypeVar
+from typing import Any, Generic, ParamSpec, TypeVar
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -79,7 +79,7 @@ class Future(ABC, Generic[R]):
     """
 
     @abstractmethod
-    def gather(self, *args, **kwargs) -> R:  # type: ignore[no-untyped-def]
+    def gather(self, *args: Any, **kwargs: Any) -> R:  # noqa: ANN401  # implementation-specific args
         """Block until result is available and return it.
 
         Args:
@@ -110,7 +110,7 @@ class FutureSequence(ABC, Generic[R]):
     """
 
     @abstractmethod
-    def gather(self, *args, **kwargs) -> Sequence[R]:  # type: ignore[no-untyped-def]
+    def gather(self, *args: Any, **kwargs: Any) -> Sequence[R]:  # noqa: ANN401  # implementation-specific args
         """Block until all results are available and return them.
 
         Args:
@@ -180,7 +180,7 @@ class AsyncExecutor(ABC, Generic[P, R]):
         ...
 
 
-class mapvalues_wrapper(Generic[K, V, R]):
+class mapvalues_wrapper(Generic[K, V, R]):  # noqa: N801  # public API; renaming would break callers
     """Wrapper for mapvalues operations that preserves keys.
 
     This wrapper takes a function that accepts keyword arguments and wraps it

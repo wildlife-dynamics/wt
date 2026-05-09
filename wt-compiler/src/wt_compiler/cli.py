@@ -1,4 +1,5 @@
 """Command-line interface for wt-compiler."""
+# ruff: noqa: BLE001  # CLI top-level handlers report any error and exit non-zero
 
 from __future__ import annotations
 
@@ -7,23 +8,26 @@ import asyncio
 import re
 import resource
 import sys
-from collections.abc import Callable
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, TypeGuard, cast
 
 import questionary
 
 from wt_compiler.compiler import compile_workflow_from_yaml
 from wt_compiler.wizard import DefaultWizardProvider
 from wt_compiler.wizard import providers as wt_providers
-from wt_compiler.wizard.abstract import (
-    AbstractWizardProvider,
-    LoopContext,
-    SingleWizardQuestion,
-    WizardQuestion,
-    WizardQuestionLoop,
-)
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from wt_compiler.wizard.abstract import (
+        AbstractWizardProvider,
+        LoopContext,
+        SingleWizardQuestion,
+        WizardQuestion,
+        WizardQuestionLoop,
+    )
 
 
 def _is_loop(q: WizardQuestion) -> TypeGuard[WizardQuestionLoop]:
@@ -93,7 +97,7 @@ def _batch_init(
             for item in getattr(args, q["dest"]) or []:
                 partial_entry: dict[str, Any] = {}
                 for i, sub_q in enumerate(q["questions"]):
-                    sq = cast(SingleWizardQuestion, sub_q)
+                    sq = cast("SingleWizardQuestion", sub_q)
                     if i > 0:  # first sub-question is the loop terminator, never conditional
                         cond = sq.get("wizard", {}).get("condition")
                         if cond and not cond(MappingProxyType(partial_entry)):
@@ -107,7 +111,7 @@ def _batch_init(
             seq.append("")  # signal loop end
             partial_answers[q["dest"]] = getattr(args, q["dest"]) or []
         else:
-            sq = cast(SingleWizardQuestion, q)
+            sq = cast("SingleWizardQuestion", q)
             top_cond = sq.get("wizard", {}).get("condition")
             if top_cond and not top_cond(MappingProxyType(partial_answers)):
                 continue  # question skipped by generator — do not emit an answer
@@ -231,8 +235,7 @@ def _interactive_init(provider: AbstractWizardProvider) -> None:
 
 
 def main() -> None:
-    """
-    Main CLI entry point.
+    """Main CLI entry point.
 
     Parses command-line arguments and dispatches to the appropriate subcommand.
     Currently supports the 'compile' subcommand for compiling workflow specs.
@@ -386,6 +389,20 @@ def main() -> None:
             "for the results URL (default: WT_RESULTS)"
         ),
     )
+    compile_parser.add_argument(
+        "--env-overrides",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Path (absolute or relative to CWD) to a wt-compiler env-overrides toml file. "
+            "The file declares per-feature conda and pypi dependencies to merge into the "
+            "compiled package's pixi.toml, plus an optional pseudo-feature 'discovery' "
+            "whose deps are overlaid into the wt-compiler discovery env. Conventional "
+            "filename: wt-compiler-env-overrides.toml. Useful for development and testing "
+            "of wt feature branches; should not be used in production."
+        ),
+    )
 
     # scaffold subcommand
     scaffold_parser = subparsers.add_parser(
@@ -420,7 +437,7 @@ def main() -> None:
     )
     for q in init_questions:
         flag = "--" + q["dest"].replace("_", "-")
-        ap_kwargs: Any = {**cast(SingleWizardQuestion, q)["argparse"]}
+        ap_kwargs: Any = {**cast("SingleWizardQuestion", q)["argparse"]}
         init_parser.add_argument(flag, **ap_kwargs)
 
     args = parser.parse_args()
@@ -439,8 +456,7 @@ def main() -> None:
 
 
 def _compile(args: argparse.Namespace) -> None:
-    """
-    Execute the compile command.
+    """Execute the compile command.
 
     Args:
         args: Parsed command-line arguments containing spec path and flags.
@@ -479,6 +495,8 @@ def _compile(args: argparse.Namespace) -> None:
         if args.variant:
             compiler_kwargs["variant"] = args.variant
         compiler_kwargs["results_env_var"] = args.results_env_var
+        if args.env_overrides is not None:
+            compiler_kwargs["env_overrides_path"] = Path(args.env_overrides).resolve()
         artifacts = asyncio.run(
             compile_workflow_from_yaml(
                 str(spec_path),

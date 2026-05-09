@@ -1,4 +1,5 @@
 """Tests for CLI compatibility — interactive input() loop and static argparse flags."""
+# ruff: noqa: SIM117, SIM105  # nested with-blocks read clearer here; try/except/pass deliberate
 
 from __future__ import annotations
 
@@ -7,8 +8,6 @@ from typing import cast
 from unittest.mock import patch
 
 import pytest
-
-from conftest import drive_wizard
 
 from wt_compiler.wizard.abstract import (
     AbstractWizardProvider,
@@ -44,18 +43,20 @@ class TestInteractiveMode:
     def test_interactive_loop_drives_generator(self) -> None:
         """Simulate interactive session with monkeypatched input."""
         provider = DefaultWizardProvider()
-        input_sequence = iter([
-            "my_workflow",
-            "My Workflow",
-            "A description",
-            "Author Name",
-            "MIT",
-            "numpy",
-            "conda",       # req_type
-            "*",
-            "conda-forge",
-            "",  # end requirements
-        ])
+        input_sequence = iter(
+            [
+                "my_workflow",
+                "My Workflow",
+                "A description",
+                "Author Name",
+                "MIT",
+                "numpy",
+                "conda",  # req_type
+                "*",
+                "conda-forge",
+                "",  # end requirements
+            ]
+        )
 
         with patch("builtins.input", side_effect=input_sequence):
             interactive_loop(provider)
@@ -69,18 +70,20 @@ class TestInteractiveMode:
     def test_interactive_loop_local_path_requirement(self) -> None:
         """Interactive loop handles local path requirement correctly."""
         provider = DefaultWizardProvider()
-        input_sequence = iter([
-            "my_workflow",
-            "My Workflow",
-            "",
-            "Author",
-            "MIT",
-            "mypkg",
-            "local path",       # req_type
-            "/home/user/mypkg", # path
-            "false",            # editable
-            "",  # end requirements
-        ])
+        input_sequence = iter(
+            [
+                "my_workflow",
+                "My Workflow",
+                "",
+                "Author",
+                "MIT",
+                "mypkg",
+                "local path",  # req_type
+                "/home/user/mypkg",  # path
+                "false",  # editable
+                "",  # end requirements
+            ]
+        )
 
         with patch("builtins.input", side_effect=input_sequence):
             interactive_loop(provider)
@@ -93,14 +96,16 @@ class TestInteractiveMode:
     def test_interactive_loop_displays_choices(self, capsys: object) -> None:
         """For select-type questions with choices, verify choices are displayed."""
         provider = DefaultWizardProvider()
-        input_sequence = iter([
-            "my_workflow",
-            "My Workflow",
-            "desc",
-            "Author",
-            "MIT",  # license (has choices)
-            "",  # end requirements
-        ])
+        input_sequence = iter(
+            [
+                "my_workflow",
+                "My Workflow",
+                "desc",
+                "Author",
+                "MIT",  # license (has choices)
+                "",  # end requirements
+            ]
+        )
 
         with patch("builtins.input", side_effect=input_sequence):
             interactive_loop(provider)
@@ -111,15 +116,17 @@ class TestInteractiveMode:
     def test_interactive_loop_redisplays_on_error(self) -> None:
         """When type callable raises, verify error is shown and re-prompted."""
         provider = DefaultWizardProvider()
-        input_sequence = iter([
-            "123bad",  # invalid workflow_id
-            "my_workflow",  # valid retry
-            "My Workflow",
-            "desc",
-            "Author",
-            "MIT",
-            "",  # end requirements
-        ])
+        input_sequence = iter(
+            [
+                "123bad",  # invalid workflow_id
+                "my_workflow",  # valid retry
+                "My Workflow",
+                "desc",
+                "Author",
+                "MIT",
+                "",  # end requirements
+            ]
+        )
 
         printed: list[str] = []
 
@@ -138,22 +145,24 @@ class TestInteractiveMode:
     def test_interactive_loop_handles_loop_question(self) -> None:
         """For requirements loop, verify it keeps prompting until empty input."""
         provider = DefaultWizardProvider()
-        input_sequence = iter([
-            "my_workflow",
-            "My Workflow",
-            "desc",
-            "Author",
-            "MIT",
-            "pkg1",         # req 1 name
-            "conda",        # req 1 req_type → conda
-            "*",            # req 1 version
-            "conda-forge",  # req 1 channel
-            "pkg2",         # req 2 name
-            "conda",        # req 2 req_type → conda
-            "*",            # req 2 version
-            "conda-forge",  # req 2 channel
-            "",  # end requirements
-        ])
+        input_sequence = iter(
+            [
+                "my_workflow",
+                "My Workflow",
+                "desc",
+                "Author",
+                "MIT",
+                "pkg1",  # req 1 name
+                "conda",  # req 1 req_type → conda
+                "*",  # req 1 version
+                "conda-forge",  # req 1 channel
+                "pkg2",  # req 2 name
+                "conda",  # req 2 req_type → conda
+                "*",  # req 2 version
+                "conda-forge",  # req 2 channel
+                "",  # end requirements
+            ]
+        )
 
         with patch("builtins.input", side_effect=input_sequence):
             interactive_loop(provider)
@@ -174,12 +183,10 @@ class TestStaticBatchMode:
                 # requirements question has its own argparse dict with custom type
                 parser.add_argument(
                     f"--{dest.replace('_', '-')}",
-                    **cast(SingleWizardQuestion, q)["argparse"],
+                    **cast("SingleWizardQuestion", q)["argparse"],
                 )
             else:
-                parser.add_argument(
-                    f"--{dest.replace('_', '-')}", **q["argparse"]
-                )
+                parser.add_argument(f"--{dest.replace('_', '-')}", **q["argparse"])
 
     def test_argparse_parse_args_valid(self) -> None:
         """Build parser, parse valid args, verify namespace."""
@@ -191,21 +198,27 @@ class TestStaticBatchMode:
                 # Use the custom argparse dict (includes _requirements_batch_type)
                 parser.add_argument(
                     f"--{dest.replace('_', '-')}",
-                    **cast(SingleWizardQuestion, q)["argparse"],
+                    **cast("SingleWizardQuestion", q)["argparse"],
                 )
             else:
-                parser.add_argument(
-                    f"--{dest.replace('_', '-')}", **q["argparse"]
-                )
+                parser.add_argument(f"--{dest.replace('_', '-')}", **q["argparse"])
 
-        args = parser.parse_args([
-            "--workflow-id", "my_wf",
-            "--workflow-name", "My Workflow",
-            "--workflow-description", "A desc",
-            "--author-name", "Author",
-            "--license-type", "MIT",
-            "--requirements", '{"name": "numpy", "version": "*", "channel": "conda-forge"}',
-        ])
+        args = parser.parse_args(
+            [
+                "--workflow-id",
+                "my_wf",
+                "--workflow-name",
+                "My Workflow",
+                "--workflow-description",
+                "A desc",
+                "--author-name",
+                "Author",
+                "--license-type",
+                "MIT",
+                "--requirements",
+                '{"name": "numpy", "version": "*", "channel": "conda-forge"}',
+            ]
+        )
         assert args.workflow_id == "my_wf"
         assert args.workflow_name == "My Workflow"
         assert args.license_type == "MIT"
@@ -220,9 +233,7 @@ class TestStaticBatchMode:
             dest = q["dest"]
             if "questions" in q:
                 continue  # skip loop for this test
-            parser.add_argument(
-                f"--{dest.replace('_', '-')}", **q["argparse"]
-            )
+            parser.add_argument(f"--{dest.replace('_', '-')}", **q["argparse"])
 
         with pytest.raises(SystemExit):
             parser.parse_args(["--workflow-id", "123bad"])
@@ -236,21 +247,27 @@ class TestStaticBatchMode:
             if "questions" in q:
                 parser.add_argument(
                     f"--{dest.replace('_', '-')}",
-                    **cast(SingleWizardQuestion, q)["argparse"],
+                    **cast("SingleWizardQuestion", q)["argparse"],
                 )
             else:
-                parser.add_argument(
-                    f"--{dest.replace('_', '-')}", **q["argparse"]
-                )
+                parser.add_argument(f"--{dest.replace('_', '-')}", **q["argparse"])
 
-        args = parser.parse_args([
-            "--workflow-id", "my_wf",
-            "--workflow-name", "My Workflow",
-            "--workflow-description", "A desc",
-            "--author-name", "Author",
-            "--license-type", "MIT",
-            "--requirements", '{"name": "numpy", "version": "*", "channel": "conda-forge"}',
-        ])
+        args = parser.parse_args(
+            [
+                "--workflow-id",
+                "my_wf",
+                "--workflow-name",
+                "My Workflow",
+                "--workflow-description",
+                "A desc",
+                "--author-name",
+                "Author",
+                "--license-type",
+                "MIT",
+                "--requirements",
+                '{"name": "numpy", "version": "*", "channel": "conda-forge"}',
+            ]
+        )
 
         # Now drive a fresh provider's generator with argparse values
         provider = DefaultWizardProvider()
@@ -259,7 +276,11 @@ class TestStaticBatchMode:
 
         # Feed simple questions from namespace
         simple_dests = [
-            "workflow_id", "workflow_name", "workflow_description", "author_name", "license_type"
+            "workflow_id",
+            "workflow_name",
+            "workflow_description",
+            "author_name",
+            "license_type",
         ]
         for dest in simple_dests:
             value = getattr(args, dest)
@@ -268,13 +289,13 @@ class TestStaticBatchMode:
         # Feed loop question: for each parsed requirement dict, send sub-fields
         assert q["dest"] == "name"  # first sub-question of requirements loop
         for req_dict in args.requirements:
-            q = gen.send(req_dict["name"])             # name
+            q = gen.send(req_dict["name"])  # name
             assert q["dest"] == "req_type"
-            q = gen.send(req_dict["req_type"])         # req_type
+            q = gen.send(req_dict["req_type"])  # req_type
             assert q["dest"] == "version"
-            q = gen.send(req_dict["version"])          # version
+            q = gen.send(req_dict["version"])  # version
             assert q["dest"] == "channel"
-            q = gen.send(req_dict["channel"])          # channel
+            q = gen.send(req_dict["channel"])  # channel
 
         # End the loop
         try:
@@ -290,12 +311,10 @@ class TestStaticBatchMode:
     def test_loop_question_argparse_type_callable(self) -> None:
         """Verify requirements loop question uses _requirements_batch_type."""
         provider = DefaultWizardProvider()
-        loop_q = next(
-            q for q in provider.get_questions() if q["dest"] == "requirements"
-        )
+        loop_q = next(q for q in provider.get_questions() if q["dest"] == "requirements")
         assert "questions" in loop_q
 
-        batch_type = cast(SingleWizardQuestion, loop_q)["argparse"].get("type")
+        batch_type = cast("SingleWizardQuestion", loop_q)["argparse"].get("type")
         assert batch_type is _requirements_batch_type
 
         # Valid conda JSON

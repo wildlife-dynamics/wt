@@ -2,8 +2,6 @@
 
 from typing import Annotated
 
-import pytest
-
 from pydantic import BaseModel, Field
 
 from wt_registry.jsonschema import jsonschema_from_task_func
@@ -145,11 +143,11 @@ class TestJsonSchemaFromTaskFunc:
         class Model(BaseModel):
             a: int = Field(default=42)
             b: int = Field(default=42)
-        
+
         def f(
             x: Annotated[Model | None, Field(default=Model())] = None,
         ) -> Model | None:
             return x
-        
+
         schema = jsonschema_from_task_func(f)
         assert schema["properties"]["x"]["default"] == {"a": 42, "b": 42}

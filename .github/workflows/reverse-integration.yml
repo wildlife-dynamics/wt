@@ -7,6 +7,10 @@ on:
     branches: ["**"]
     types: [labeled, synchronize]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.actor }}
+  cancel-in-progress: true
+
 jobs:
   check-trigger:
     runs-on: ubuntu-latest
@@ -86,6 +90,7 @@ jobs:
         run: uv run pytest src/test_recompile.py -v --manifest-item="${{ matrix.id }}"
 
       - name: Run reverse-integration tests (generated tests)
+        if: contains(matrix.tests, 'generated')
         run: uv run pytest src/test_generated.py -v --manifest-item="${{ matrix.id }}"
 
   # Summary job for branch protection

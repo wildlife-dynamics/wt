@@ -32,9 +32,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
-from collections.abc import AsyncIterator
 from pathlib import Path
-from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 from urllib.request import url2pathname
@@ -43,6 +41,10 @@ import httpx
 import stamina
 
 from .exceptions import PixiUnpackError
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+    from types import MappingProxyType
 
 # ---------------------------------------------------------------------------
 # Shared HTTP transfer configuration
@@ -61,7 +63,7 @@ TRANSFER_CONNECT_TIMEOUT = float(
     os.environ.get("WT_INVOKERS__TRANSFER_CONNECT_TIMEOUT", "30.0")
 )
 TRANSFER_TIMEOUT = float(os.environ.get("WT_INVOKERS__TRANSFER_TIMEOUT", "1800.0"))
-# Default chosen for the 100 MB – 2 GB typical transfer range against cloud
+# Default chosen for the 100 MB - 2 GB typical transfer range against cloud
 # object storage. 8 MiB keeps syscall overhead negligible (~128 reads/GB) and
 # comfortably covers the GCP inter-region bandwidth-delay-product so TCP
 # doesn't stall on app-layer drain lag.
@@ -130,8 +132,10 @@ def _archive_filter(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo:
 
 
 def archive_results_safely(results_dir: Path, dest: Path) -> None:
-    """Tar ``results_dir`` into ``dest`` (gzip), applying :func:`_archive_filter`
-    to every member; unsafe entries abort the archive.
+    """Tar ``results_dir`` into ``dest`` (gzip) with TarSlip-safe member filtering.
+
+    Applies :func:`_archive_filter` to every member; unsafe entries abort the
+    archive.
 
     See :func:`_archive_filter` for the threat model and the set of checks
     applied. Exfiltration of readable regular files is out of scope here and
@@ -184,7 +188,7 @@ class PixiUnpackMixin:
                 "environment_tar_url is required -- pass it as a kwarg to run()"
             )
 
-        Path(self.work_dir).mkdir(parents=True, exist_ok=True)
+        Path(self.work_dir).mkdir(parents=True, exist_ok=True)  # noqa: ASYNC240  # local mkdir; fast metadata op, no event-loop blocking risk
         tar_path = Path(self.work_dir) / "environment.tar"
 
         parsed = urlparse(environment_tar_url)
@@ -198,8 +202,8 @@ class PixiUnpackMixin:
             )
 
         try:
-            subprocess.run(
-                ["pixi-unpack", str(tar_path)],
+            subprocess.run(  # noqa: ASYNC221, S603  # one-shot setup subprocess; static argv
+                ["pixi-unpack", str(tar_path)],  # noqa: S607  # pixi-unpack resolved via PATH per docs
                 cwd=self.work_dir,
                 check=True,
                 capture_output=True,
@@ -234,12 +238,15 @@ async def _download_with_retries(url: str, dest: Path) -> None:
                     f"Server error {response.status_code} downloading {url}"
                 )
             response.raise_for_status()
-            with open(dest, "wb") as f:
+            f = await asyncio.to_thread(dest.open, "wb")
+            try:
                 async for chunk in response.aiter_bytes(chunk_size=TRANSFER_CHUNK_SIZE):
                     # Offload blocking file I/O so the event loop stays
                     # responsive (matters if a concurrent driver ever
                     # shares the loop with the download).
                     await asyncio.to_thread(f.write, chunk)
+            finally:
+                await asyncio.to_thread(f.close)
 
     await _do_download()
 
@@ -292,7 +299,7 @@ class UploadResultsArchiveMixin:
                 f"got: {results_url}"
             )
         results_dir = Path(url2pathname(parsed.path))
-        if not results_dir.exists():
+        if not results_dir.exists():  # noqa: ASYNC240  # local FS metadata; fast
             raise RuntimeError(f"Results directory does not exist: {results_dir}")
 
         # NamedTemporaryFile creates and opens the file; we only need the path,
@@ -314,7 +321,7 @@ class UploadResultsArchiveMixin:
                     f"Unsupported scheme for results_upload_url: {upload_parsed.scheme}"
                 )
         finally:
-            tar_path.unlink(missing_ok=True)
+            tar_path.unlink(missing_ok=True)  # noqa: ASYNC240  # local FS metadata; fast
 
 
 async def _upload_with_retries(tar_path: Path, url: str) -> None:
@@ -326,8 +333,7 @@ async def _upload_with_retries(tar_path: Path, url: str) -> None:
     from the file's stat size, so the server can validate the request
     without the chunked ``Transfer-Encoding`` fallback.
     """
-
-    size = tar_path.stat().st_size
+    size = tar_path.stat().st_size  # noqa: ASYNC240  # local FS metadata; fast
 
     @stamina.retry(
         on=(httpx.TransportError, RetryableHTTPError),
@@ -337,7 +343,7 @@ async def _upload_with_retries(tar_path: Path, url: str) -> None:
     )
     async def _do_upload() -> None:
         async def _chunks() -> AsyncIterator[bytes]:
-            with open(tar_path, "rb") as f:
+            with open(tar_path, "rb") as f:  # noqa: ASYNC230, PTH123  # open() inside generator; reads below are to_thread'd
                 while True:
                     # Offload the blocking read so the event loop can
                     # service other tasks while we wait on disk.

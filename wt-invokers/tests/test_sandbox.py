@@ -11,8 +11,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -20,6 +19,9 @@ from rattler import MatchSpec
 
 from wt_invokers.exceptions import InvocationTimeoutError
 from wt_invokers.sandbox import SandboxInvoker, _build_arg_parser, main
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_initialization_default_work_dir() -> None:
@@ -101,9 +103,11 @@ async def test_run_builds_expected_argv(tmp_path: Path) -> None:
     assert "my-workflow" in cmd
     assert "run" in cmd
     assert "--config-json" in cmd
-    assert "--execution-mode" in cmd and "sequential" in cmd
+    assert "--execution-mode" in cmd
+    assert "sequential" in cmd
     assert "--mock-io" in cmd
-    assert "--otel-exporter" in cmd and "http://localhost:4318" in cmd
+    assert "--otel-exporter" in cmd
+    assert "http://localhost:4318" in cmd
     assert kwargs["shell"] is False
     assert kwargs["cwd"] == str(tmp_path)
     # Inherit parent stdout/stderr — no PIPE that could deadlock wait().

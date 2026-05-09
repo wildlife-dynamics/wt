@@ -37,7 +37,7 @@ from .utils import yaml_to_json
 
 @dataclass
 class CloudBatchInvoker(AbstractInvoker):
-    """Invoker that runs workflows on Google Cloud Batch.
+    r"""Invoker that runs workflows on Google Cloud Batch.
 
     This invoker submits workflows to Google Cloud Batch for execution in
     containerized environments. It requires the google-cloud-batch package
@@ -167,8 +167,8 @@ class CloudBatchInvoker(AbstractInvoker):
         otel_exporter: str | None = None,
         otel_console_exporter_dst: str | None = None,
         extra_env: dict[str, str] | None = None,
-        lithops_config_text: str | None = None,
-        **kwargs: Any,
+        lithops_config_text: str | None = None,  # noqa: ARG002  # interface compatibility
+        **kwargs: Any,  # noqa: ANN401  # interface passthrough
     ) -> None:
         """Invoke the workflow with GCP Cloud Batch API.
 
@@ -243,7 +243,8 @@ class CloudBatchInvoker(AbstractInvoker):
         config_as_json = yaml_to_json(text=config_text)
 
         # Build command
-        cmd = self.entrypoint.split() + [
+        cmd = [
+            *self.entrypoint.split(),
             "run",
             "--config-json",
             config_as_json,
@@ -298,8 +299,8 @@ class CloudBatchInvoker(AbstractInvoker):
 
     async def _wait(
         self,
-        timeout: float | None = None,
-        error_msg: str | None = None,
+        timeout: float | None = None,  # noqa: ASYNC109, ARG002  # interface compatibility — Cloud Batch is non-waitable
+        error_msg: str | None = None,  # noqa: ARG002  # interface compatibility
     ) -> int:
         """Wait for the workflow to finish.
 
@@ -327,7 +328,11 @@ class CloudBatchInvoker(AbstractInvoker):
         return 0
 
     async def _create_container_job(
-        self, job_name: str, docker_image_uri: str, cmd: list[str], **kwargs: Any
+        self,
+        job_name: str,
+        docker_image_uri: str,
+        cmd: list[str],
+        **kwargs: Any,  # noqa: ANN401  # job-spec passthrough
     ) -> Job:
         """Run a containerized job on Cloud Batch.
 

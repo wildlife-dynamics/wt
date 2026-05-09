@@ -1,17 +1,25 @@
 """Tests for FastAPI application endpoints."""
 
+import base64
 import json
+import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import Request
 from fastapi.testclient import TestClient
 from rattler import MatchSpec
 
 from wt_runner.app import (
+    _convert,
+    _get_metadata_attribute,
+    _is_422,
     app,
+    extract_payload_from_pubsub_request,
     prepare_invoker_parameters,
     resolve_matchspec,
     resolve_results_url,
+    upload_error_to_gcs,
 )
 
 
@@ -71,7 +79,8 @@ def test_resolve_results_url_with_relative_path_raises():
 def test_prepare_invoker_parameters():
     """Test invoker parameter preparation from command payload."""
     pytest.importorskip("ecoscope_eda_core", reason="ecoscope_eda_core not installed")
-    from ecoscope_eda_core.messages.commands import RunWorkflowParams
+    # optional-dep presence test
+    from ecoscope_eda_core.messages.commands import RunWorkflowParams  # noqa: PLC0415
 
     payload = RunWorkflowParams(
         match_spec="test-workflow>=1.0",
@@ -102,7 +111,8 @@ def test_prepare_invoker_parameters():
 def test_prepare_invoker_parameters_with_async_mode():
     """Test invoker parameter preparation with async execution mode."""
     pytest.importorskip("ecoscope_eda_core", reason="ecoscope_eda_core not installed")
-    from ecoscope_eda_core.messages.commands import RunWorkflowParams
+    # optional-dep presence test
+    from ecoscope_eda_core.messages.commands import RunWorkflowParams  # noqa: PLC0415
 
     payload = RunWorkflowParams(
         match_spec="test-workflow>=1.0",
@@ -127,11 +137,6 @@ def test_prepare_invoker_parameters_with_async_mode():
 async def test_extract_payload_from_pubsub_request():
     """Test payload extraction from Pub/Sub request."""
     pytest.importorskip("ecoscope_eda_core", reason="ecoscope_eda_core not installed")
-    import base64
-
-    from fastapi import Request
-
-    from wt_runner.app import extract_payload_from_pubsub_request
 
     # Create mock request with Pub/Sub message format
     payload_data = {
@@ -165,10 +170,6 @@ async def test_extract_payload_from_pubsub_request():
 @pytest.mark.asyncio
 async def test_upload_error_to_gcs():
     """Test error upload to GCS."""
-    import sys
-
-    from wt_runner.app import upload_error_to_gcs
-
     # Get the actual module from sys.modules to avoid namespace collision
     # between wt_runner.app (module) and wt_runner.app (FastAPI instance
     # imported in __init__.py)
@@ -193,8 +194,6 @@ async def test_upload_error_to_gcs():
 @pytest.mark.asyncio
 async def test_get_metadata_attribute_success():
     """Test successful metadata attribute retrieval."""
-    from wt_runner.app import _get_metadata_attribute
-
     mock_invoker = AsyncMock()
     mock_invoker.check_output = AsyncMock(return_value='{"schema": "data"}')
 
@@ -207,8 +206,6 @@ async def test_get_metadata_attribute_success():
 @pytest.mark.asyncio
 async def test_get_metadata_attribute_no_output():
     """Test metadata attribute retrieval with no output raises."""
-    from wt_runner.app import _get_metadata_attribute
-
     mock_invoker = AsyncMock()
     mock_invoker.check_output = AsyncMock(return_value=None)
 
@@ -219,8 +216,6 @@ async def test_get_metadata_attribute_no_output():
 @pytest.mark.asyncio
 async def test_get_metadata_attribute_invalid_json():
     """Test metadata attribute retrieval with invalid JSON raises."""
-    from wt_runner.app import _get_metadata_attribute
-
     mock_invoker = AsyncMock()
     mock_invoker.check_output = AsyncMock(return_value="not json")
 
@@ -267,8 +262,6 @@ async def test_convert_validation_error_envelope():
 @pytest.mark.asyncio
 async def test_convert_no_output():
     """Test conversion with no output raises."""
-    from wt_runner.app import _convert
-
     mock_invoker = AsyncMock()
     mock_invoker.check_output = AsyncMock(return_value=None)
 
@@ -279,8 +272,6 @@ async def test_convert_no_output():
 @pytest.mark.asyncio
 async def test_convert_invalid_json():
     """Test conversion with invalid JSON output raises."""
-    from wt_runner.app import _convert
-
     mock_invoker = AsyncMock()
     mock_invoker.check_output = AsyncMock(return_value="not json")
 
