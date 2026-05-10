@@ -926,12 +926,16 @@ class DagCompiler(BaseModel):
         params_schema_flat = self.get_params_jsonschema(flat=True)
         params_schema_hierarchical = self.get_params_jsonschema(flat=False)
 
-        # Apply RJSF overrides only to hierarchical schema (rjsf.json),
-        # not to flat schema (params.json), matching legacy behavior.
+        # Hierarchical schema gets the full override set; flat schema gets only
+        # the $defs subset so it remains a valid JSON Schema when a task
+        # contributes a placeholder (e.g. `oneOf: []`) that is filled by
+        # rjsf-overrides. properties/uiSchema overrides are written against the
+        # hierarchical layout and would mis-target the flat schema.
         if self.spec.rjsf_overrides:
             params_schema_hierarchical = self.spec.rjsf_overrides.apply_overrides(
                 params_schema_hierarchical
             )
+            params_schema_flat = self.spec.rjsf_overrides.apply_defs_only(params_schema_flat)
 
         def _mdump(j: ReactJSONSchemaFormConfiguration) -> dict[str, Any]:
             result: dict[str, Any] = j.model_dump(by_alias=True, exclude_none=True)
