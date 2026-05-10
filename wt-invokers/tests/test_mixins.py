@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 import subprocess
 import tarfile
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -43,7 +44,7 @@ def _fast_stamina() -> None:
 class _PixiUnpackOnly(PixiUnpackMixin, AbstractInvoker):
     """Minimal invoker composing only PixiUnpackMixin for isolated tests."""
 
-    work_dir: str = "/tmp/work"
+    work_dir: str = ""  # always overridden by _make_pixi via tmp_path
 
     async def is_installed(self) -> bool:
         return True
@@ -55,7 +56,9 @@ class _PixiUnpackOnly(PixiUnpackMixin, AbstractInvoker):
         pass
 
     async def _wait(
-        self, timeout: float | None = None, error_msg: str | None = None
+        self,
+        timeout: float | None = None,  # noqa: ASYNC109  # mirrors abstract _wait signature under test
+        error_msg: str | None = None,
     ) -> int:
         return 0
 
@@ -68,7 +71,7 @@ class _PixiUnpackOnly(PixiUnpackMixin, AbstractInvoker):
 class _UploadOnly(UploadResultsArchiveMixin, AbstractInvoker):
     """Minimal invoker composing only UploadResultsArchiveMixin."""
 
-    work_dir: str = "/tmp/work"
+    work_dir: str = ""  # always overridden by _make_upload via tmp_path
 
     async def is_installed(self) -> bool:
         return True
@@ -80,7 +83,9 @@ class _UploadOnly(UploadResultsArchiveMixin, AbstractInvoker):
         pass
 
     async def _wait(
-        self, timeout: float | None = None, error_msg: str | None = None
+        self,
+        timeout: float | None = None,  # noqa: ASYNC109  # mirrors abstract _wait signature under test
+        error_msg: str | None = None,
     ) -> int:
         return 0
 
@@ -125,25 +130,31 @@ def test_transfer_config_defaults() -> None:
 @pytest.mark.asyncio
 async def test_pre_run_raises_if_pixi_unpack_missing(tmp_path: Path) -> None:
     inv = _make_pixi(tmp_path, environment_tar_url="file:///doesnt-matter")
-    with patch("wt_invokers.mixins.shutil.which", return_value=None):
-        with pytest.raises(RuntimeError, match="pixi-unpack not found"):
-            await inv._pre_run()
+    with (
+        patch("wt_invokers.mixins.shutil.which", return_value=None),
+        pytest.raises(RuntimeError, match="pixi-unpack not found"),
+    ):
+        await inv._pre_run()
 
 
 @pytest.mark.asyncio
 async def test_pre_run_missing_env_url_raises(tmp_path: Path) -> None:
     inv = _make_pixi(tmp_path)
-    with patch("wt_invokers.mixins.shutil.which", return_value="/usr/bin/pixi-unpack"):
-        with pytest.raises(ValueError, match="environment_tar_url is required"):
-            await inv._pre_run()
+    with (
+        patch("wt_invokers.mixins.shutil.which", return_value="/usr/bin/pixi-unpack"),
+        pytest.raises(ValueError, match="environment_tar_url is required"),
+    ):
+        await inv._pre_run()
 
 
 @pytest.mark.asyncio
 async def test_pre_run_unsupported_scheme(tmp_path: Path) -> None:
     inv = _make_pixi(tmp_path, environment_tar_url="s3://bucket/env.tar")
-    with patch("wt_invokers.mixins.shutil.which", return_value="/usr/bin/pixi-unpack"):
-        with pytest.raises(ValueError, match="Unsupported scheme"):
-            await inv._pre_run()
+    with (
+        patch("wt_invokers.mixins.shutil.which", return_value="/usr/bin/pixi-unpack"),
+        pytest.raises(ValueError, match="Unsupported scheme"),
+    ):
+        await inv._pre_run()
 
 
 @pytest.mark.asyncio
@@ -195,9 +206,9 @@ async def test_pre_run_pixi_unpack_failure_wraps_in_domain_exception(
     with (
         patch("wt_invokers.mixins.shutil.which", return_value="/usr/bin/pixi-unpack"),
         patch("wt_invokers.mixins.subprocess.run", side_effect=underlying),
+        pytest.raises(PixiUnpackError) as excinfo,
     ):
-        with pytest.raises(PixiUnpackError) as excinfo:
-            await inv._pre_run()
+        await inv._pre_run()
 
     assert excinfo.value.returncode == 2
     assert excinfo.value.stdout == b"out"
@@ -286,9 +297,9 @@ async def test_pre_run_download_does_not_retry_on_4xx(tmp_path: Path) -> None:
     with (
         patch("wt_invokers.mixins.shutil.which", return_value="/usr/bin/pixi-unpack"),
         patch("wt_invokers.mixins.httpx.AsyncClient", FakeClient),
+        pytest.raises(httpx.HTTPStatusError),
     ):
-        with pytest.raises(httpx.HTTPStatusError):
-            await inv._pre_run()
+        await inv._pre_run()
 
 
 # ---------------------------------------------------------------------------
@@ -462,9 +473,11 @@ async def test_post_run_upload_4xx_does_not_retry(tmp_path: Path) -> None:
         results_url=f"file://{results_dir}",
         results_upload_url="https://example.com/out",
     )
-    with patch("wt_invokers.mixins.httpx.AsyncClient", FakeClient):
-        with pytest.raises(httpx.HTTPStatusError):
-            await inv._post_run()
+    with (
+        patch("wt_invokers.mixins.httpx.AsyncClient", FakeClient),
+        pytest.raises(httpx.HTTPStatusError),
+    ):
+        await inv._post_run()
     assert FakeClient.call_count == 1  # no retry on 4xx
 
 
@@ -504,13 +517,13 @@ async def test_post_run_cleans_up_temp_tarball_on_error(tmp_path: Path) -> None:
     with (
         patch("wt_invokers.mixins.httpx.AsyncClient", Boom),
         patch("wt_invokers.mixins.tempfile.NamedTemporaryFile", tracking_ntf),
+        pytest.raises(httpx.ConnectError),
     ):
-        with pytest.raises(httpx.ConnectError):
-            await inv._post_run()
+        await inv._post_run()
 
     assert created, "temp file should have been created"
     for path in created:
-        assert not Path(path).exists(), f"temp file {path} should be cleaned up"
+        assert not Path(path).exists(), f"temp file {path} should be cleaned up"  # noqa: ASYNC240  # local FS metadata; fast
 
 
 # ---------------------------------------------------------------------------
@@ -850,8 +863,6 @@ async def test_upload_streams_content_with_headers(tmp_path: Path) -> None:
     ``Content-Length`` headers must still be set (GCS signed URLs require
     ``Content-Length``).
     """
-    from collections.abc import AsyncIterator
-
     results_dir = tmp_path / "results"
     results_dir.mkdir()
     (results_dir / "r.txt").write_text("x")
@@ -920,7 +931,7 @@ async def test_download_retries_on_transport_error(tmp_path: Path) -> None:
                 raise httpx.ConnectError("refused")
 
             class _Ok:
-                async def __aenter__(self_inner) -> httpx.Response:
+                async def __aenter__(self) -> httpx.Response:
                     r = MagicMock()
                     r.status_code = 200
                     r.raise_for_status = MagicMock()
@@ -931,7 +942,7 @@ async def test_download_retries_on_transport_error(tmp_path: Path) -> None:
                     r.aiter_bytes = _iter
                     return r
 
-                async def __aexit__(self_inner, *exc: Any) -> None:
+                async def __aexit__(self, *exc: Any) -> None:
                     return None
 
             return _Ok()
@@ -962,9 +973,11 @@ async def test_download_gives_up_after_max_attempts(tmp_path: Path) -> None:
             raise httpx.ConnectError("refused")
 
     dest = tmp_path / "env.tar"
-    with patch("wt_invokers.mixins.httpx.AsyncClient", AlwaysFail):
-        with pytest.raises(httpx.ConnectError):
-            await mixins._download_with_retries("https://example.com/env.tar", dest)
+    with (
+        patch("wt_invokers.mixins.httpx.AsyncClient", AlwaysFail),
+        pytest.raises(httpx.ConnectError),
+    ):
+        await mixins._download_with_retries("https://example.com/env.tar", dest)
     # fast_stamina sets attempts=3
     assert calls["n"] == 3
 
@@ -1020,8 +1033,10 @@ async def test_upload_gives_up_after_max_attempts(tmp_path: Path) -> None:
             calls["n"] += 1
             raise httpx.ConnectError("refused")
 
-    with patch("wt_invokers.mixins.httpx.AsyncClient", AlwaysFail):
-        with pytest.raises(httpx.ConnectError):
-            await mixins._upload_with_retries(payload, "https://example.com/out")
+    with (
+        patch("wt_invokers.mixins.httpx.AsyncClient", AlwaysFail),
+        pytest.raises(httpx.ConnectError),
+    ):
+        await mixins._upload_with_retries(payload, "https://example.com/out")
     # fast_stamina sets attempts=3
     assert calls["n"] == 3

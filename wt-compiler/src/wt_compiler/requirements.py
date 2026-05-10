@@ -17,7 +17,7 @@ CUSTOM_LOCAL_CHANNEL = Channel(
     "ecoscope-workflows-custom/release/artifacts",
     ChannelConfig(channel_alias="file:///tmp/"),
 )
-_wt_channel_path = PurePosixPath(os.environ.get("WT_CONDA_CHANNEL") or "/tmp/wt-conda-channel")
+_wt_channel_path = PurePosixPath(os.environ.get("WT_CONDA_CHANNEL") or "/tmp/wt-conda-channel")  # noqa: S108  # default fallback path; overridden by env var in deployments
 WT_LOCAL_CHANNEL = Channel(
     _wt_channel_path.name,
     ChannelConfig(channel_alias=f"file://{_wt_channel_path.parent}/"),
@@ -73,7 +73,7 @@ def _serialize_channel(value: Channel | str) -> str:
         WT_LOCAL_CHANNEL,
     ]:
         return value.base_url
-    assert value.name is not None, f"Expected name to be set for {value}"
+    assert value.name is not None, f"Expected name to be set for {value}"  # noqa: S101  # type narrowing for mypy
     return value.name
 
 
@@ -174,8 +174,8 @@ def _namelessmatchspec_from_dict(
         >>> nms_from_channel_name.channel.base_url
         'https://repo.prefix.dev/ecoscope-workflows/'
     """
-    assert "version" in value, f"Expected 'version' key in {value}"
-    assert "channel" in value, f"Expected 'channel' key in {value}"
+    assert "version" in value, f"Expected 'version' key in {value}"  # noqa: S101  # input shape invariant
+    assert "channel" in value, f"Expected 'channel' key in {value}"  # noqa: S101  # input shape invariant
     if not urlparse(value["channel"]).scheme:
         _base_url = _channel_from_str(value["channel"]).base_url
     else:
@@ -234,6 +234,12 @@ def _serialize_namelessmatchspec(
         >>> serialized
         {'version': '>=0.1.0'}
 
+        Wildcard ``"*"`` round-trips to the literal ``"*"`` rather than
+        ``"None"`` (``NamelessMatchSpec("*").version`` is ``None``):
+
+        >>> _serialize_namelessmatchspec(NamelessMatchSpec("*"))
+        {'version': '*'}
+
         With channel:
 
         >>> value = {
@@ -246,13 +252,13 @@ def _serialize_namelessmatchspec(
         {'version': '>=0.1.0', 'channel': 'https://repo.prefix.dev/ecoscope-workflows/'}
     """
     channel_base_url = value.channel.base_url if value.channel else None
-    version_dict = {"version": str(value.version)}
+    version_dict = {"version": "*" if value.version is None else str(value.version)}
     match channel_base_url:
         case None:
-            return cast(SerializedNamelessMatchSpecDictMinimal, version_dict)
+            return cast("SerializedNamelessMatchSpecDictMinimal", version_dict)
         case str():
             return cast(
-                SerializedNamelessMatchSpecDict,
+                "SerializedNamelessMatchSpecDict",
                 version_dict | {"channel": channel_base_url},
             )
         case _:

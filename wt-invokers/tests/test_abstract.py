@@ -26,7 +26,7 @@ class ConcreteInvoker(AbstractInvoker):
         return True
 
     async def install(self) -> None:
-        pass
+        """Install the workflow."""
 
     async def _run(
         self,
@@ -41,11 +41,11 @@ class ConcreteInvoker(AbstractInvoker):
         lithops_config_text: str | None = None,
         **kwargs: Any,
     ) -> None:
-        pass
+        """Run the workflow."""
 
     async def _wait(
         self,
-        timeout: float | None = None,
+        timeout: float | None = None,  # noqa: ASYNC109  # mirrors abstract _wait signature under test
         error_msg: str | None = None,
     ) -> int:
         return 0
@@ -281,7 +281,9 @@ async def test_non_waitable_reruns_without_wait() -> None:
             self.run_state["last_id"] = kwargs["workflow_run_id"]
 
         async def _wait(
-            self, timeout: float | None = None, error_msg: str | None = None
+            self,
+            timeout: float | None = None,  # noqa: ASYNC109  # mirrors abstract _wait signature under test
+            error_msg: str | None = None,
         ) -> int:
             return 0
 
@@ -320,7 +322,9 @@ async def test_hooks_run_in_order() -> None:
             calls.append("run")
 
         async def _wait(
-            self, timeout: float | None = None, error_msg: str | None = None
+            self,
+            timeout: float | None = None,  # noqa: ASYNC109  # mirrors abstract _wait signature under test
+            error_msg: str | None = None,
         ) -> int:
             calls.append("wait")
             return 0
@@ -372,7 +376,9 @@ async def test_run_failure_resets_state() -> None:
             raise ValueError("run failed")
 
         async def _wait(
-            self, timeout: float | None = None, error_msg: str | None = None
+            self,
+            timeout: float | None = None,  # noqa: ASYNC109  # mirrors abstract _wait signature under test
+            error_msg: str | None = None,
         ) -> int:
             return 0
 
@@ -406,7 +412,9 @@ async def test_post_run_runs_on_non_zero_exit() -> None:
             pass
 
         async def _wait(
-            self, timeout: float | None = None, error_msg: str | None = None
+            self,
+            timeout: float | None = None,  # noqa: ASYNC109  # mirrors abstract _wait signature under test
+            error_msg: str | None = None,
         ) -> int:
             return 42
 
@@ -442,7 +450,9 @@ async def test_post_run_runs_on_wait_exception() -> None:
             pass
 
         async def _wait(
-            self, timeout: float | None = None, error_msg: str | None = None
+            self,
+            timeout: float | None = None,  # noqa: ASYNC109  # mirrors abstract _wait signature under test
+            error_msg: str | None = None,
         ) -> int:
             raise RuntimeError("boom")
 

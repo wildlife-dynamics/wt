@@ -50,6 +50,7 @@ class CloudRunJobsSandboxInvoker(AbstractInvoker):
     """
 
     def __post_init__(self) -> None:
+        """Fail fast if the gcp extra is not installed."""
         if not CLOUD_RUN_AVAILABLE:
             raise ImportError(
                 "Google Cloud Run dependencies not available. "
@@ -57,21 +58,24 @@ class CloudRunJobsSandboxInvoker(AbstractInvoker):
             )
 
     async def is_installed(self) -> bool:
+        """Return ``True``: this proxy invoker has nothing to install."""
         return True
 
     async def install(self) -> None:
+        """Raise — dynamic installation of workflows is not yet supported."""
         raise NotImplementedError(
             "Dynamic installation of workflows is not yet supported."
         )
 
     @property
     def is_waitable(self) -> bool:
+        """Return ``False``: Cloud Run Job executions run asynchronously."""
         return False
 
     async def _wait(
         self,
-        timeout: float | None = None,
-        error_msg: str | None = None,
+        timeout: float | None = None,  # noqa: ASYNC109, ARG002  # interface compatibility — Cloud Run Job is non-waitable
+        error_msg: str | None = None,  # noqa: ARG002  # interface compatibility
     ) -> int:
         return 0
 
@@ -100,7 +104,7 @@ class CloudRunJobsSandboxInvoker(AbstractInvoker):
         otel_exporter: str | None = None,
         otel_console_exporter_dst: str | None = None,
         extra_env: dict[str, str] | None = None,
-        lithops_config_text: str | None = None,
+        lithops_config_text: str | None = None,  # noqa: ARG002  # interface compatibility — proxy invoker doesn't run lithops
         *,
         environment_tar_url: str,
         results_upload_url: str,
@@ -111,6 +115,17 @@ class CloudRunJobsSandboxInvoker(AbstractInvoker):
         """Trigger a new execution of the pre-deployed Cloud Run Job.
 
         Args:
+            workflow_run_id: Unique identifier for this workflow run.
+            config_text: YAML workflow configuration; converted to JSON before
+                being passed to the sandbox CLI inside the container.
+            results_url: Destination URL the workflow writes results to.
+            execution_mode: Execution mode forwarded to the sandbox CLI.
+            mock_io: Whether to enable mocked I/O for the workflow.
+            otel_exporter: Optional OpenTelemetry exporter target.
+            otel_console_exporter_dst: Optional console-exporter destination.
+            extra_env: Extra environment variables to set in the container.
+            lithops_config_text: Unused; accepted for interface compatibility
+                with the abstract :meth:`_run` signature.
             environment_tar_url: Signed URL of the pixi-pack environment tarball.
             results_upload_url: Signed URL where the results archive should be
                 uploaded after the workflow finishes.

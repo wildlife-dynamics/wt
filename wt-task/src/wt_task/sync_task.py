@@ -5,10 +5,10 @@ This module provides the SyncTask class for synchronous task execution.
 
 from __future__ import annotations
 
+import functools
 import inspect
-from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, cast, overload
+from typing import TYPE_CHECKING, Any, cast, overload
 
 try:
     from opentelemetry import trace
@@ -21,6 +21,9 @@ from .base import K, P, R, V, _Task
 from .executors import SyncExecutor, mapvalues_wrapper
 from .executors.python import PythonExecutor
 from .skip import SkipSentinel
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
 
 # Helper functions
 
@@ -67,11 +70,10 @@ def _create_kwargs_iterable(
     argvalues_list: list[tuple[Any, ...]] = (
         [(v,) for v in argvalues]
         if not isinstance(argvalues[0], tuple)
-        else cast(list[tuple[Any, ...]], argvalues)
+        else cast("list[tuple[Any, ...]]", argvalues)
     )
-    assert all(len(v) == len(argnames) for v in argvalues_list), (
-        "All values in `argvalues` must have the same length as `argnames`."
-    )
+    if not all(len(v) == len(argnames) for v in argvalues_list):
+        raise ValueError("All values in `argvalues` must have the same length as `argnames`.")
     return [
         defaults | {argnames[i]: argvalues_list[j][i] for i in range(len(argnames))}
         for j in range(len(argvalues_list))
@@ -105,7 +107,7 @@ def _create_mapvalues_kwargs_iterable(
     kwargs_iterable: list[tuple[K, dict[str, Any]]] = []
     for argvalue in argvalues:
         key = argvalue[0]
-        values = [argvalue[1]] if len(argnames) == 1 else cast(list[Any], argvalue[1])
+        values = [argvalue[1]] if len(argnames) == 1 else cast("list[Any]", argvalue[1])
 
         if len(values) != len(argnames):
             raise ValueError(
@@ -128,8 +130,6 @@ def _wrap_for_mapvalues(
     Returns:
         Wrapped function that accepts (key, kwargs) and returns (key, result)
     """
-    import functools
-
     wrapper: mapvalues_wrapper[Any, dict[str, Any], R] = mapvalues_wrapper(func)
     functools.update_wrapper(wrapper, func)
     return wrapper

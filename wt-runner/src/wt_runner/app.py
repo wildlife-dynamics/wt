@@ -339,7 +339,7 @@ async def run(
     lithops_config: LithopsConfig | None = None,
     invoker: AbstractInvoker = Depends(resolve_invoker),
     workflow_run_id: str = Query("", description="Unique ID for the workflow run."),
-    timeout: float | None = Query(
+    timeout: float | None = Query(  # noqa: ASYNC109  # FastAPI request param, not asyncio.timeout
         None,
         description="Timeout for the workflow in seconds. Defaults to null; i.e., no timeout.",
     ),
@@ -394,7 +394,7 @@ async def run(
         yaml.dump(params, config_text_stream)
         lithops_kws = {}
         if execution_mode == "async":
-            lithops_config = LithopsConfig() if not lithops_config else lithops_config
+            lithops_config = lithops_config or LithopsConfig()
             lithops_text_stream = StringIO()
             yaml.dump(lithops_config.model_dump(), lithops_text_stream)
             lithops_kws = {"lithops_config_text": lithops_text_stream.getvalue()}
@@ -417,7 +417,7 @@ async def run(
             else:
                 result = {"result": {}, "error": None, "trace": None}
                 return JSONResponse(content=result, status_code=status.HTTP_202_ACCEPTED)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001  # surface any error as JSON to the API caller
             trace = traceback.format_exc()
             result = {"error": str(e), "trace": trace}
 
@@ -465,7 +465,7 @@ async def run_from_pubsub(
         # since it doesn't make sense to let GCP retry those
         trace = traceback.format_exc()
         error_msg = f"Error extracting data from PubSub message: {type(e).__name__}: {e}"
-        logging.exception(error_msg)
+        logging.exception(error_msg)  # noqa: LOG015  # routed through root logger by design
         return {
             "status": "error",
             "error": error_msg,
@@ -510,7 +510,7 @@ async def run_from_pubsub(
                 exit_code = await invoker.wait(timeout=timeout, error_msg=TIMEOUT_EXPIRED_ERROR_MSG)
                 if exit_code != 0:
                     raise RuntimeError(f"Workflow invoker failed with exit code {exit_code}.")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001  # surface any error to PubSub for retry/dead-letter handling
             trace = traceback.format_exc()
             error = {"error": f"{type(e).__name__}: {e}", "trace": trace}
             await upload_error_to_gcs(
@@ -729,7 +729,7 @@ async def validate_formdata(
     if _is_422(outjson):
         raise HTTPException(status_code=422, detail=outjson)
     # At this point, outjson is not a 422 error list, so it's a dict
-    assert isinstance(outjson, dict)
+    assert isinstance(outjson, dict)  # noqa: S101  # type narrowing for mypy after the 422 check
     return outjson
 
 
@@ -758,5 +758,5 @@ async def generate_nested_params(
     if _is_422(outjson):
         raise HTTPException(status_code=422, detail=outjson)
     # At this point, outjson is not a 422 error list, so it's a dict
-    assert isinstance(outjson, dict)
+    assert isinstance(outjson, dict)  # noqa: S101  # type narrowing for mypy after the 422 check
     return outjson

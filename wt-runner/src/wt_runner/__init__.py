@@ -24,13 +24,13 @@ except ImportError:
     __version_tuple__ = (0, 0, 0)
 
 __all__ = [
-    "app",
     "Case",
     "CaseRunner",
-    "configure_tracer",
-    "attach_context",
-    "build_context_headers",
     "TraceContextHeaders",
     "__version__",
     "__version_tuple__",
+    "app",
+    "attach_context",
+    "build_context_headers",
+    "configure_tracer",
 ]

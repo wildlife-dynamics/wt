@@ -1,43 +1,125 @@
 # Reverse Integration Test Manifest
-# Lists downstream repos to test against the latest wt-compiler
+# Lists downstream repos to test against the latest wt-compiler.
+#
+# Each repo entry merges in one of two shared blocks via YAML merge keys
+# (``<<: *anchor``) and only declares its own identifying fields
+# (``url``, ``ref``, ``spec_path``, ``generated_path``). The two groups:
+#
+#   * ``*compile_only`` — runs ``test_recompile.py`` against a strict
+#     conditional allowlist for ``pixi.toml`` (only the regex region
+#     matching ``version = "..."`` may differ).
+#   * ``*env_overrides`` — passes the ``env_overrides`` compile flag, which
+#     causes ``wt-compiler`` to inject path-source declarations for every
+#     ``wt-*`` package. The resulting ``pixi.toml`` differs in ways too
+#     large to launder through the per-line variance check, so those items
+#     allow ``pixi.toml`` to change at the file level and additionally
+#     run ``test_generated.py``.
+#
+# The ``:env-overrides`` suffix on the manifest item ID is appended
+# automatically by ``RepoConfig.id`` whenever ``compile_flags.env_overrides``
+# is set.
+#
+# Top-level keys other than ``repos`` (the two anchor definitions below)
+# are inert: ``conftest.get_repo_configs`` only iterates ``manifest["repos"]``.
+
+# Compile-only: stock wt-compiler invocation. ``pixi.toml`` is held to a
+# single-regex allowlist so any unexpected drift fails the test.
+_compile_only: &compile_only
+  compile_flags:
+    pkg_name_prefix: ecoscope-workflows
+    results_env_var: ECOSCOPE_WORKFLOWS_RESULTS
+    variant: gcp
+    # diff vs *env_overrides: no ``env_overrides`` key
+  tests: [recompile]  # diff vs *env_overrides: no ``generated``
+  diff_allowlist:
+    - README.md
+    - pixi.lock
+    - graph.png
+    - file: VERSION.yaml
+      allowed_variance:
+        - 'MIN: \d+'
+    - file: Dockerfile
+      allowed_variance:
+        - 'PIXI_VERSION=\S+'
+    # diff vs *env_overrides: ``pixi.toml`` is conditional (single regex),
+    # not an unconditional file-level allow.
+    - file: pixi.toml
+      allowed_variance:
+        - '(?<=version = ")[^"]*'
+
+# Env-overrides: exercises wt-compiler's path-source injection codepath.
+# The injected blocks change ``pixi.toml`` in ways too large to launder
+# through line-by-line variance, so ``pixi.toml`` is allowed at the file
+# level, and the generated test suite additionally runs.
+_env_overrides: &env_overrides
+  compile_flags:
+    pkg_name_prefix: ecoscope-workflows
+    results_env_var: ECOSCOPE_WORKFLOWS_RESULTS
+    variant: gcp
+    env_overrides: wt-compiler-env-overrides.toml  # diff vs *compile_only
+  tests: [recompile, generated]  # diff vs *compile_only: adds ``generated``
+  diff_allowlist:
+    - README.md
+    - pixi.lock
+    - graph.png
+    # diff vs *compile_only: ``pixi.toml`` is unconditional (file-level allow),
+    # not regex-restricted.
+    - pixi.toml
+    - file: VERSION.yaml
+      allowed_variance:
+        - 'MIN: \d+'
+    - file: Dockerfile
+      allowed_variance:
+        - 'PIXI_VERSION=\S+'
 
 repos:
-#  - url: https://github.com/ecoscope-platform-workflows-releases/event-details
-#    ref: main  # Default: main branch
-#    spec_path: spec.yaml  # Default: spec.yaml at repo root
-#    generated_path: ecoscope-workflows-event-details-workflow
-#    compile_flags:
-#      pkg_name_prefix: ecoscope-workflows
-#      results_env_var: ECOSCOPE_WORKFLOWS_RESULTS
-#      variant: gcp
+  # - url: https://github.com/ecoscope-platform-workflows-releases/event-details
+  #   ref: main
+  #   spec_path: spec.yaml
+  #   generated_path: ecoscope-workflows-event-details-workflow
+  #   <<: *compile_only
 
   - url: https://github.com/ecoscope-platform-workflows-releases/events
-#   ref: main  # Default: main branch
-    ref: add-pyproject-toml
-    spec_path: spec.yaml  # Default: spec.yaml at repo root
+    ref: add-pyproject-toml  # FIXME: revert to events@main before merge to wt@main
+    spec_path: spec.yaml
     generated_path: ecoscope-workflows-events-workflow
-    compile_flags:
-      pkg_name_prefix: ecoscope-workflows
-      results_env_var: ECOSCOPE_WORKFLOWS_RESULTS
-      variant: gcp
+    <<: *compile_only
 
-#  - url: https://github.com/ecoscope-platform-workflows-releases/patrols
-#    ref: main  # Default: main branch
-#    spec_path: spec.yaml  # Default: spec.yaml at repo root
-#    generated_path: ecoscope-workflows-patrols-workflow
-#    compile_flags:
-#      pkg_name_prefix: ecoscope-workflows
-#      results_env_var: ECOSCOPE_WORKFLOWS_RESULTS
-#      variant: gcp
+  # - url: https://github.com/ecoscope-platform-workflows-releases/patrols
+  #   ref: main
+  #   spec_path: spec.yaml
+  #   generated_path: ecoscope-workflows-patrols-workflow
+  #   <<: *compile_only
 
-#  - url: https://github.com/ecoscope-platform-workflows-releases/subject-tracking
-#    ref: main  # Default: main branch
-#    spec_path: spec.yaml  # Default: spec.yaml at repo root
-#    generated_path: ecoscope-workflows-subject-tracking-workflow
-#    compile_flags:
-#      pkg_name_prefix: ecoscope-workflows
-#      results_env_var: ECOSCOPE_WORKFLOWS_RESULTS
-#      variant: gcp
+  # - url: https://github.com/ecoscope-platform-workflows-releases/subject-tracking
+  #   ref: main
+  #   spec_path: spec.yaml
+  #   generated_path: ecoscope-workflows-subject-tracking-workflow
+  #   <<: *compile_only
+
+  # - url: https://github.com/ecoscope-platform-workflows-releases/event-details
+  #   ref: main
+  #   spec_path: spec.yaml
+  #   generated_path: ecoscope-workflows-event-details-workflow
+  #   <<: *env_overrides
+
+  - url: https://github.com/ecoscope-platform-workflows-releases/events
+    ref: add-pyproject-toml  # FIXME: revert to events@main before merge to wt@main
+    spec_path: spec.yaml
+    generated_path: ecoscope-workflows-events-workflow
+    <<: *env_overrides
+
+  # - url: https://github.com/ecoscope-platform-workflows-releases/patrols
+  #   ref: main
+  #   spec_path: spec.yaml
+  #   generated_path: ecoscope-workflows-patrols-workflow
+  #   <<: *env_overrides
+
+  # - url: https://github.com/ecoscope-platform-workflows-releases/subject-tracking
+  #   ref: main
+  #   spec_path: spec.yaml
+  #   generated_path: ecoscope-workflows-subject-tracking-workflow
+  #   <<: *env_overrides
 
   # Example with custom ref and spec path:
   # - url: https://github.com/example/custom-workflow
@@ -48,6 +130,9 @@ repos:
   #     pkg_name_prefix: my-prefix
   #     results_env_var: MY_RESULTS
   #     variant: gcp
+  #   tests: [recompile]
+  #   diff_allowlist:
+  #     - README.md
 
   # Example with multiple specs in a monorepo:
   # - url: https://github.com/example/workflows-monorepo
@@ -56,30 +141,6 @@ repos:
   #       generated_path: workflows/etl/wf-etl-workflow
   #       compile_flags:
   #         pkg_name_prefix: wf
-  #     - spec_path: workflows/reports/spec.yaml
-  #       generated_path: workflows/reports/wf-reports-workflow
-
-# Files allowed to have diffs after recompilation.
-# Simple string entries allow any change. Conditional entries with
-# allowed_variance only permit changes in regions matching the patterns.
-# Use single-quoted strings for regex patterns (no escaping needed).
-# See README.md for details.
-diff_allowlist:
-  - README.md
-  - pixi.lock
-  - graph.png
-
-  # Only the MIN version field may change
-  - file: VERSION.yaml
-    allowed_variance:
-      - 'MIN: \d+'
-
-  # Only the PIXI_VERSION value may change
-  - file: Dockerfile
-    allowed_variance:
-      - 'PIXI_VERSION=\S+'
-
-  # Only version specifiers may change
-  - file: pixi.toml
-    allowed_variance:
-      - '(?<=version = ")[^"]*'
+  #       tests: [recompile]
+  #       diff_allowlist:
+  #         - README.md

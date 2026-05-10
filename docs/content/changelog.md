@@ -1,3 +1,1 @@
 # Changelog
-
-*Content coming soon.*

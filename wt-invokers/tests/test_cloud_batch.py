@@ -7,10 +7,14 @@ requiring actual GCP credentials or making real API calls.
 from __future__ import annotations
 
 import os
+import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from rattler import MatchSpec
+
+import wt_invokers.cloud_batch
+from wt_invokers.cloud_batch import CloudBatchInvoker
 
 
 @pytest.fixture
@@ -32,14 +36,9 @@ def mock_gcp_modules():
         mock_batch.TaskSpec = MagicMock()
 
         # Set GCP_AVAILABLE to True in the module
-        import sys
-
         sys.modules["google"] = MagicMock()
         sys.modules["google.cloud"] = MagicMock()
         sys.modules["google.cloud.batch_v1"] = mock_batch
-
-        # Force reimport with mocked modules and inject the mocked classes
-        import wt_invokers.cloud_batch
 
         # Inject all the mocked classes into the module namespace
         wt_invokers.cloud_batch.GCP_AVAILABLE = True
@@ -60,7 +59,6 @@ def mock_gcp_modules():
 
 def test_cloud_batch_invoker_initialization_without_gcp(mock_gcp_modules) -> None:
     """Test CloudBatchInvoker initialization succeeds when GCP is available."""
-    from wt_invokers.cloud_batch import CloudBatchInvoker
 
     matchspec = MatchSpec("test-workflow>=1.0.0")
     invoker = CloudBatchInvoker(matchspec=matchspec)
@@ -71,14 +69,11 @@ def test_cloud_batch_invoker_initialization_without_gcp(mock_gcp_modules) -> Non
 def test_cloud_batch_invoker_initialization_fails_without_gcp_libs() -> None:
     """Test CloudBatchInvoker initialization fails without GCP libraries."""
     # Temporarily set GCP_AVAILABLE to False
-    import wt_invokers.cloud_batch
 
     original_value = wt_invokers.cloud_batch.GCP_AVAILABLE
     wt_invokers.cloud_batch.GCP_AVAILABLE = False
 
     try:
-        from wt_invokers.cloud_batch import CloudBatchInvoker
-
         matchspec = MatchSpec("test-workflow>=1.0.0")
 
         with pytest.raises(
@@ -92,7 +87,6 @@ def test_cloud_batch_invoker_initialization_fails_without_gcp_libs() -> None:
 
 def test_entrypoint_property(mock_gcp_modules) -> None:
     """Test entrypoint property returns correct command."""
-    from wt_invokers.cloud_batch import CloudBatchInvoker
 
     matchspec = MatchSpec("my-workflow>=1.0.0")
     invoker = CloudBatchInvoker(matchspec=matchspec)
@@ -103,7 +97,6 @@ def test_entrypoint_property(mock_gcp_modules) -> None:
 @pytest.mark.asyncio
 async def test_is_installed_returns_true(mock_gcp_modules) -> None:
     """Test is_installed returns True (assumes workflow is in container)."""
-    from wt_invokers.cloud_batch import CloudBatchInvoker
 
     matchspec = MatchSpec("test-workflow>=1.0.0")
     invoker = CloudBatchInvoker(matchspec=matchspec)
@@ -115,7 +108,6 @@ async def test_is_installed_returns_true(mock_gcp_modules) -> None:
 @pytest.mark.asyncio
 async def test_install_raises_not_implemented(mock_gcp_modules) -> None:
     """Test install raises NotImplementedError."""
-    from wt_invokers.cloud_batch import CloudBatchInvoker
 
     matchspec = MatchSpec("test-workflow>=1.0.0")
     invoker = CloudBatchInvoker(matchspec=matchspec)
@@ -129,7 +121,6 @@ async def test_install_raises_not_implemented(mock_gcp_modules) -> None:
 
 def test_is_waitable_property(mock_gcp_modules) -> None:
     """Test is_waitable property returns False."""
-    from wt_invokers.cloud_batch import CloudBatchInvoker
 
     matchspec = MatchSpec("test-workflow>=1.0.0")
     invoker = CloudBatchInvoker(matchspec=matchspec)
@@ -140,7 +131,6 @@ def test_is_waitable_property(mock_gcp_modules) -> None:
 @pytest.mark.asyncio
 async def test_wait_returns_zero(mock_gcp_modules) -> None:
     """Test wait returns 0 (no-op for cloud batch)."""
-    from wt_invokers.cloud_batch import CloudBatchInvoker
 
     matchspec = MatchSpec("test-workflow>=1.0.0")
     invoker = CloudBatchInvoker(matchspec=matchspec)
@@ -152,7 +142,6 @@ async def test_wait_returns_zero(mock_gcp_modules) -> None:
 @pytest.mark.asyncio
 async def test_run_requires_docker_image_uri(mock_gcp_modules) -> None:
     """Test run raises ValueError if docker_image_uri is missing."""
-    from wt_invokers.cloud_batch import CloudBatchInvoker
 
     matchspec = MatchSpec("test-workflow>=1.0.0")
     invoker = CloudBatchInvoker(matchspec=matchspec)
@@ -170,7 +159,6 @@ async def test_run_requires_docker_image_uri(mock_gcp_modules) -> None:
 @pytest.mark.asyncio
 async def test_run_requires_workflow_run_id(mock_gcp_modules) -> None:
     """Test run raises ValueError if workflow_run_id is blank."""
-    from wt_invokers.cloud_batch import CloudBatchInvoker
 
     matchspec = MatchSpec("test-workflow>=1.0.0")
     invoker = CloudBatchInvoker(matchspec=matchspec)
@@ -189,7 +177,6 @@ async def test_run_requires_workflow_run_id(mock_gcp_modules) -> None:
 @pytest.mark.asyncio
 async def test_run_creates_cloud_batch_job(mock_gcp_modules) -> None:
     """Test run creates a Cloud Batch job with correct parameters."""
-    from wt_invokers.cloud_batch import CloudBatchInvoker
 
     matchspec = MatchSpec("test-workflow>=1.0.0")
     invoker = CloudBatchInvoker(matchspec=matchspec)
@@ -223,7 +210,6 @@ async def test_run_creates_cloud_batch_job(mock_gcp_modules) -> None:
 @pytest.mark.asyncio
 async def test_run_sets_environment_variables(mock_gcp_modules) -> None:
     """Test run sets correct environment variables."""
-    from wt_invokers.cloud_batch import CloudBatchInvoker
 
     matchspec = MatchSpec("test-workflow>=1.0.0")
     invoker = CloudBatchInvoker(matchspec=matchspec)
@@ -252,7 +238,6 @@ async def test_run_sets_environment_variables(mock_gcp_modules) -> None:
 @pytest.mark.asyncio
 async def test_run_with_custom_results_env_var(mock_gcp_modules) -> None:
     """Test run uses custom results_env_var when configured."""
-    from wt_invokers.cloud_batch import CloudBatchInvoker
 
     matchspec = MatchSpec("test-workflow>=1.0.0")
     invoker = CloudBatchInvoker(
@@ -280,7 +265,6 @@ async def test_run_with_custom_results_env_var(mock_gcp_modules) -> None:
 @pytest.mark.asyncio
 async def test_run_builds_correct_command(mock_gcp_modules) -> None:
     """Test run builds correct command line."""
-    from wt_invokers.cloud_batch import CloudBatchInvoker
 
     matchspec = MatchSpec("test-workflow>=1.0.0")
     invoker = CloudBatchInvoker(matchspec=matchspec)
@@ -313,7 +297,6 @@ async def test_run_builds_correct_command(mock_gcp_modules) -> None:
 @pytest.mark.asyncio
 async def test_run_generates_unique_job_name(mock_gcp_modules) -> None:
     """Test run generates unique job names for each invocation."""
-    from wt_invokers.cloud_batch import CloudBatchInvoker
 
     matchspec = MatchSpec("test-workflow>=1.0.0")
     invoker = CloudBatchInvoker(matchspec=matchspec)
@@ -321,7 +304,8 @@ async def test_run_generates_unique_job_name(mock_gcp_modules) -> None:
     job_names = []
 
     with patch.object(invoker, "_create_container_job", new=AsyncMock()) as mock_create:
-        for _ in range(3):
+        # Run multiple times
+        for _i in range(3):
             await invoker.run(
                 workflow_run_id="test-run",
                 config_text="param: value",
@@ -341,7 +325,6 @@ async def test_run_generates_unique_job_name(mock_gcp_modules) -> None:
 @pytest.mark.asyncio
 async def test_create_container_job_with_default_resources(mock_gcp_modules) -> None:
     """Test _create_container_job uses default resource values."""
-    from wt_invokers.cloud_batch import CloudBatchInvoker
 
     matchspec = MatchSpec("test-workflow>=1.0.0")
     invoker = CloudBatchInvoker(matchspec=matchspec)
@@ -364,7 +347,6 @@ async def test_create_container_job_with_default_resources(mock_gcp_modules) -> 
 @pytest.mark.asyncio
 async def test_create_container_job_with_custom_resources(mock_gcp_modules) -> None:
     """Test _create_container_job with custom resource configuration."""
-    from wt_invokers.cloud_batch import CloudBatchInvoker
 
     matchspec = MatchSpec("test-workflow>=1.0.0")
     invoker = CloudBatchInvoker(matchspec=matchspec)
@@ -394,7 +376,6 @@ async def test_create_container_job_with_custom_resources(mock_gcp_modules) -> N
 @pytest.mark.asyncio
 async def test_create_container_job_with_gpu(mock_gcp_modules) -> None:
     """Test _create_container_job with GPU configuration."""
-    from wt_invokers.cloud_batch import CloudBatchInvoker
 
     matchspec = MatchSpec("test-workflow>=1.0.0")
     invoker = CloudBatchInvoker(matchspec=matchspec)
@@ -419,7 +400,6 @@ async def test_create_container_job_with_gpu(mock_gcp_modules) -> None:
 @pytest.mark.asyncio
 async def test_create_container_job_with_vpc_network(mock_gcp_modules) -> None:
     """Test _create_container_job configures VPC network."""
-    from wt_invokers.cloud_batch import CloudBatchInvoker
 
     matchspec = MatchSpec("test-workflow>=1.0.0")
     invoker = CloudBatchInvoker(matchspec=matchspec)
@@ -458,7 +438,6 @@ async def test_create_container_job_with_vpc_network(mock_gcp_modules) -> None:
 @pytest.mark.asyncio
 async def test_create_container_job_without_vpc_network(mock_gcp_modules) -> None:
     """Test _create_container_job skips VPC config when absent."""
-    from wt_invokers.cloud_batch import CloudBatchInvoker
 
     matchspec = MatchSpec("test-workflow>=1.0.0")
     invoker = CloudBatchInvoker(matchspec=matchspec)

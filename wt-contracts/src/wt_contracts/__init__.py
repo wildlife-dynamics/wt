@@ -20,15 +20,11 @@ except ImportError:
     __version__ = "0.0.0.dev0"
 
 __all__ = [
-    # Registry contracts
-    "RegistryMetadata",
     "RegistryEntry",
+    "RegistryMetadata",
     "RegistryOutput",
-    # Task protocol
     "TaskProtocol",
-    # CLI contracts
     "WorkflowCLIArgs",
     "WorkflowCLIEnv",
-    # Version
     "__version__",
 ]

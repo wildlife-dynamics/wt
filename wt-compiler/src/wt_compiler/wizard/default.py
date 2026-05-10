@@ -23,9 +23,8 @@ import builtins
 import copy
 import json
 import keyword
-import os
-from types import MappingProxyType
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 from rattler import NamelessMatchSpec
@@ -39,6 +38,9 @@ from wt_compiler.wizard.abstract import (
     WizardQuestion,
     WizardQuestionLoop,
 )
+
+if TYPE_CHECKING:
+    from types import MappingProxyType
 
 # --- Validation callables ---------------------------------------------------
 
@@ -154,7 +156,7 @@ def _absolute_path_type(value: str) -> str:
     stripped = value.strip()
     if not stripped:
         raise argparse.ArgumentTypeError("Path cannot be empty.")
-    if not os.path.isabs(stripped):
+    if not Path(stripped).is_absolute():
         raise argparse.ArgumentTypeError(f"'{stripped}' is not an absolute filesystem path.")
     return stripped
 

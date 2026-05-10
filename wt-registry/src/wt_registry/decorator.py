@@ -36,8 +36,7 @@ def register(
     deprecated: bool = False,
     deprecation_message: str | None = None,
 ) -> Callable[[F], F]:
-    """
-    Register a function in the global registry with metadata.
+    """Register a function in the global registry with metadata.
 
     The decorated function must have complete type annotations for all
     parameters and return type. The function is registered immediately
