@@ -27,6 +27,7 @@ from wt_compiler.compiler import (
     compute_merged_default_feature,
 )
 from wt_compiler.env_overrides import load_env_overrides_file
+from wt_compiler.jsonschema import ReactJSONSchemaFormOverrides
 from wt_compiler.requirements import WT_LOCAL_CHANNEL
 from wt_compiler.spec import (
     KnownTask,
@@ -1260,6 +1261,77 @@ class TestHatchDynamicVersion:
 
         version = _build_and_get_version(release_dir, dist_dir)
         assert version == "1.3.7"
+
+
+class TestRjsfOverridesAppliedToFlatSchemaDefs:
+    """MRE: compiled `params.json` must be a valid JSON Schema even when a task contributes a `$defs` entry with an empty `oneOf: []` placeholder filled by `rjsf-overrides.$defs`."""
+
+    def test_defs_override_propagates_to_flat_params_schema(self, merged_default_feature):
+        task = KnownTask(
+            importable_reference="mymod.with_grouper",
+            json_schema={
+                "properties": {"grouper": {"$ref": "#/$defs/ValueGrouper"}},
+                "$defs": {
+                    "ValueGrouper": {
+                        "type": "object",
+                        "properties": {
+                            "index_name": {
+                                "oneOf": [],  # placeholder, filled by rjsf-overrides
+                                "type": "string",
+                            },
+                        },
+                        "required": ["index_name"],
+                    },
+                },
+            },
+        )
+        known_tasks["with_grouper"] = {"mymod": task}
+        try:
+            spec = Spec(
+                **{
+                    "id": "defs_override_mre",
+                    "requirements": [],
+                    "rjsf-overrides": ReactJSONSchemaFormOverrides(
+                        **{
+                            "$defs": {
+                                "ValueGrouper.properties.index_name.oneOf": [
+                                    {"const": "a", "title": "A"},
+                                    {"const": "b", "title": "B"},
+                                ],
+                            },
+                        }
+                    ),
+                    "workflow": [
+                        TaskInstance(
+                            id="step_one",
+                            name="Step One",
+                            task="mymod.with_grouper",
+                        ),
+                    ],
+                }
+            )
+            compiler = DagCompiler(
+                spec=spec,
+                wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/",
+            )
+            artifacts = compiler.compile(
+                spec_relpath="spec.yaml",
+                merged_default_feature=merged_default_feature,
+            )
+        finally:
+            known_tasks.clear()
+
+        flat = artifacts.package.params_json
+
+        # Root cause: $defs override must reach the flat schema.
+        assert flat["$defs"]["ValueGrouper"]["properties"]["index_name"]["oneOf"] == [
+            {"const": "a", "title": "A"},
+            {"const": "b", "title": "B"},
+        ]
+
+        # Symptom: flat schema must be a valid JSON Schema (oneOf requires minItems: 1).
+        jsonschema = pytest.importorskip("jsonschema")
+        jsonschema.validators.Draft202012Validator.check_schema(flat)
 
 
 if __name__ == "__main__":
