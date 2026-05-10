@@ -19,7 +19,6 @@ import json
 import logging
 import os
 import pathlib
-import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -719,7 +718,9 @@ class DagCompiler(BaseModel):
         # 6b. Inject python conda dep for environments with only PyPI dependencies
         # When an environment has pypi deps but zero conda deps, pixi needs a
         # conda `python` package to provide the interpreter for resolution.
-        python_dep = NamelessMatchSpec.from_match_spec(MatchSpec("conda-forge::python >=3.10,<4.0"))
+        python_dep = NamelessMatchSpec.from_match_spec(
+            MatchSpec("conda-forge::python >=3.10,<3.14")
+        )
         feature_map = {"runner": runner_feature, "test": test_feature}
 
         for env in environments.values():
