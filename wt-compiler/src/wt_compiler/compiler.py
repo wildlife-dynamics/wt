@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import pathlib
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, NamedTuple
