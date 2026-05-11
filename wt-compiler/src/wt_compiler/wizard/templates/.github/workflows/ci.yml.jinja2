@@ -6,6 +6,7 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["**"]
+    types: [opened, reopened, synchronize, labeled, unlabeled]
 
 jobs:
   parse-test-cases:
@@ -14,6 +15,7 @@ jobs:
       cases: ${{ steps.parse.outputs.cases }}
       first_case: ${{ steps.parse.outputs.first_case }}
       release_dir: ${{ steps.parse.outputs.release_dir }}
+      case_flags: ${{ steps.parse.outputs.case_flags }}
 
     steps:
       - uses: actions/checkout@v6
@@ -43,6 +45,12 @@ jobs:
             fi
           done
 
+          flags=""
+          for case in $(yq 'keys | .[]' test-cases.yaml); do
+            flags+="--case $case "
+          done
+          echo "case_flags=${flags% }" >> $GITHUB_OUTPUT
+
           echo "cases=$keys" >> $GITHUB_OUTPUT
           echo "first_case=$(yq 'keys | .[0]' test-cases.yaml)" >> $GITHUB_OUTPUT
 
@@ -67,6 +75,13 @@ jobs:
           --locked -e test
           test-app-sequential-mock-io
           --case ${{ matrix.case }}
+      - name: Upload failed snapshot diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failed-snapshot-diffs-${{ matrix.case }}
+          path: __diff_output__/
+          if-no-files-found: error
 
   docker:
     needs: parse-test-cases
@@ -94,4 +109,39 @@ jobs:
             -X POST "http://localhost:4000/?execution_mode=sequential&mock_io=true&results_url=/workflow/results" \
             -H "Content-Type: application/json" \
             -d '{"params": '"${params}"'}'
+
+  snapshot-update:
+    needs: parse-test-cases
+    if: |
+      github.event_name == 'pull_request' &&
+      contains(github.event.pull_request.labels.*.name, 'snapshot-update')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: snapshot-update-${{ github.head_ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
+      - name: Install pixi
+        run: curl -fsSL https://pixi.sh/install.sh | bash && echo "$HOME/.pixi/bin" >> $GITHUB_PATH
+      - name: Set CI variables
+        run: |
+          echo "RELEASE_DIR=${{ needs.parse-test-cases.outputs.release_dir }}" >> $GITHUB_ENV
+      - name: Update snapshots
+        run: >-
+          pixi run --manifest-path $RELEASE_DIR/pixi.toml
+          --locked -e test
+          test-app-sequential-mock-io
+          ${{ needs.parse-test-cases.outputs.case_flags }}
+          --snapshot-update
+      - name: Commit and push snapshot changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add __results_snapshots__/
+          git commit -m "auto: snapshot update"
+          git push origin HEAD:${{ github.head_ref }}
 {% endraw %}
