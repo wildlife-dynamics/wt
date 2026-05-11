@@ -1157,7 +1157,7 @@ requires-dist = [
     { name = "google-auth", marker = "extra == 'gcp'", specifier = ">=2.0.0" },
     { name = "google-cloud-batch", marker = "extra == 'gcp'", specifier = ">=0.19.0" },
     { name = "py-rattler", specifier = ">=0.8.0" },
-    { name = "ruamel-yaml", specifier = ">=0.17.0" },
+    { name = "ruamel-yaml", specifier = ">=0.17.0,<0.19.0" },
     { name = "wt-contracts", editable = "../wt-contracts" },
 ]
 provides-extras = ["gcp"]
@@ -1176,6 +1176,7 @@ name = "wt-runner"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "obstore" },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-sdk" },
@@ -1199,7 +1200,6 @@ gcp = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -1212,6 +1212,7 @@ requires-dist = [
     { name = "aiohttp", marker = "extra == 'gcp'", specifier = ">=3.11.18,<4" },
     { name = "fastapi", specifier = ">=0.100.0" },
     { name = "gcloud-aio-pubsub", marker = "extra == 'gcp'", specifier = ">=6.1.0,<7" },
+    { name = "httpx", specifier = ">=0.24.0" },
     { name = "obstore", specifier = ">=0.6.0" },
     { name = "opentelemetry-api", specifier = ">=1.0.0" },
     { name = "opentelemetry-exporter-gcp-trace", marker = "extra == 'gcp'", specifier = ">=1.9.0,<2" },
@@ -1220,7 +1221,7 @@ requires-dist = [
     { name = "py-rattler", specifier = ">=0.8.0" },
     { name = "pydantic", specifier = ">=2.0.0,<3.0.0" },
     { name = "pydantic", marker = "extra == 'gcp'", specifier = ">=2.0.0" },
-    { name = "ruamel-yaml", specifier = ">=0.18.0" },
+    { name = "ruamel-yaml", specifier = ">=0.18.0,<0.19.0" },
     { name = "stamina", marker = "extra == 'gcp'", specifier = ">=25.1.0,<26" },
     { name = "uvicorn", specifier = ">=0.20.0" },
     { name = "wt-contracts", editable = "../wt-contracts" },
@@ -1230,7 +1231,6 @@ provides-extras = ["gcp"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx", specifier = ">=0.24.0" },
     { name = "mypy", specifier = ">=1.0.0" },
     { name = "pytest", specifier = ">=7.0.0" },
     { name = "pytest-asyncio", specifier = ">=0.21.0" },

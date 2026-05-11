@@ -7,10 +7,11 @@ direct dependencies between packages.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any, ParamSpec, Protocol, TypeVar
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
     from typing_extensions import Self
 
 P = ParamSpec("P")
@@ -51,7 +52,7 @@ class TaskProtocol(Protocol[P, R]):
         >>> # result = task(my_func).partial(x=1).map("y", [1, 2, 3])
     """
 
-    def partial(self, **kwargs: Any) -> Self:
+    def partial(self, **kwargs: Any) -> Self:  # noqa: ANN401  # protocol passthrough kwargs
         """Apply partial function application.
 
         Binds keyword arguments to the task, returning a new task with those
@@ -88,7 +89,7 @@ class TaskProtocol(Protocol[P, R]):
         """
         ...
 
-    def map(self, argname: str, argvalues: Sequence[Any], **kwargs: Any) -> Sequence[R]:
+    def map(self, argname: str, argvalues: Sequence[Any], **kwargs: Any) -> Sequence[R]:  # noqa: ANN401  # protocol passthrough kwargs
         """Map over a sequence of values for a single parameter.
 
         Executes the task multiple times, once for each value in argvalues,
@@ -111,7 +112,10 @@ class TaskProtocol(Protocol[P, R]):
         ...
 
     def mapvalues(
-        self, argname: str, argvalues: Sequence[tuple[Any, Any]], **kwargs: Any
+        self,
+        argname: str,
+        argvalues: Sequence[tuple[Any, Any]],
+        **kwargs: Any,  # noqa: ANN401  # protocol passthrough kwargs
     ) -> Sequence[tuple[Any, R]]:
         """Map over key-value pairs, preserving keys.
 
@@ -168,7 +172,7 @@ class TaskProtocol(Protocol[P, R]):
         """
         ...
 
-    def set_executor(self, executor: Any) -> Self:
+    def set_executor(self, executor: Any) -> Self:  # noqa: ANN401  # protocol accepts arbitrary executor
         """Set custom executor for task execution.
 
         Allows specifying an alternative executor (e.g., thread pool, process

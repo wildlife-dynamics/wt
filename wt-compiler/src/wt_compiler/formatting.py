@@ -8,7 +8,7 @@ from typing import Any
 
 
 def ruff_formatted(returns_str_func: Callable[..., str]) -> Callable[..., str]:
-    """Decorator to format the output of a function that returns a string with ruff.
+    r"""Decorator to format the output of a function that returns a string with ruff.
 
     This decorator:
     1. Runs the wrapped function to get unformatted code
@@ -31,17 +31,17 @@ def ruff_formatted(returns_str_func: Callable[..., str]) -> Callable[..., str]:
     """
 
     @functools.wraps(returns_str_func)
-    def wrapper(*args: Any, **kwargs: Any) -> str:
+    def wrapper(*args: Any, **kwargs: Any) -> str:  # noqa: ANN401  # generic decorator passthrough
         unformatted = returns_str_func(*args, **kwargs)
         # Format with ruff
         # https://github.com/astral-sh/ruff/issues/8401#issuecomment-1788806462
-        formatted = subprocess.check_output(
+        formatted = subprocess.check_output(  # noqa: S603  # cmd is a fixed ruff invocation
             [sys.executable, "-m", "ruff", "format", "-s", "-"],
             input=unformatted,
             encoding="utf-8",
         )
         # Lint and fix imports
-        linted = subprocess.check_output(
+        return subprocess.check_output(  # noqa: S603  # cmd is a fixed ruff invocation
             [
                 sys.executable,
                 "-m",
@@ -57,6 +57,5 @@ def ruff_formatted(returns_str_func: Callable[..., str]) -> Callable[..., str]:
             input=formatted,
             encoding="utf-8",
         )
-        return linted
 
     return wrapper

@@ -17,10 +17,12 @@ import importlib.resources
 import inspect
 import json
 import os
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import MagicMock
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 def _import_func(anchor: str, func_name: str) -> Callable[..., Any]:
@@ -42,8 +44,8 @@ def _import_func(anchor: str, func_name: str) -> Callable[..., Any]:
     """
     module = importlib.import_module(anchor)
     attr = getattr(module, func_name)
-    assert callable(attr), f"{anchor}.{func_name} is {type(attr).__name__}, expected callable"
-    return cast(Callable[..., Any], attr)
+    assert callable(attr), f"{anchor}.{func_name} is {type(attr).__name__}, expected callable"  # noqa: S101  # internal invariant; callers test for AssertionError
+    return cast("Callable[..., Any]", attr)
 
 
 def _env_var_name(anchor: str, func_name: str) -> str:
@@ -107,15 +109,16 @@ def _find_example_return_path(anchor: str, func_name: str) -> Path:
         for p in importlib.resources.files(anchor).iterdir()
         if hasattr(p, "name") and Path(p.name).stem == expected_stem
     ]
-    assert len(matches) == 1, (
-        f"Expected exactly 1 example-return file matching '{expected_stem}.*' "
-        f"in {anchor}, found {len(matches)}: {[m.name for m in matches]}"
-    )
+    if len(matches) != 1:
+        raise FileNotFoundError(
+            f"Expected exactly 1 example-return file matching '{expected_stem}.*' "
+            f"in {anchor}, found {len(matches)}: {[m.name for m in matches]}"
+        )
     # importlib.resources traversables may not be real Paths; resolve via str
     return Path(str(matches[0]))
 
 
-def _load_json(path: Path) -> Any:
+def _load_json(path: Path) -> Any:  # noqa: ANN401  # JSON content is dynamic
     """Load a JSON file.
 
     Args:
@@ -124,7 +127,7 @@ def _load_json(path: Path) -> Any:
     Returns:
         Parsed JSON content.
     """
-    with open(path) as f:
+    with path.open() as f:
         return json.load(f)
 
 
@@ -156,7 +159,7 @@ def _discover_loaders() -> dict[str, Callable[[Path], Any]]:
     return loaders
 
 
-def _load_example_return(path: Path) -> Any:
+def _load_example_return(path: Path) -> Any:  # noqa: ANN401  # loaded data is dynamic
     """Load example-return data by dispatching on file extension.
 
     Args:

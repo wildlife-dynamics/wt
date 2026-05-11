@@ -1,6 +1,7 @@
 """Command-line interface for wt-registry."""
 
 import argparse
+import importlib
 import importlib.metadata
 import sys
 import types
@@ -44,15 +45,13 @@ def discover_public_paths(
             discover_public_paths(registry, ["pkg.tasks"])
             # {("pkg.tasks._internal", "my_func"): "pkg.tasks"}
     """
-    import importlib
-
     public_paths: dict[tuple[str, str], str] = {}
 
     for package in packages:
         try:
             module = importlib.import_module(package)
             _traverse_module(module, registry, public_paths, visited=set())
-        except ImportError:
+        except ImportError:  # noqa: PERF203  # per-package error isolation; loop is small
             continue
 
     return public_paths
@@ -98,7 +97,7 @@ def _traverse_module(
             # Check if this function is registered
             private_module = getattr(obj, "__module__", None)
             if private_module:
-                for fqn, entry in registry.items():
+                for entry in registry.values():
                     if entry.function_name == name and entry.module_path == private_module:
                         # Found a match - record the public path
                         key = (private_module, name)
@@ -112,8 +111,7 @@ def filter_by_function_names(
     registry: MappingProxyType[str, RegistryEntry],
     function_names: list[str] | None = None,
 ) -> dict[str, RegistryEntry]:
-    """
-    Filter registry entries by function names.
+    """Filter registry entries by function names.
 
     Args:
         registry: Full registry from get_registry()
@@ -148,19 +146,14 @@ def filter_by_function_names(
     if function_names is None:
         return dict(registry)
 
-    filtered = {}
-    for fqn, entry in registry.items():
-        if entry.function_name in function_names:
-            filtered[fqn] = entry
-    return filtered
+    return {fqn: entry for fqn, entry in registry.items() if entry.function_name in function_names}
 
 
 def serialize_entries(
     entries: dict[str, RegistryEntry],
     packages: list[str] | None = None,
 ) -> RegistryOutput:
-    """
-    Serialize registry entries to wt-contracts RegistryOutput format.
+    """Serialize registry entries to wt-contracts RegistryOutput format.
 
     Converts wt-registry RegistryEntry objects to wt-contracts format,
     generating JSON schema for each entry. Returns a RegistryOutput
@@ -229,8 +222,7 @@ def serialize_entries(
 
 
 def format_pretty(entries: dict[str, RegistryEntry]) -> str:
-    """
-    Format registry entries as human-readable text.
+    """Format registry entries as human-readable text.
 
     Args:
         entries: Filtered registry entries
@@ -325,8 +317,7 @@ def auto_discover() -> list[str]:
 
 
 def main() -> None:
-    """
-    Main CLI entry point.
+    """Main CLI entry point.
 
     Parses command-line arguments and exports the registry to stdout
     in either JSON or pretty format, with optional filtering by function names.
@@ -370,14 +361,12 @@ def main() -> None:
     # Import explicitly specified packages to trigger task registration
     all_packages: list[str] = list(discovered_modules)
     if args.packages:
-        import importlib
-
         for package in args.packages:
             try:
                 importlib.import_module(package)
                 if package not in all_packages:
                     all_packages.append(package)
-            except ImportError as e:
+            except ImportError as e:  # noqa: PERF203  # per-package error isolation; loop is small
                 print(f"Warning: Could not import {package}: {e}", file=sys.stderr)
 
     try:
@@ -400,6 +389,6 @@ def main() -> None:
             output = format_pretty(filtered_entries)
             print(output)
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001  # CLI top-level handler reports any error and exits
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import urllib.request
-import json
-from pathlib import Path
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @dataclass
@@ -24,8 +27,7 @@ def clone_repo(
     ref: str = "main",
     auth_token: str | None = None,
 ) -> CloneResult:
-    """
-    Clone a git repository to a destination directory.
+    """Clone a git repository to a destination directory.
 
     Args:
         url: The repository URL (https://github.com/owner/repo)
@@ -67,8 +69,7 @@ def clone_repo(
 
 
 def get_latest_release_tag(url: str, auth_token: str | None = None) -> str | None:
-    """
-    Get the latest release tag from a GitHub repository.
+    """Get the latest release tag from a GitHub repository.
 
     Args:
         url: The repository URL (https://github.com/owner/repo)
@@ -112,8 +113,7 @@ def clone_at_ref(
     use_latest_release: bool = False,
     auth_token: str | None = None,
 ) -> CloneResult:
-    """
-    Clone a repository at a specific ref, with support for latest release.
+    """Clone a repository at a specific ref, with support for latest release.
 
     Args:
         url: The repository URL

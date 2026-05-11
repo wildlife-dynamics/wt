@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import subprocess
 from dataclasses import dataclass, replace
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import pytest
@@ -16,7 +16,7 @@ from helpers.diff import (
     check_diff_allowlist,
     get_changed_files,
 )
-from helpers.git import CloneResult, clone_at_ref
+from helpers.git import CloneResult, clone_at_ref, get_latest_release_tag
 
 # Path to this file's directory (src/) and parent (reverse_integration/)
 SRC_DIR = Path(__file__).parent
@@ -32,17 +32,30 @@ class RepoConfig:
     ref: str
     spec_path: str
     generated_path: str
+    diff_allowlist: list[str | dict[str, Any]]
+    tests: list[str]
     spec_name: str | None = None  # For monorepos: identifies which spec (e.g., "etl")
-    compile_flags: dict[str, str] | None = None  # Optional compiler flags (e.g., pkg_name_prefix, variant)
+    compile_flags: dict[str, str] | None = (
+        None  # Optional compiler flags (e.g., pkg_name_prefix, variant)
+    )
 
     @property
     def id(self) -> str:
-        """Return a unique identifier for this config."""
+        """Return a unique identifier for this config.
+
+        Items that pass ``env_overrides`` to the compiler get a
+        ``:env-overrides`` suffix so they can be addressed independently
+        from the bare compile-only sibling that exercises the same repo.
+        """
         # Extract repo name from URL
         repo_name = self.url.rstrip("/").split("/")[-1]
         if self.spec_name:
-            return f"{repo_name}/{self.spec_name}@{self.ref}"
-        return f"{repo_name}@{self.ref}"
+            base = f"{repo_name}/{self.spec_name}@{self.ref}"
+        else:
+            base = f"{repo_name}@{self.ref}"
+        if self.compile_flags and "env_overrides" in self.compile_flags:
+            return f"{base}:env-overrides"
+        return base
 
 
 @dataclass(frozen=True)
@@ -66,7 +79,7 @@ class PixiInstallResult:
 
 def load_manifest() -> dict[str, Any]:
     """Load the manifest.yaml file."""
-    with open(MANIFEST_PATH) as f:
+    with MANIFEST_PATH.open() as f:
         return yaml.safe_load(f)
 
 
@@ -75,11 +88,58 @@ def _derive_spec_name(spec_path: str) -> str:
 
     For a path like 'workflows/etl/spec.yaml', returns 'etl'.
     """
-    from pathlib import PurePosixPath
-
     path = PurePosixPath(spec_path)
     # Use the parent directory name as the spec name
     return path.parent.name or path.stem
+
+
+def _resolve_env_overrides(compile_flags: dict[str, str] | None) -> dict[str, str] | None:
+    """Resolve the *manifest-relative* ``env_overrides`` path to absolute.
+
+    There are two distinct anchors at two distinct phases:
+
+    1. **Manifest-relative (this function).** The manifest entry's
+       ``env_overrides`` value is interpreted relative to the manifest
+       file's own directory (``MANIFEST_PATH.parent``). We resolve it to an
+       absolute path so the compiler sees a stable location regardless of
+       cwd.
+    2. **Override-file-relative (handled by the compiler).** Once the
+       compiler reads the override file, any ``path = "..."`` entries
+       inside it resolve against that *override file's own directory*
+       (matching pixi.toml semantics). This function does not touch those
+       inner paths.
+
+    Args:
+        compile_flags: Dict of compile flags from a manifest entry, or None.
+
+    Returns:
+        A copy of ``compile_flags`` with ``env_overrides`` resolved to an
+        absolute path, or the original input when no resolution is needed.
+    """
+    if not compile_flags or "env_overrides" not in compile_flags:
+        return compile_flags
+    resolved = dict(compile_flags)
+    raw = Path(resolved["env_overrides"])
+    if not raw.is_absolute():
+        raw = (MANIFEST_PATH.parent / raw).resolve()
+    resolved["env_overrides"] = str(raw)
+    return resolved
+
+
+def _require_field(entry: dict[str, Any], key: str, url: str) -> Any:
+    """Return ``entry[key]`` or raise a clear error mentioning the repo URL.
+
+    The reverse-integration manifest no longer inherits ``diff_allowlist``
+    or ``tests`` from a top-level default, so each entry must declare
+    them explicitly.
+    """
+    if key not in entry:
+        raise ValueError(
+            f"Manifest entry for {url!r} is missing required field {key!r}. "
+            f"Each repo (or each spec, for monorepos) must declare its own "
+            f"'diff_allowlist' and 'tests'."
+        )
+    return entry[key]
 
 
 def get_repo_configs(
@@ -87,8 +147,7 @@ def get_repo_configs(
     repo_url_filter: str | None = None,
     ref_override: str | None = None,
 ) -> list[RepoConfig]:
-    """
-    Extract repo configurations from manifest.
+    """Extract repo configurations from manifest.
 
     Args:
         manifest: Parsed manifest dict
@@ -110,17 +169,19 @@ def get_repo_configs(
         # Handle single spec or multiple specs
         if "specs" in repo:
             # Multiple specs in monorepo
-            for spec_config in repo["specs"]:
-                configs.append(
-                    RepoConfig(
-                        url=url,
-                        ref=ref_override or repo.get("ref", "main"),
-                        spec_path=spec_config["spec_path"],
-                        generated_path=spec_config["generated_path"],
-                        spec_name=_derive_spec_name(spec_config["spec_path"]),
-                        compile_flags=spec_config.get("compile_flags") or None,
-                    )
+            configs.extend(
+                RepoConfig(
+                    url=url,
+                    ref=ref_override or repo.get("ref", "main"),
+                    spec_path=spec_config["spec_path"],
+                    generated_path=spec_config["generated_path"],
+                    spec_name=_derive_spec_name(spec_config["spec_path"]),
+                    compile_flags=_resolve_env_overrides(spec_config.get("compile_flags")) or None,
+                    diff_allowlist=_require_field(spec_config, "diff_allowlist", url),
+                    tests=_require_field(spec_config, "tests", url),
                 )
+                for spec_config in repo["specs"]
+            )
         else:
             # Single spec
             configs.append(
@@ -129,7 +190,9 @@ def get_repo_configs(
                     ref=ref_override or repo.get("ref", "main"),
                     spec_path=repo.get("spec_path", "spec.yaml"),
                     generated_path=repo.get("generated_path", ""),
-                    compile_flags=repo.get("compile_flags") or None,
+                    compile_flags=_resolve_env_overrides(repo.get("compile_flags")) or None,
+                    diff_allowlist=_require_field(repo, "diff_allowlist", url),
+                    tests=_require_field(repo, "tests", url),
                 )
             )
 
@@ -169,13 +232,6 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
 
     group.addoption(
-        "--skip-generated-tests",
-        action="store_true",
-        default=False,
-        help="Skip running the generated workflow tests",
-    )
-
-    group.addoption(
         "--manifest-item",
         action="store",
         default=None,
@@ -194,12 +250,6 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 def manifest() -> dict[str, Any]:
     """Load the manifest.yaml file."""
     return load_manifest()
-
-
-@pytest.fixture(scope="session")
-def diff_allowlist(manifest: dict[str, Any]) -> list[str | dict[str, Any]]:
-    """Get the list of files allowed to have diffs (simple strings or conditional entries)."""
-    return manifest.get("diff_allowlist", ["README.md", "pixi.lock", "VERSION.yaml"])
 
 
 @pytest.fixture(scope="session")
@@ -227,8 +277,7 @@ def show_diff_analysis(request: pytest.FixtureRequest) -> bool:
 
 
 def get_repo_configs_for_session(config: pytest.Config) -> list[RepoConfig]:
-    """
-    Get repo configs based on CLI options and manifest.
+    """Get repo configs based on CLI options and manifest.
 
     Args:
         config: Pytest Config object (from metafunc.config or request.config)
@@ -246,13 +295,16 @@ def get_repo_configs_for_session(config: pytest.Config) -> list[RepoConfig]:
     manifest_item = config.getoption("--manifest-item")
 
     if repo_url:
-        # Ad-hoc single repo testing
+        # Ad-hoc single repo testing — apply permissive defaults since the
+        # caller hasn't authored a manifest entry for this URL.
         return [
             RepoConfig(
                 url=repo_url,
                 ref=ref_override or "main",
                 spec_path="spec.yaml",
                 generated_path="",
+                diff_allowlist=["README.md", "pixi.lock", "VERSION.yaml"],
+                tests=["recompile", "generated"],
             )
         ]
 
@@ -291,8 +343,7 @@ def repo_workspace(
     auth_token: str | None,
     request: pytest.FixtureRequest,
 ) -> Workspace:
-    """
-    Clone a repository and prepare it for testing.
+    """Clone a repository and prepare it for testing.
 
     This fixture clones the repo to a temp directory and returns
     a Workspace object with the clone result.
@@ -301,8 +352,6 @@ def repo_workspace(
 
     # Handle 'latest-release' special ref
     if ref == "latest-release":
-        from helpers.git import get_latest_release_tag
-
         tag = get_latest_release_tag(repo_config.url, auth_token)
         if tag is None:
             pytest.skip(f"No releases found for {repo_config.url}")
@@ -324,23 +373,23 @@ def repo_workspace(
 @pytest.fixture(scope="session")
 def compiled_workspace(
     repo_workspace: Workspace,
-    diff_allowlist: list[str | dict[str, Any]],
 ) -> Workspace:
-    """
-    Compile the workflow in a cloned repository.
+    """Compile the workflow in a cloned repository.
 
-    This fixture runs wt-compiler on the spec.yaml and checks for diffs.
+    This fixture runs wt-compiler on the spec.yaml and checks for diffs
+    using the per-item ``diff_allowlist`` declared on the manifest entry.
     """
     repo_path = repo_workspace.clone_result.path
+    repo_config = repo_workspace.repo_config
 
     # Run the compiler
     compile_result = compile_workflow(
         repo_path=repo_path,
-        spec_path=repo_workspace.repo_config.spec_path,
-        generated_path=repo_workspace.repo_config.generated_path or None,
+        spec_path=repo_config.spec_path,
+        generated_path=repo_config.generated_path or None,
         clobber=True,
         update=True,
-        compile_flags=repo_workspace.repo_config.compile_flags,
+        compile_flags=repo_config.compile_flags,
     )
 
     diff_result = None
@@ -350,8 +399,8 @@ def compiled_workspace(
         changed_files = get_changed_files(repo_path)
         diff_result = check_diff_allowlist(
             changed_files,
-            diff_allowlist,
-            repo_workspace.repo_config.generated_path or None,
+            repo_config.diff_allowlist,
+            repo_config.generated_path or None,
             repo_path=repo_path,
         )
 
@@ -367,8 +416,7 @@ def test_cases(
     repo_workspace: Workspace,
     selected_cases: list[str] | None,
 ) -> list[str]:
-    """
-    Get the list of test cases to run for a repo.
+    """Get the list of test cases to run for a repo.
 
     Parses test-cases.yaml from the repo and applies any case filters.
     """
@@ -378,7 +426,7 @@ def test_cases(
     if not test_cases_path.exists():
         return []
 
-    with open(test_cases_path) as f:
+    with test_cases_path.open() as f:
         cases_data = yaml.safe_load(f)
 
     # Get all case names (keys in the YAML)
@@ -395,8 +443,7 @@ def test_cases(
 def pixi_installed_workspace(
     compiled_workspace: Workspace,
 ) -> tuple[Workspace, PixiInstallResult]:
-    """
-    Run pixi install once per compiled workspace.
+    """Run pixi install once per compiled workspace.
 
     Returns the workspace and the install result so tests can assert
     on the install outcome or skip if it failed.

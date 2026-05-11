@@ -24,7 +24,6 @@ class ConcreteInvoker(AbstractInvoker):
 
     async def install(self) -> None:
         """Install the workflow."""
-        pass
 
     async def run(
         self,
@@ -40,7 +39,6 @@ class ConcreteInvoker(AbstractInvoker):
         **kwargs,
     ) -> None:
         """Run the workflow."""
-        pass
 
     async def wait(
         self,

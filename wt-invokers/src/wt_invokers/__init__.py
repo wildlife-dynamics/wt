@@ -61,10 +61,10 @@ except ImportError:
 
 __all__ = [
     "AbstractInvoker",
-    "LocalSubprocessInvoker",
     "CloudBatchInvoker",
-    "InvokerError",
-    "InvocationTimeoutError",
     "InstallationError",
+    "InvocationTimeoutError",
+    "InvokerError",
+    "LocalSubprocessInvoker",
     "__version__",
 ]

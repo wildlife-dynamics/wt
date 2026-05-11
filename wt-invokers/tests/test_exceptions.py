@@ -51,20 +51,17 @@ def test_exceptions_can_be_raised_and_caught() -> None:
 
 def test_catch_specific_exception() -> None:
     """Test catching specific exception types."""
-    try:
+    with pytest.raises(InvocationTimeoutError) as excinfo:
         raise InvocationTimeoutError("Timeout")
-    except InvocationTimeoutError as e:
-        assert str(e) == "Timeout"
-    except InvokerError:
-        pytest.fail("Should have caught InvocationTimeoutError specifically")
+    assert str(excinfo.value) == "Timeout"
+    assert isinstance(excinfo.value, InvokerError)
 
 
 def test_catch_base_exception() -> None:
     """Test catching derived exceptions with base class."""
-    try:
+    with pytest.raises(InvokerError) as excinfo:
         raise InvocationTimeoutError("Timeout")
-    except InvokerError as e:
-        assert str(e) == "Timeout"
+    assert str(excinfo.value) == "Timeout"
 
 
 def test_exception_with_empty_message() -> None:

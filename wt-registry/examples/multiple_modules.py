@@ -5,8 +5,7 @@
 #     "wt-registry",
 # ]
 # ///
-"""
-Example: Functions from Multiple Modules
+"""Example: Functions from Multiple Modules.
 
 This example demonstrates how the registry works with functions
 from different modules, showing fully qualified names (FQN).
@@ -15,6 +14,8 @@ Setup: uv sync
 
 Run with: uv run python examples/multiple_modules.py
 """
+
+import json
 
 from wt_registry import register
 
@@ -37,8 +38,6 @@ def format_text(text: str) -> str:
 )
 def parse_json(json_str: str) -> dict[str, any]:
     """Parse JSON from utils module."""
-    import json
-
     return json.loads(json_str)
 
 

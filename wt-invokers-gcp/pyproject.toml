@@ -17,6 +17,12 @@ dependencies = [
     "google-auth>=2.0.0",
 ]
 
+[tool.uv.sources]
+# Development override - uses local editable wt-invokers and wt-contracts
+# Published packages will reference PyPI versions normally
+wt-invokers = { path = "../wt-invokers", editable = true }
+wt-contracts = { path = "../wt-contracts", editable = true }
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
@@ -25,6 +31,59 @@ tag_regex = "^wt-invokers-gcp/v(?P<version>[0-9.]+)$"
 root = ".."
 version_file = "src/wt_invokers_gcp/_version.py"
 git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--match", "wt-invokers-gcp/v*"]
+
+[tool.ruff.lint]
+extend-select = [
+    # already-explicit families (kept; F dropped — it's a default)
+    "E",       # pycodestyle errors (extends defaults E4/E7/E9 with E1/E2/E5)
+    "W",       # pycodestyle warnings
+    "I",       # isort
+    "B",       # flake8-bugbear
+    "C4",      # flake8-comprehensions
+    "UP",      # pyupgrade
+    "N",       # pep8-naming
+    "RUF",     # ruff-specific
+    "PLC0415", # import-outside-top-level (mandatory per CLAUDE.md)
+
+    # CLAUDE.md mandates, now enforced
+    "ANN",     # flake8-annotations (require complete type annotations)
+    "D",       # pydocstyle (require docstrings on public API)
+
+    # high-value / low-noise modernizers
+    "SIM",     # flake8-simplify
+    "RET",     # flake8-return
+    "PIE",     # flake8-pie
+    "PTH",     # flake8-use-pathlib
+    "ICN",     # flake8-import-conventions
+    "TID",     # flake8-tidy-imports
+    "TC",      # flake8-type-checking
+    "ISC",     # flake8-implicit-str-concat
+    "YTT",     # flake8-2020
+    "PERF",    # Perflint
+    "FURB",    # refurb
+    "LOG",     # flake8-logging
+    "G",       # flake8-logging-format
+    "PT",      # flake8-pytest-style
+    "ASYNC",   # flake8-async
+
+    # security / strictness (require per-file-ignores)
+    "S",       # flake8-bandit
+    "ARG",     # flake8-unused-arguments
+    "BLE",     # flake8-blind-except
+    "PLE",     # Pylint errors
+    "PLW",     # Pylint warnings
+]
+ignore = [
+    "E501",   # line length — handled by formatter
+    "ISC001", # conflicts with formatter (ruff docs recommend disabling)
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401", "D104"]                       # re-exports + missing module docstring
+"tests/**/*.py" = ["D", "S101", "ANN", "ARG", "PT011"] # tests don't need docstrings/annotations; assert OK
 
 # ============================================================================
 # Pixi Build Configuration (conda package building)

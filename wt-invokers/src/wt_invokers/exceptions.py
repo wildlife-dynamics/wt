@@ -18,8 +18,6 @@ class InvokerError(Exception):
         wt_invokers.exceptions.InvokerError: Something went wrong
     """
 
-    pass
-
 
 class InvocationTimeoutError(InvokerError):
     """Exception raised when a workflow invocation times out.
@@ -36,8 +34,6 @@ class InvocationTimeoutError(InvokerError):
         wt_invokers.exceptions.InvocationTimeoutError: Workflow exceeded 300s timeout
     """
 
-    pass
-
 
 class InstallationError(InvokerError):
     """Exception raised when workflow installation fails.
@@ -53,5 +49,3 @@ class InstallationError(InvokerError):
             ...
         wt_invokers.exceptions.InstallationError: Failed to install my-workflow>=1.0.0
     """
-
-    pass

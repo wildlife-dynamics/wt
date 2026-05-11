@@ -10,7 +10,7 @@ __all__ = [
     "AsyncExecutor",
     "Future",
     "FutureSequence",
+    "PythonExecutor",
     "SyncExecutor",
     "mapvalues_wrapper",
-    "PythonExecutor",
 ]

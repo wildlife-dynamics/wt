@@ -1,16 +1,22 @@
 """Tests for AbstractWizardProvider ABC conformance and generator mechanics."""
+# ruff: noqa: SIM117  # nested with-blocks read clearer here
 
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
+import contextlib
+from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 import pytest
-
 from conftest import drive_wizard
 
+import wt_compiler.wizard.abstract as abstract_mod
 from wt_compiler.wizard.abstract import AbstractWizardProvider, WizardQuestion
-from wt_compiler.wizard.default import DefaultWizardProvider, workflow_id_type
+from wt_compiler.wizard.default import DefaultWizardProvider, non_empty_str, workflow_id_type
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class TestABCConformance:
@@ -23,7 +29,7 @@ class TestABCConformance:
     def test_abstract_methods_enforced(self) -> None:
         """Attempting to instantiate AbstractWizardProvider directly raises TypeError."""
         with pytest.raises(TypeError):
-          AbstractWizardProvider()
+            AbstractWizardProvider()
 
 
 class TestGeneratorMechanics:
@@ -41,7 +47,7 @@ class TestGeneratorMechanics:
     def test_argparse_compatibility(self) -> None:
         """For each yielded question, argparse kwargs can be passed to add_argument."""
         provider = DefaultWizardProvider()
-        gen = provider.input_generator()
+        provider.input_generator()
         # Collect all questions by driving through with valid answers
         valid_answers = [
             "my_workflow",  # workflow_id
@@ -64,9 +70,7 @@ class TestGeneratorMechanics:
             if dest in seen_dests:
                 continue
             seen_dests.add(dest)
-            parser.add_argument(
-                f"--{dest.replace('_', '-')}", **q["argparse"]
-            )
+            parser.add_argument(f"--{dest.replace('_', '-')}", **q["argparse"])
 
     def test_send_based_flow_complete(self) -> None:
         """Drive generator with valid answers, verify StopIteration and answers populated."""
@@ -147,10 +151,8 @@ class TestGeneratorMechanics:
         gen = provider.input_generator()
         next(gen)
         # Send None — should not call type callable, should use default
-        try:
+        with contextlib.suppress(StopIteration):
             gen.send(None)
-        except StopIteration:
-            pass
         assert provider.answers["optional_field"] == "fallback"
 
 
@@ -187,10 +189,10 @@ class TestLoopContext:
             question = gen.send(ans)
         assert question["wizard"]["loop_context"]["iteration"] == 0
         # Collect one requirement (conda)
-        question = gen.send("numpy")       # name → yields req_type
-        question = gen.send("conda")       # req_type → yields version
-        question = gen.send("*")           # version → yields channel
-        question = gen.send("conda-forge") # channel → loops back to name
+        question = gen.send("numpy")  # name → yields req_type
+        question = gen.send("conda")  # req_type → yields version
+        question = gen.send("*")  # version → yields channel
+        question = gen.send("conda-forge")  # channel → loops back to name
         assert question["wizard"]["loop_context"]["iteration"] == 1
 
     def test_loop_context_absent_on_subsequent_sub_questions(self) -> None:
@@ -206,7 +208,6 @@ class TestLoopContext:
 
     def test_loop_context_preserved_on_validation_error_reyield(self) -> None:
         """loop_context survives _validate_answer() re-yield on validation failure."""
-        from wt_compiler.wizard.default import non_empty_str
 
         class LoopProvider(AbstractWizardProvider):
             def get_questions(self) -> list[WizardQuestion]:
@@ -241,9 +242,6 @@ class TestDumpNoTemplates:
 
     def test_dump_raises_when_no_loaders(self, tmp_path: Path) -> None:
         """dump() raises RuntimeError when no PackageLoader can be constructed from MRO."""
-        from unittest.mock import patch
-
-        import wt_compiler.wizard.abstract as abstract_mod
 
         class NoTemplatesProvider(AbstractWizardProvider):
             def get_questions(self) -> list[WizardQuestion]:

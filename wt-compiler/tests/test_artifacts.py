@@ -1,8 +1,11 @@
 """Tests for artifacts.py - artifact generation models."""
 
 import tempfile
+import warnings
 from pathlib import Path
+from unittest.mock import MagicMock
 
+import pydot
 import pytest
 
 from wt_compiler.artifacts import (
@@ -11,6 +14,7 @@ from wt_compiler.artifacts import (
     PackageDirectory,
     PixiToml,
     PixiWorkspace,
+    Tests,
     WorkflowArtifacts,
 )
 
@@ -93,17 +97,18 @@ class TestPixiToml:
         finally:
             Path(temp_path).unlink()
 
-
     def test_pixi_toml_with_pypi_dependencies(self):
         """Test PixiToml with pypi-dependencies."""
         workspace = PixiWorkspace(name="test-workflow")
         pixi_toml = PixiToml(
             workspace=workspace,
             dependencies={"python": ">=3.10"},
-            **{"pypi-dependencies": {
-                "foo": {"git": "https://github.com/org/foo.git", "tag": "v1.0"},
-                "bar": {"path": "./bar", "editable": True},
-            }},
+            **{
+                "pypi-dependencies": {
+                    "foo": {"git": "https://github.com/org/foo.git", "tag": "v1.0"},
+                    "bar": {"path": "./bar", "editable": True},
+                }
+            },
         )
         assert "foo" in pixi_toml.pypi_dependencies
         assert "bar" in pixi_toml.pypi_dependencies
@@ -127,9 +132,11 @@ class TestPixiToml:
         original = PixiToml(
             workspace=workspace,
             dependencies={"python": ">=3.10"},
-            **{"pypi-dependencies": {
-                "foo": {"git": "https://github.com/org/foo.git"},
-            }},
+            **{
+                "pypi-dependencies": {
+                    "foo": {"git": "https://github.com/org/foo.git"},
+                }
+            },
         )
         toml_str = original.to_toml()
         loaded = PixiToml.from_text(toml_str)
@@ -142,7 +149,6 @@ class TestWorkflowArtifacts:
 
     def test_workflow_artifacts_creation(self):
         """Test creating WorkflowArtifacts instance."""
-        from wt_compiler.artifacts import Tests
 
         dags = Dags(
             **{
@@ -167,11 +173,13 @@ class TestWorkflowArtifacts:
         )
         workspace = PixiWorkspace(name="test")
         pixi_toml = PixiToml(workspace=workspace, dependencies={})
-        tests = Tests(**{
-            "conftest.py": "# conftest",
-            "test_metadata.py": "# test metadata",
-            "test_results.py": "# test results",
-        })
+        tests = Tests(
+            **{
+                "conftest.py": "# conftest",
+                "test_metadata.py": "# test metadata",
+                "test_results.py": "# test results",
+            }
+        )
 
         artifacts = WorkflowArtifacts(
             spec_relpath="spec.yaml",
@@ -191,7 +199,6 @@ class TestWorkflowArtifacts:
 
     def test_workflow_artifacts_dump_and_load(self):
         """Test WorkflowArtifacts with all required fields."""
-        from wt_compiler.artifacts import Tests
 
         dags = Dags(
             **{
@@ -216,11 +223,13 @@ class TestWorkflowArtifacts:
         )
         workspace = PixiWorkspace(name="test")
         pixi_toml = PixiToml(workspace=workspace, dependencies={"python": ">=3.10"})
-        tests = Tests(**{
-            "conftest.py": "# conftest",
-            "test_metadata.py": "# test metadata",
-            "test_results.py": "# test results",
-        })
+        tests = Tests(
+            **{
+                "conftest.py": "# conftest",
+                "test_metadata.py": "# test metadata",
+                "test_results.py": "# test results",
+            }
+        )
 
         artifacts = WorkflowArtifacts(
             spec_relpath="spec.yaml",
@@ -248,7 +257,6 @@ class TestWorkflowArtifactsDump:
 
     def _make_artifacts(self, pydot_graph=None):
         """Helper to create a minimal WorkflowArtifacts for dump testing."""
-        from wt_compiler.artifacts import Tests
 
         dags = Dags(
             **{
@@ -309,9 +317,6 @@ class TestWorkflowArtifactsDump:
 
     def test_dump_warns_when_dot_binary_missing(self, tmp_path, monkeypatch):
         """Test that dump() emits a warning when write_png raises FileNotFoundError."""
-        from unittest.mock import MagicMock, patch
-        import warnings
-        import pydot
 
         monkeypatch.chdir(tmp_path)
         mock_graph = MagicMock(spec=pydot.Dot)

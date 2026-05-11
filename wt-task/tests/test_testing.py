@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib.metadata
 import json
 import types
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -19,6 +19,9 @@ from wt_task.testing import (
     _load_example_return,
     create_func_magicmock,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -52,9 +55,11 @@ def test_import_func_not_callable():
     fake_module = types.ModuleType("fake_module_bad")
     fake_module.not_a_func = "just a string"  # type: ignore[attr-defined]
 
-    with patch.dict("sys.modules", {"fake_module_bad": fake_module}):
-        with pytest.raises(AssertionError, match="expected callable"):
-            _import_func("fake_module_bad", "not_a_func")
+    with (
+        patch.dict("sys.modules", {"fake_module_bad": fake_module}),
+        pytest.raises(AssertionError, match="expected callable"),
+    ):
+        _import_func("fake_module_bad", "not_a_func")
 
 
 # ---------------------------------------------------------------------------
@@ -111,7 +116,7 @@ def test_load_example_return_unknown_extension(tmp_path: Path):
     fixture = tmp_path / "data.xyz"
     fixture.write_text("stuff")
 
-    with pytest.raises(ValueError, match="No loader registered for extension '.xyz'"):
+    with pytest.raises(ValueError, match=r"No loader registered for extension '\.xyz'"):
         _load_example_return(fixture)
 
 
