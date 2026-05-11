@@ -154,6 +154,24 @@ class TestReactJSONSchemaFormOverrides:
         assert updated.properties["task1"]["type"] == "number"
         assert updated.uiSchema["task1"]["ui:widget"] == "range"
 
+    def test_apply_defs_only_leaves_properties_and_uischema_untouched(self):
+        """$defs overrides apply; properties and uiSchema pass through unchanged."""
+        overrides = ReactJSONSchemaFormOverrides(
+            properties={"task1.x.type": "number"},
+            uiSchema={"task1.ui:widget": "textarea"},
+            **{"$defs": {"ValueGrouper.oneOf": [{"const": "a"}]}},
+        )
+        config = ReactJSONSchemaFormConfiguration(
+            title="Original",
+            properties={"task1": {"x": {"type": "string"}}},
+            uiSchema={"task1": {"ui:widget": "text"}},
+            **{"$defs": {"ValueGrouper": {"oneOf": []}}},
+        )
+        updated = overrides.apply_defs_only(config)
+        assert updated.definitions["ValueGrouper"]["oneOf"] == [{"const": "a"}]
+        assert updated.properties == {"task1": {"x": {"type": "string"}}}
+        assert updated.uiSchema == {"task1": {"ui:widget": "text"}}
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

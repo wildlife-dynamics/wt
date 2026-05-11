@@ -263,8 +263,6 @@ class PackageDirectory(BaseModel):
     dags: Dags
     rjsf: dict[str, Any] = Field(..., alias="rjsf.json")
     params_json: dict[str, Any] = Field(..., alias="params.json")
-    params_model: str = Field(..., alias="params.py")
-    formdata_model: str = Field(..., alias="formdata.py")
     cli: str = Field(..., alias="cli.py")
     dispatch: str = Field(..., alias="dispatch.py")
     metadata: str = Field(..., alias="metadata.py")

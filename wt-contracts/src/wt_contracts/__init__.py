@@ -7,9 +7,19 @@ Submodules:
     registry: Registry JSON schema contracts (RegistryMetadata, RegistryEntry, RegistryOutput)
     task: Task execution protocol (TaskProtocol)
     cli: Generated CLI contracts (WorkflowCLIArgs, WorkflowCLIEnv)
+    formdata: Schema-driven params <-> formdata conversion helpers
 """
 
 from wt_contracts.cli import WorkflowCLIArgs, WorkflowCLIEnv
+from wt_contracts.formdata import (
+    ValidationError,
+    ValidationErrorItem,
+    ValidationErrorItemDict,
+    ValidationErrorResponse,
+    formdata_to_params,
+    params_to_formdata,
+    validate,
+)
 from wt_contracts.registry import RegistryEntry, RegistryMetadata, RegistryOutput
 from wt_contracts.task import TaskProtocol
 
@@ -24,7 +34,14 @@ __all__ = [
     "RegistryMetadata",
     "RegistryOutput",
     "TaskProtocol",
+    "ValidationError",
+    "ValidationErrorItem",
+    "ValidationErrorItemDict",
+    "ValidationErrorResponse",
     "WorkflowCLIArgs",
     "WorkflowCLIEnv",
     "__version__",
+    "formdata_to_params",
+    "params_to_formdata",
+    "validate",
 ]

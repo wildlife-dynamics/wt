@@ -26,6 +26,7 @@ classifiers = [
 
 dependencies = [
     "pydantic>=2.0.0,<3.0.0",
+    "jsonschema>=4.0.0,<5.0.0",
 ]
 
 [project.urls]
@@ -39,6 +40,7 @@ dev = [
     "pytest-cov>=4.0.0",
     "mypy>=1.0.0",
     "ruff>=0.1.0",
+    "types-jsonschema",
 ]
 
 [tool.setuptools.packages.find]
@@ -158,3 +160,4 @@ pip = "*"
 [tool.pixi.package.run-dependencies]
 python = ">=3.10,<3.16"
 pydantic = ">=2.0.0,<3.0.0"
+jsonschema = ">=4.0.0,<5.0.0"
