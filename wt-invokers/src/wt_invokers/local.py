@@ -188,7 +188,9 @@ class LocalSubprocessInvoker(AbstractInvoker):
         # Create results directory if using file:// URL
         parse_results_url = urlparse(results_url)
         if parse_results_url.scheme in ("file", ""):
-            Path(parse_results_url.path).mkdir(parents=True, exist_ok=True)  # noqa: ASYNC240  # local mkdir; fast metadata op, no event-loop blocking risk
+            Path(parse_results_url.path).mkdir(
+                parents=True, exist_ok=True
+            )  # local mkdir; fast metadata op, no event-loop blocking risk
 
         # Setup environment variables
         if extra_env is None:

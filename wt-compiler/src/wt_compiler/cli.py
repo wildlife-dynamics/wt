@@ -397,10 +397,9 @@ def main() -> None:
         help=(
             "Path (absolute or relative to CWD) to a wt-compiler env-overrides toml file. "
             "The file declares per-feature conda and pypi dependencies to merge into the "
-            "compiled package's pixi.toml, plus an optional pseudo-feature 'discovery' "
-            "whose deps are overlaid into the wt-compiler discovery env. Conventional "
-            "filename: wt-compiler-env-overrides.toml. Useful for development and testing "
-            "of wt feature branches; should not be used in production."
+            "compiled package's pixi.toml. Conventional filename: "
+            "wt-compiler-env-overrides.toml. Useful for development and testing of wt "
+            "feature branches; should not be used in production."
         ),
     )
 

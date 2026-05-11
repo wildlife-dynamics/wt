@@ -75,6 +75,8 @@ __all__ = [
     "InvocationTimeoutError",
     "InvokerError",
     "InvokerError",
+    "InvokerError",
+    "LocalSubprocessInvoker",
     "LocalSubprocessInvoker",
     "PixiUnpackMixin",
     "RetryableHTTPError",

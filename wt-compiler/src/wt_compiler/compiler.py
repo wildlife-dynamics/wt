@@ -1,17 +1,4 @@
-"""Workflow compiler for generating DAG artifacts from specifications.
-
-NOTE: This is a streamlined initial implementation. The full compiler from
-legacy ecoscope-workflows-core is ~1300 lines. This version includes the core
-compilation workflow with placeholders for complex features that need expansion.
-
-TODO areas for expansion:
-- Complete all DagCompiler methods (many are simplified stubs)
-- Add full JSON schema generation for parameters
-- Add complete template rendering for all DAG types
-- Add graph visualization with pydot
-- Add comprehensive fingerprinting
-- Add version management logic
-"""
+"""Workflow compiler for generating DAG artifacts from specifications."""
 
 import hashlib
 import io
