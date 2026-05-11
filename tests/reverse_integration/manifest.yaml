@@ -73,53 +73,53 @@ _env_overrides: &env_overrides
         - 'PIXI_VERSION=\S+'
 
 repos:
-  # - url: https://github.com/ecoscope-platform-workflows-releases/event-details
-  #   ref: main
-  #   spec_path: spec.yaml
-  #   generated_path: ecoscope-workflows-event-details-workflow
-  #   <<: *compile_only
+  - url: https://github.com/ecoscope-platform-workflows-releases/event-details
+    ref: main
+    spec_path: spec.yaml
+    generated_path: ecoscope-workflows-event-details-workflow
+    <<: *compile_only
 
   - url: https://github.com/ecoscope-platform-workflows-releases/events
-    ref: drop-dcg  # FIXME: revert to events@main before merge to wt@main
+    ref: main
     spec_path: spec.yaml
     generated_path: ecoscope-workflows-events-workflow
     <<: *compile_only
 
-  # - url: https://github.com/ecoscope-platform-workflows-releases/patrols
-  #   ref: main
-  #   spec_path: spec.yaml
-  #   generated_path: ecoscope-workflows-patrols-workflow
-  #   <<: *compile_only
+  - url: https://github.com/ecoscope-platform-workflows-releases/patrols
+    ref: main
+    spec_path: spec.yaml
+    generated_path: ecoscope-workflows-patrols-workflow
+    <<: *compile_only
 
-  # - url: https://github.com/ecoscope-platform-workflows-releases/subject-tracking
-  #   ref: main
-  #   spec_path: spec.yaml
-  #   generated_path: ecoscope-workflows-subject-tracking-workflow
-  #   <<: *compile_only
+  - url: https://github.com/ecoscope-platform-workflows-releases/subject-tracking
+    ref: main
+    spec_path: spec.yaml
+    generated_path: ecoscope-workflows-subject-tracking-workflow
+    <<: *compile_only
 
-  # - url: https://github.com/ecoscope-platform-workflows-releases/event-details
-  #   ref: main
-  #   spec_path: spec.yaml
-  #   generated_path: ecoscope-workflows-event-details-workflow
-  #   <<: *env_overrides
+  - url: https://github.com/ecoscope-platform-workflows-releases/event-details
+    ref: main
+    spec_path: spec.yaml
+    generated_path: ecoscope-workflows-event-details-workflow
+    <<: *env_overrides
 
   - url: https://github.com/ecoscope-platform-workflows-releases/events
-    ref: drop-dcg  # FIXME: revert to events@main before merge to wt@main
+    ref: main
     spec_path: spec.yaml
     generated_path: ecoscope-workflows-events-workflow
     <<: *env_overrides
 
-  # - url: https://github.com/ecoscope-platform-workflows-releases/patrols
-  #   ref: main
-  #   spec_path: spec.yaml
-  #   generated_path: ecoscope-workflows-patrols-workflow
-  #   <<: *env_overrides
+  - url: https://github.com/ecoscope-platform-workflows-releases/patrols
+    ref: main
+    spec_path: spec.yaml
+    generated_path: ecoscope-workflows-patrols-workflow
+    <<: *env_overrides
 
-  # - url: https://github.com/ecoscope-platform-workflows-releases/subject-tracking
-  #   ref: main
-  #   spec_path: spec.yaml
-  #   generated_path: ecoscope-workflows-subject-tracking-workflow
-  #   <<: *env_overrides
+  - url: https://github.com/ecoscope-platform-workflows-releases/subject-tracking
+    ref: main
+    spec_path: spec.yaml
+    generated_path: ecoscope-workflows-subject-tracking-workflow
+    <<: *env_overrides
 
   # Example with custom ref and spec path:
   # - url: https://github.com/example/custom-workflow
