@@ -9,6 +9,8 @@ from rattler import NamelessMatchSpec
 import wt_compiler.requirements as req_mod
 from wt_compiler.requirements import _serialize_namelessmatchspec
 
+import wt_compiler.requirements as req_mod
+
 
 class TestWtLocalChannel:
     """Tests for WT_LOCAL_CHANNEL configuration via WT_CONDA_CHANNEL env var."""
