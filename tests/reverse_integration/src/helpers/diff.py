@@ -50,8 +50,7 @@ class DiffResult:
 def parse_allowlist(
     raw: list[str | dict[str, Any]],
 ) -> tuple[list[str], list[ConditionalAllowEntry]]:
-    """
-    Parse a mixed allowlist into simple entries and conditional entries.
+    r"""Parse a mixed allowlist into simple entries and conditional entries.
 
     Args:
         raw: List of allowlist entries (strings or dicts with file/allowed_variance)
@@ -87,8 +86,7 @@ def parse_allowlist(
 
 
 def get_changed_files(repo_path: Path) -> list[str]:
-    """
-    Get list of files that have changed in a git repository.
+    """Get list of files that have changed in a git repository.
 
     This includes both staged and unstaged changes, as well as untracked files.
 
@@ -137,8 +135,7 @@ def get_changed_files(repo_path: Path) -> list[str]:
 
 
 def get_file_diff(repo_path: Path, file_path: str) -> str:
-    """
-    Get the unified diff for a specific file.
+    """Get the unified diff for a specific file.
 
     Args:
         repo_path: Path to the git repository
@@ -158,8 +155,7 @@ def get_file_diff(repo_path: Path, file_path: str) -> str:
 
 
 def normalize_line(line: str, patterns: list[re.Pattern[str]]) -> str:
-    """
-    Apply all pattern substitutions to a line, replacing matches with a placeholder.
+    """Apply all pattern substitutions to a line, replacing matches with a placeholder.
 
     Args:
         line: The line to normalize
@@ -177,8 +173,7 @@ def check_allowed_variance(
     diff_output: str,
     patterns: list[str],
 ) -> VarianceCheckResult:
-    """
-    Check if a file's diff only changes in regions matching the given patterns.
+    """Check if a file's diff only changes in regions matching the given patterns.
 
     Uses normalization: replaces pattern matches with a placeholder in both
     removed and added lines. If normalized sequences are identical, only the
@@ -196,7 +191,7 @@ def check_allowed_variance(
     added: list[str] = []
 
     for line in diff_output.splitlines():
-        if line.startswith("---") or line.startswith("+++"):
+        if line.startswith(("---", "+++")):
             continue
         if line.startswith("@@"):
             continue
@@ -212,9 +207,7 @@ def check_allowed_variance(
     diagnostics: list[str] = []
     if not passed:
         if len(norm_removed) != len(norm_added):
-            diagnostics.append(
-                f"Line count changed: {len(removed)} removed, {len(added)} added"
-            )
+            diagnostics.append(f"Line count changed: {len(removed)} removed, {len(added)} added")
         else:
             for i, (r, a) in enumerate(zip(norm_removed, norm_added, strict=True)):
                 if r != a:
@@ -238,8 +231,7 @@ def check_diff_allowlist(
     generated_path: str | None = None,
     repo_path: Path | None = None,
 ) -> DiffResult:
-    """
-    Check if changed files are within the allowlist.
+    """Check if changed files are within the allowlist.
 
     Supports both simple string entries (any change allowed) and conditional
     entries with allowed_variance patterns (only masked regions may change).
@@ -281,7 +273,7 @@ def check_diff_allowlist(
         # Also check nested path within generated package
         nested_basename = None
         if generated_path and file_path.startswith(generated_path):
-            relative = file_path[len(generated_path):].lstrip("/")
+            relative = file_path[len(generated_path) :].lstrip("/")
             nested_basename = Path(relative).name
 
         # 1. Check simple allowlist
@@ -321,8 +313,7 @@ def check_diff_allowlist(
 
 
 def format_diff_report(diff_result: DiffResult) -> str:
-    """
-    Format a diff result into a human-readable report.
+    """Format a diff result into a human-readable report.
 
     Args:
         diff_result: The DiffResult to format
@@ -340,21 +331,18 @@ def format_diff_report(diff_result: DiffResult) -> str:
             if f in diff_result.variance_results:
                 result = diff_result.variance_results[f]
                 lines.append("    Conditional allowlist check FAILED:")
-                for diag in result.diagnostics:
-                    lines.append(f"      {diag}")
+                lines.extend(f"      {diag}" for diag in result.diagnostics)
         lines.append("")
 
     if diff_result.allowed_changes:
         lines.append("Allowed changes (expected):")
-        for f in diff_result.allowed_changes:
-            lines.append(f"  - {f}")
+        lines.extend(f"  - {f}" for f in diff_result.allowed_changes)
 
     if diff_result.conditionally_allowed:
         if diff_result.allowed_changes:
             lines.append("")
         lines.append("Conditionally allowed changes (matched variance patterns):")
-        for f in diff_result.conditionally_allowed:
-            lines.append(f"  - {f}")
+        lines.extend(f"  - {f}" for f in diff_result.conditionally_allowed)
 
     if not diff_result.changed_files:
         lines.append("No changes detected.")
@@ -366,8 +354,7 @@ def format_variance_analysis(
     variance_results: dict[str, VarianceCheckResult],
     conditional_entries: list[ConditionalAllowEntry],
 ) -> str:
-    """
-    Format detailed variance analysis for --show-diff-analysis output.
+    """Format detailed variance analysis for --show-diff-analysis output.
 
     Args:
         variance_results: Map of file paths to their variance check results
@@ -399,8 +386,7 @@ def format_variance_analysis(
         lines.append(f"  result:  {status}")
 
         if not result.passed:
-            for diag in result.diagnostics:
-                lines.append(f"    {diag}")
+            lines.extend(f"    {diag}" for diag in result.diagnostics)
 
         lines.append("")
 

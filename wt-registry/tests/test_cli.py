@@ -1,5 +1,7 @@
 """Tests for CLI functionality."""
+# ruff: noqa: SIM117  # nested with-blocks read clearer here
 
+import importlib
 import json
 import sys
 import types
@@ -7,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import wt_registry.cli as cli_module
 from wt_registry import register
 from wt_registry.cli import (
     _traverse_module,
@@ -531,7 +534,6 @@ class TestDiscoverPublicPaths:
 
     def test_discover_public_paths_finds_reexported_function(self) -> None:
         """Test that discover_public_paths finds a function re-exported in __init__.py."""
-        import wt_registry.cli as cli_module
 
         # Create a mock function that appears to be defined in a private module
         def my_func(x: int) -> str:
@@ -552,15 +554,15 @@ class TestDiscoverPublicPaths:
         # Create a simple namespace object to act as a module
         mock_module = types.SimpleNamespace(__name__="pkg.tasks", my_func=my_func)
 
-        import importlib
-
-        with patch.object(importlib, "import_module", return_value=mock_module):
-            with patch.object(
+        with (
+            patch.object(importlib, "import_module", return_value=mock_module),
+            patch.object(
                 cli_module,
                 "getmembers",
                 return_value=[("my_func", my_func)],
-            ):
-                public_paths = discover_public_paths(registry, ["pkg.tasks"])
+            ),
+        ):
+            public_paths = discover_public_paths(registry, ["pkg.tasks"])
 
         # Should find the public path
         assert ("pkg.tasks._internal", "my_func") in public_paths
@@ -568,7 +570,6 @@ class TestDiscoverPublicPaths:
 
     def test_discover_public_paths_returns_empty_when_no_reexport(self) -> None:
         """Test that discover_public_paths returns empty when function is not re-exported."""
-        import wt_registry.cli as cli_module
 
         # Create a mock function
         def my_func(x: int) -> str:
@@ -589,11 +590,11 @@ class TestDiscoverPublicPaths:
         # Create a simple namespace object that does NOT re-export the function
         mock_module = types.SimpleNamespace(__name__="pkg.tasks")
 
-        import importlib
-
-        with patch.object(importlib, "import_module", return_value=mock_module):
-            with patch.object(cli_module, "getmembers", return_value=[]):
-                public_paths = discover_public_paths(registry, ["pkg.tasks"])
+        with (
+            patch.object(importlib, "import_module", return_value=mock_module),
+            patch.object(cli_module, "getmembers", return_value=[]),
+        ):
+            public_paths = discover_public_paths(registry, ["pkg.tasks"])
 
         # Should not find any public path
         assert ("pkg.tasks._internal", "my_func") not in public_paths
@@ -601,8 +602,6 @@ class TestDiscoverPublicPaths:
     def test_discover_public_paths_handles_import_error(self) -> None:
         """Test that discover_public_paths handles ImportError gracefully."""
         registry: dict[str, RegistryEntry] = {}
-
-        import importlib
 
         with patch.object(
             importlib,
@@ -616,7 +615,6 @@ class TestDiscoverPublicPaths:
 
     def test_traverse_module_skips_private_attributes(self) -> None:
         """Test that _traverse_module skips attributes starting with underscore."""
-        import wt_registry.cli as cli_module
 
         # Create a mock function
         def _private_func(x: int) -> str:
@@ -651,7 +649,6 @@ class TestDiscoverPublicPaths:
 
     def test_traverse_module_prevents_infinite_recursion(self) -> None:
         """Test that _traverse_module prevents infinite recursion on circular imports."""
-        import wt_registry.cli as cli_module
 
         # Create a simple namespace object
         mock_module = types.SimpleNamespace(__name__="pkg.tasks")
@@ -679,7 +676,6 @@ class TestSerializeEntriesPublicPaths:
 
     def test_serialize_entries_populates_public_module_path(self) -> None:
         """Test that serialize_entries populates public_module_path field."""
-        import wt_registry.cli as cli_module
 
         def my_func(x: int) -> str:
             return str(x)
@@ -698,22 +694,22 @@ class TestSerializeEntriesPublicPaths:
         # Create simple namespace object that re-exports the function
         mock_module = types.SimpleNamespace(__name__="pkg.tasks", my_func=my_func)
 
-        import importlib
-
-        with patch.object(importlib, "import_module", return_value=mock_module):
-            with patch.object(
+        with (
+            patch.object(importlib, "import_module", return_value=mock_module),
+            patch.object(
                 cli_module,
                 "getmembers",
                 return_value=[("my_func", my_func)],
-            ):
-                output = serialize_entries(entries, packages=["pkg.tasks"])
+            ),
+        ):
+            output = serialize_entries(entries, packages=["pkg.tasks"])
 
         # Check that public_module_path is populated
         contract_entry = output.entries["pkg.tasks._internal.my_func"]
         assert contract_entry.public_module_path == "pkg.tasks"
         assert contract_entry.module_path == "pkg.tasks._internal"
         # Import statement should use public path
-        assert "from pkg.tasks import my_func as my_func" == contract_entry.import_statement
+        assert contract_entry.import_statement == "from pkg.tasks import my_func as my_func"
 
     def test_serialize_entries_falls_back_to_private_path(self) -> None:
         """Test that serialize_entries falls back to private path when no public path found."""
@@ -775,7 +771,9 @@ class TestAutoDiscover:
         mock_ep.name = "my-pkg"
         mock_ep.value = "my_pkg.tasks"
 
-        with patch("wt_registry.cli.importlib.metadata.entry_points", return_value=[mock_ep]) as mock_eps:
+        with patch(
+            "wt_registry.cli.importlib.metadata.entry_points", return_value=[mock_ep]
+        ) as mock_eps:
             with patch("wt_registry.cli.importlib.import_module") as mock_import:
                 result = auto_discover()
 
@@ -814,7 +812,9 @@ class TestAutoDiscover:
             if module_path == "bad_pkg.tasks":
                 raise ImportError("No module named 'bad_pkg'")
 
-        with patch("wt_registry.cli.importlib.metadata.entry_points", return_value=[ep_good, ep_bad]):
+        with patch(
+            "wt_registry.cli.importlib.metadata.entry_points", return_value=[ep_good, ep_bad]
+        ):
             with patch("wt_registry.cli.importlib.import_module", side_effect=side_effect):
                 result = auto_discover()
 
@@ -839,7 +839,9 @@ class TestAutoDiscover:
 
         mock_ad.assert_called_once()
 
-    def test_main_combines_auto_discover_and_packages(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_main_combines_auto_discover_and_packages(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """main() combines auto-discovered and --package modules for public path discovery."""
 
         def test_func(x: int) -> str:

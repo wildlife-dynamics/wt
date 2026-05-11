@@ -1,4 +1,5 @@
 """JSON schema utilities for React JSON Schema Form integration."""
+# ruff: noqa: N801, N815  # class/field names mirror JSON Schema spec (oneOf, uiSchema, additionalProperties)
 
 import copy
 from typing import Any, Literal
@@ -41,10 +42,10 @@ def find_referenced_defs(json_schema: dict[str, Any]) -> set[str]:
         True
     """
 
-    def _find_refs(obj: Any, refs: set[str]) -> None:
+    def _find_refs(obj: Any, refs: set[str]) -> None:  # noqa: ANN401  # walks arbitrary JSON
         if isinstance(obj, dict):
             if "$ref" in obj:
-                assert isinstance(obj["$ref"], str)
+                assert isinstance(obj["$ref"], str)  # noqa: S101  # type narrowing for mypy
                 ref = obj["$ref"].removeprefix("#/$defs/")
                 refs.add(ref)
                 if json_schema["$defs"][ref].get("properties"):
@@ -192,7 +193,7 @@ def _apply_dict_overrides(
         {'a': {'b': {'c': 1}}}
     """
 
-    def set_nested_value(d: dict[str, Any], keys: list[str], value: Any) -> None:
+    def set_nested_value(d: dict[str, Any], keys: list[str], value: Any) -> None:  # noqa: ANN401  # accepts any JSON value
         for key in keys[:-1]:
             d = d.setdefault(key, {})
         d[keys[-1]] = value

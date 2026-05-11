@@ -41,29 +41,25 @@ from wt_compiler.spec import (
 )
 
 __all__ = [
-    # Core compilation
     "DagCompiler",
+    "DiscoveryError",
+    "EnvironmentCreationError",
     "Fingerprint",
+    "KnownTask",
+    "PyPIInstallError",
+    "PyPIRequirement",
+    "RegistryExecutionError",
+    "RegistryNotFoundError",
+    "Spec",
+    "SpecRequirement",
+    "TaskGroup",
+    "TaskInstance",
+    "TaskTag",
     "compile_workflow",
     "compile_workflow_from_yaml",
-    # Discovery
     "discover_tasks_from_requirements",
     "discover_tasks_from_spec_requirements",
     "populate_known_tasks",
-    # Exceptions
-    "DiscoveryError",
-    "EnvironmentCreationError",
-    "PyPIInstallError",
-    "RegistryNotFoundError",
-    "RegistryExecutionError",
-    # Spec models
-    "Spec",
-    "SpecRequirement",
-    "PyPIRequirement",
-    "TaskInstance",
-    "TaskGroup",
-    "KnownTask",
-    "TaskTag",
 ]
 
 try:

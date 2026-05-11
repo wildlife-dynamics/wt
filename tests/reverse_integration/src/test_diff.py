@@ -7,6 +7,7 @@ import re
 from helpers.diff import (
     MASK_PLACEHOLDER,
     ConditionalAllowEntry,
+    DiffResult,
     VarianceCheckResult,
     check_allowed_variance,
     check_diff_allowlist,
@@ -26,9 +27,11 @@ class TestParseAllowlist:
         assert conditional == []
 
     def test_conditional_entries_only(self) -> None:
-        simple, conditional = parse_allowlist([
-            {"file": "Dockerfile", "allowed_variance": [r"PIXI_VERSION=\S+"]},
-        ])
+        simple, conditional = parse_allowlist(
+            [
+                {"file": "Dockerfile", "allowed_variance": [r"PIXI_VERSION=\S+"]},
+            ]
+        )
         assert simple == []
         assert len(conditional) == 1
         assert conditional[0].file == "Dockerfile"
@@ -104,27 +107,13 @@ class TestCheckAllowedVariance:
         assert len(result.diagnostics) > 0
 
     def test_lines_added(self) -> None:
-        diff = (
-            "--- a/file.txt\n"
-            "+++ b/file.txt\n"
-            "@@ -1 +1,2 @@\n"
-            "-old line\n"
-            "+new line\n"
-            "+extra line\n"
-        )
+        diff = "--- a/file.txt\n+++ b/file.txt\n@@ -1 +1,2 @@\n-old line\n+new line\n+extra line\n"
         result = check_allowed_variance(diff, [r"old|new"])
         assert result.passed is False
         assert "Line count changed" in result.diagnostics[0]
 
     def test_lines_removed(self) -> None:
-        diff = (
-            "--- a/file.txt\n"
-            "+++ b/file.txt\n"
-            "@@ -1,2 +1 @@\n"
-            "-line one\n"
-            "-line two\n"
-            "+line one\n"
-        )
+        diff = "--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1 @@\n-line one\n-line two\n+line one\n"
         result = check_allowed_variance(diff, [r"one|two"])
         assert result.passed is False
 
@@ -144,9 +133,7 @@ class TestCheckAllowedVariance:
             "+PIXI_VERSION=v0.67.0\n"
             "+OTHER_VERSION=2.0\n"
         )
-        result = check_allowed_variance(
-            diff, [r"PIXI_VERSION=\S+", r"OTHER_VERSION=\S+"]
-        )
+        result = check_allowed_variance(diff, [r"PIXI_VERSION=\S+", r"OTHER_VERSION=\S+"])
         assert result.passed is True
 
     def test_dockerfile_pixi_version(self) -> None:
@@ -218,8 +205,6 @@ class TestFormatDiffReport:
     """Tests for format_diff_report() with conditional entries."""
 
     def test_includes_conditionally_allowed(self) -> None:
-        from helpers.diff import DiffResult
-
         result = DiffResult(
             changed_files=["README.md", "Dockerfile"],
             allowed_changes=["README.md"],
@@ -231,8 +216,6 @@ class TestFormatDiffReport:
         assert "Dockerfile" in report
 
     def test_includes_variance_diagnostics_on_failure(self) -> None:
-        from helpers.diff import DiffResult
-
         result = DiffResult(
             changed_files=["Dockerfile"],
             allowed_changes=[],

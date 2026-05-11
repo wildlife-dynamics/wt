@@ -255,7 +255,7 @@ async def test_wait_without_run_raises_error() -> None:
     matchspec = MatchSpec("test-workflow>=1.0.0")
     invoker = LocalSubprocessInvoker(matchspec=matchspec)
 
-    with pytest.raises(RuntimeError, match="Process not started. Call run\\(\\) first"):
+    with pytest.raises(RuntimeError, match=r"Process not started\. Call run\(\) first"):
         await invoker.wait()
 
 
@@ -330,9 +330,11 @@ async def test_check_output_failure() -> None:
     mock_process.communicate.return_value = ("", "error message")
     mock_process.returncode = 1
 
-    with patch.object(subprocess, "Popen", return_value=mock_process):
-        with pytest.raises(RuntimeError, match="Command failed with error"):
-            await invoker.check_output(["--invalid"])
+    with (
+        patch.object(subprocess, "Popen", return_value=mock_process),
+        pytest.raises(RuntimeError, match="Command failed with error"),
+    ):
+        await invoker.check_output(["--invalid"])
 
 
 @pytest.mark.asyncio
@@ -345,7 +347,7 @@ async def test_check_output_with_stdin() -> None:
     mock_process.communicate.return_value = ("processed input", "")
     mock_process.returncode = 0
 
-    with patch.object(subprocess, "Popen", return_value=mock_process) as mock_popen:
+    with patch.object(subprocess, "Popen", return_value=mock_process):
         await invoker.check_output(["process"], stdin="input data")
 
         # Verify communicate was called with stdin

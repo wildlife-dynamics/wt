@@ -1,11 +1,13 @@
 """Artifact generation models for workflow compilation."""
 
 import copy
+import io
 import json
 import re
 import shutil
 import subprocess
 import tomllib
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -48,8 +50,8 @@ class PixiWorkspace(_AllowArbitraryTypes):
     #  expected List[Platform]  [misc]`
     # but pydantic parsing handles these correctly
     # (and stumbles without the list comprehension)
-    channels: list[ChannelType] = [c.name for c in CHANNELS]  # type: ignore[misc]
-    platforms: list[PlatformType] = [str(p) for p in PLATFORMS]  # type: ignore[misc]
+    channels: list[ChannelType] = [c.name for c in CHANNELS]  # type: ignore[misc]  # noqa: RUF012  # pydantic field defaults
+    platforms: list[PlatformType] = [str(p) for p in PLATFORMS]  # type: ignore[misc]  # noqa: RUF012  # pydantic field defaults
 
 
 FeatureName = str
@@ -218,8 +220,6 @@ class PixiToml(_AllowArbitraryAndValidateAssignment):
             >>> "test" in toml_str  # doctest: +SKIP
             True
         """
-        import io
-
         buffer = io.BytesIO()
         if self.file_header:
             buffer.write(self.file_header.encode("utf-8"))
@@ -370,9 +370,11 @@ def _params_sha256_from_readme(readme_md: str) -> str:
     """
     fingerprint_text = readme_md.split("```yaml")[-1].split("```")[0]
     fingerprint_yaml: dict[str, Any] = yaml.load(fingerprint_text)
-    params_sha256 = fingerprint_yaml.get("params_sha256", None)
-    assert isinstance(params_sha256, str), "params_sha256 must be a string."
-    assert SHA256.match(params_sha256), "params_sha256 must be a valid SHA256 hash."
+    params_sha256 = fingerprint_yaml.get("params_sha256")
+    if not isinstance(params_sha256, str):
+        raise TypeError("params_sha256 must be a string.")
+    if not SHA256.match(params_sha256):
+        raise ValueError("params_sha256 must be a valid SHA256 hash.")
     return params_sha256.strip()
 
 
@@ -405,14 +407,18 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
 
     def install(self) -> None:
         """Install dependencies using pixi."""
-        subprocess.run(
-            f"pixi install -a --manifest-path {self.release_dir.joinpath('pixi.toml')}".split()
+        subprocess.run(  # noqa: S603  # cmd is built from a fixed pixi invocation
+            f"pixi install -a --manifest-path {self.release_dir.joinpath('pixi.toml')}".split(),
+            check=False,
         )
 
     def update(self) -> None:
         """Update dependencies using pixi without installing."""
         manifest_path = self.release_dir.joinpath("pixi.toml")
-        subprocess.run(f"pixi update --no-install --manifest-path {manifest_path}".split())
+        subprocess.run(  # noqa: S603  # cmd is built from a fixed pixi invocation
+            f"pixi update --no-install --manifest-path {manifest_path}".split(),
+            check=False,
+        )
 
     @classmethod
     def from_disk(cls, spec_relpath: str, artifacts_dir: str | Path) -> "WorkflowArtifacts":
@@ -440,7 +446,7 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
         package_name = artifacts_dir.name.replace("-", "_")
         package = PackageDirectory(
             **{  # type: ignore[arg-type]
-                f.name: (f.read_text() if not f.suffix == ".json" else json.load(f.open()))
+                f.name: (f.read_text() if f.suffix != ".json" else json.load(f.open()))
                 for f in artifacts_dir.joinpath(package_name).iterdir()
                 if f.is_file()
             },
@@ -518,8 +524,6 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
             try:
                 self.pydot_graph.write_png(path=self.release_dir.joinpath("graph.png"))  # type: ignore[attr-defined]
             except FileNotFoundError:
-                import warnings
-
                 warnings.warn(
                     "Graphviz 'dot' binary not found; skipping graph.png generation. "
                     "Install Graphviz to enable workflow visualization.",

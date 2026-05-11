@@ -44,7 +44,7 @@ def with_tracing(func: F) -> F:
         return func
 
     @wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
+    def wrapper(*args: Any, **kwargs: Any) -> Any:  # noqa: ANN401  # generic wrapper passes args through
         tracer = get_tracer(__name__)
         with tracer.start_as_current_span(
             func.__name__,

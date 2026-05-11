@@ -5,8 +5,7 @@
 #     "wt-registry",
 # ]
 # ///
-"""
-Example: Pretty Output Format
+"""Example: Pretty Output Format.
 
 This example demonstrates the human-readable pretty output format,
 showing how metadata like tags and descriptions are displayed.

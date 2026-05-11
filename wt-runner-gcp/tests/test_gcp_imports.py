@@ -1,4 +1,5 @@
 """Tests that verify wt-runner-gcp dependencies are importable."""
+# ruff: noqa: PLC0415  # optional-dep presence tests must import inside the test
 
 
 def test_has_gcp_exporter():

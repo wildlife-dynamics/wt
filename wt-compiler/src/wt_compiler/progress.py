@@ -7,6 +7,7 @@ During spinner operation, stderr from child processes and native libraries
 (e.g. py-rattler) is captured at the file-descriptor level and displayed
 after the spinner completes.
 """
+# ruff: noqa: D105, D107  # __init__/__enter__/__exit__/__bool__ are documented at the class level
 
 from __future__ import annotations
 

@@ -1,9 +1,11 @@
 """Tests for wt_compiler.requirements module."""
+# ruff: noqa: S108  # /tmp paths are test data
 
 import importlib
-import os
 
 import pytest
+
+import wt_compiler.requirements as req_mod
 
 
 class TestWtLocalChannel:
@@ -12,8 +14,6 @@ class TestWtLocalChannel:
     @staticmethod
     def _reload_wt_local_channel():
         """Reload the requirements module and return the WT_LOCAL_CHANNEL."""
-        import wt_compiler.requirements as req_mod
-
         importlib.reload(req_mod)
         return req_mod.WT_LOCAL_CHANNEL
 
@@ -33,20 +33,14 @@ class TestWtLocalChannel:
 
     def test_custom_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test WT_LOCAL_CHANNEL respects WT_CONDA_CHANNEL env var."""
-        monkeypatch.setenv(
-            "WT_CONDA_CHANNEL", "/tmp/ecoscope-workflows/release/artifacts"
-        )
+        monkeypatch.setenv("WT_CONDA_CHANNEL", "/tmp/ecoscope-workflows/release/artifacts")
         channel = self._reload_wt_local_channel()
 
         assert channel.base_url == "file:///tmp/ecoscope-workflows/release/artifacts/"
 
-    def test_custom_path_with_trailing_slash(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_custom_path_with_trailing_slash(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test WT_LOCAL_CHANNEL handles trailing slash in WT_CONDA_CHANNEL."""
-        monkeypatch.setenv(
-            "WT_CONDA_CHANNEL", "/tmp/ecoscope-workflows/release/artifacts/"
-        )
+        monkeypatch.setenv("WT_CONDA_CHANNEL", "/tmp/ecoscope-workflows/release/artifacts/")
         channel = self._reload_wt_local_channel()
 
         assert channel.base_url == "file:///tmp/ecoscope-workflows/release/artifacts/"

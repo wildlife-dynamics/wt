@@ -1,11 +1,14 @@
 """Tests for discovery.py and its integration with compiler.py."""
+# ruff: noqa: SIM105, S110, BLE001, S108  # cleanup blocks tolerate any error; /tmp paths are test data
 
 import errno
 import json
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
+from rattler import Channel, MatchSpec, Platform
 from wt_contracts.registry import RegistryEntry, RegistryMetadata, RegistryOutput
 
 from wt_compiler.compiler import (
@@ -13,6 +16,7 @@ from wt_compiler.compiler import (
     compile_workflow_from_yaml,
 )
 from wt_compiler.discovery import (
+    DiscoveryResult,
     _create_environment,
     discover_tasks_from_requirements,
 )
@@ -129,7 +133,6 @@ class TestDiscoverTasksMocked:
         self, mock_tmpdir, mock_install, mock_run, tmp_path
     ):
         """Test that discover_tasks_from_requirements correctly parses CLI output."""
-        from rattler import MatchSpec
 
         # Create a real temp directory with a fake executable
         env_path = tmp_path / "env"
@@ -251,7 +254,7 @@ class TestCompileWorkflowFromYaml:
         """Test that compile_workflow_from_yaml triggers discovery."""
         # This is an integration test that would require mocking
         # the entire discovery chain
-        pass  # Placeholder for full integration test
+        # Placeholder for full integration test
 
     @pytest.mark.asyncio
     async def test_compile_workflow_from_yaml_invalid_path(self):
@@ -261,9 +264,7 @@ class TestCompileWorkflowFromYaml:
 
     @pytest.mark.asyncio
     @patch("wt_compiler.compiler.populate_known_tasks", new_callable=AsyncMock)
-    async def test_compile_workflow_from_yaml_passes_custom_channels(
-        self, mock_populate, tmp_path
-    ):
+    async def test_compile_workflow_from_yaml_passes_custom_channels(self, mock_populate, tmp_path):
         """Test that custom channels from spec.yaml are passed to populate_known_tasks.
 
         This verifies the fix for the bug where custom package channels were not
@@ -271,7 +272,6 @@ class TestCompileWorkflowFromYaml:
         channels (like https://repo.prefix.dev/ecoscope-workflows/) to fail
         with "No candidates found" errors.
         """
-        from wt_compiler.discovery import DiscoveryResult
 
         spec_yaml = tmp_path / "spec.yaml"
         # Use valid channels from the channel whitelist: ecoscope-workflows and conda-forge
@@ -314,25 +314,22 @@ workflow: []
 
         # Verify both ecoscope-workflows channel and conda-forge are present
         channel_identifiers = [c.name or c.base_url for c in channels]
-        assert any(
-            "ecoscope-workflows" in str(ch) for ch in channel_identifiers
-        ), f"ecoscope-workflows channel not found in {channel_identifiers}"
-        assert any(
-            "conda-forge" in str(ch) for ch in channel_identifiers
-        ), f"conda-forge not found in {channel_identifiers}"
+        assert any("ecoscope-workflows" in str(ch) for ch in channel_identifiers), (
+            f"ecoscope-workflows channel not found in {channel_identifiers}"
+        )
+        assert any("conda-forge" in str(ch) for ch in channel_identifiers), (
+            f"conda-forge not found in {channel_identifiers}"
+        )
 
     @pytest.mark.asyncio
     @patch("wt_compiler.compiler.populate_known_tasks", new_callable=AsyncMock)
-    async def test_pypi_only_spec_uses_only_conda_forge_channel(
-        self, mock_populate, tmp_path
-    ):
+    async def test_pypi_only_spec_uses_only_conda_forge_channel(self, mock_populate, tmp_path):
         """Test that a PyPI-only spec only uses conda-forge, not all known channels.
 
         When a spec has no conda requirements (only PyPI deps), the compiler should
         not inject all known channels (including local file:// channels) into the
         rattler solve. Only conda-forge is needed for the base python + uv packages.
         """
-        from wt_compiler.discovery import DiscoveryResult
 
         spec_yaml = tmp_path / "spec.yaml"
         spec_yaml.write_text(
@@ -372,15 +369,12 @@ workflow: []
 
     @pytest.mark.asyncio
     @patch("wt_compiler.compiler.populate_known_tasks", new_callable=AsyncMock)
-    async def test_pypi_only_spec_populates_wt_pypi_deps(
-        self, mock_populate, tmp_path
-    ):
+    async def test_pypi_only_spec_populates_wt_pypi_deps(self, mock_populate, tmp_path):
         """Test that wt_pypi_deps is used when wt-registry is not in conda records.
 
         When wt-registry comes from PyPI (not in conda records), the compiler
         should use wt_pypi_deps from the DiscoveryResult instead of raising.
         """
-        from wt_compiler.discovery import DiscoveryResult
 
         spec_yaml = tmp_path / "spec.yaml"
         spec_yaml.write_text(
@@ -418,13 +412,8 @@ class TestDiscoveryErrors:
     @pytest.mark.asyncio
     @patch("wt_compiler.discovery._create_environment", new_callable=AsyncMock)
     @patch("wt_compiler.discovery.tempfile.TemporaryDirectory")
-    async def test_registry_not_found_raises_descriptive_error(
-        self, mock_tmpdir, mock_install
-    ):
+    async def test_registry_not_found_raises_descriptive_error(self, mock_tmpdir, mock_install):
         """Test that missing wt-registry raises RegistryNotFoundError with helpful message."""
-        from pathlib import Path
-
-        from rattler import MatchSpec
 
         # Mock TemporaryDirectory context manager
         mock_tmpdir.return_value.__enter__ = MagicMock(return_value="/fake/tmpdir")
@@ -451,7 +440,6 @@ class TestDiscoveryErrors:
         self, mock_tmpdir, mock_install, mock_run, tmp_path
     ):
         """Test that wt-registry failure raises RegistryExecutionError with stderr."""
-        from rattler import MatchSpec
 
         # Create a real temp directory with a fake executable
         env_path = tmp_path / "env"
@@ -493,7 +481,6 @@ class TestDisambiguationLogic:
         self, mock_tmpdir, mock_install, mock_run, tmp_path
     ):
         """Test that first occurrence of function name gets registry_ref=0."""
-        from rattler import MatchSpec
 
         # Create temp directory with fake executable
         env_path = tmp_path / "env"
@@ -545,7 +532,6 @@ class TestDisambiguationLogic:
         self, mock_tmpdir, mock_install, mock_run, tmp_path
     ):
         """Test that second occurrence from different module gets registry_ref=1."""
-        from rattler import MatchSpec
 
         # Create temp directory with fake executable
         env_path = tmp_path / "env"
@@ -628,14 +614,12 @@ class TestDiscoveryIntegration:
     async def test_end_to_end_discovery(self):
         """Test full discovery with real environment creation."""
         # Would test with real wt-registry installation
-        pass
 
     @pytest.mark.asyncio
     @pytest.mark.skip(reason="Requires wt-registry installed in environment")
     async def test_end_to_end_compilation(self, tmp_path):
         """Test full compilation from YAML with real discovery."""
         # Would test the complete compile_workflow_from_yaml flow
-        pass
 
 
 class TestCreateEnvironmentRetry:
@@ -648,7 +632,6 @@ class TestCreateEnvironmentRetry:
         self, mock_solve, mock_install, tmp_path
     ):
         """Test that ENOTEMPTY error on first attempt retries and succeeds."""
-        from rattler import Channel, MatchSpec, Platform
 
         env_path = tmp_path / "env"
         requirements = [MatchSpec("test-package>=1.0.0")]
@@ -671,11 +654,8 @@ class TestCreateEnvironmentRetry:
     @pytest.mark.asyncio
     @patch("wt_compiler.discovery.install", new_callable=AsyncMock)
     @patch("wt_compiler.discovery.solve", new_callable=AsyncMock)
-    async def test_max_retries_exceeded_raises_error(
-        self, mock_solve, mock_install, tmp_path
-    ):
+    async def test_max_retries_exceeded_raises_error(self, mock_solve, mock_install, tmp_path):
         """Test that EnvironmentCreationError is raised after max retries."""
-        from rattler import Channel, MatchSpec, Platform
 
         env_path = tmp_path / "env"
         requirements = [MatchSpec("test-package>=1.0.0")]
@@ -700,11 +680,8 @@ class TestCreateEnvironmentRetry:
     @pytest.mark.asyncio
     @patch("wt_compiler.discovery.install", new_callable=AsyncMock)
     @patch("wt_compiler.discovery.solve", new_callable=AsyncMock)
-    async def test_non_retryable_error_fails_immediately(
-        self, mock_solve, mock_install, tmp_path
-    ):
+    async def test_non_retryable_error_fails_immediately(self, mock_solve, mock_install, tmp_path):
         """Test that non-ENOTEMPTY errors fail without retry."""
-        from rattler import Channel, MatchSpec, Platform
 
         env_path = tmp_path / "env"
         requirements = [MatchSpec("test-package>=1.0.0")]
@@ -731,7 +708,6 @@ class TestCreateEnvironmentRetry:
     @patch("wt_compiler.discovery.solve", new_callable=AsyncMock)
     async def test_solve_failure_raises_error(self, mock_solve, tmp_path):
         """Test that solve failures raise EnvironmentCreationError with phase=solve."""
-        from rattler import Channel, MatchSpec, Platform
 
         env_path = tmp_path / "env"
         requirements = [MatchSpec("nonexistent-package>=1.0.0")]
@@ -750,9 +726,6 @@ class TestCreateEnvironmentRetry:
 
     def test_error_message_contains_guidance_for_enotempty(self):
         """Test that EnvironmentCreationError provides helpful guidance for ENOTEMPTY."""
-        from pathlib import Path
-
-        from rattler import MatchSpec
 
         enotempty_error = OSError(errno.ENOTEMPTY, "Directory not empty")
         error = EnvironmentCreationError(
@@ -769,9 +742,6 @@ class TestCreateEnvironmentRetry:
 
     def test_error_message_contains_guidance_for_emfile(self):
         """Test that EnvironmentCreationError provides helpful guidance for EMFILE."""
-        from pathlib import Path
-
-        from rattler import MatchSpec
 
         emfile_error = OSError(errno.EMFILE, "Too many open files")
         error = EnvironmentCreationError(
@@ -788,9 +758,6 @@ class TestCreateEnvironmentRetry:
 
     def test_error_message_contains_guidance_for_solve(self):
         """Test that EnvironmentCreationError provides helpful guidance for solve failures."""
-        from pathlib import Path
-
-        from rattler import MatchSpec
 
         solve_error = RuntimeError("No candidates found for package")
         error = EnvironmentCreationError(
@@ -807,16 +774,13 @@ class TestCreateEnvironmentRetry:
     @pytest.mark.asyncio
     @patch("wt_compiler.discovery.install", new_callable=AsyncMock)
     @patch("wt_compiler.discovery.solve", new_callable=AsyncMock)
-    async def test_retry_on_rattler_enotempty_exception(
-        self, mock_solve, mock_install, tmp_path
-    ):
+    async def test_retry_on_rattler_enotempty_exception(self, mock_solve, mock_install, tmp_path):
         """Test that py-rattler exceptions with ENOTEMPTY in message trigger retry.
 
         py-rattler raises its own exception types (LinkError, ExtractError, IoError)
         that are NOT OSError subclasses but contain "ENOTEMPTY" or "Directory not empty"
         in the message.
         """
-        from rattler import Channel, MatchSpec, Platform
 
         env_path = tmp_path / "env"
         requirements = [MatchSpec("test-package>=1.0.0")]
@@ -828,9 +792,7 @@ class TestCreateEnvironmentRetry:
 
         # Simulate py-rattler's LinkError with ENOTEMPTY in message
         # This is NOT an OSError subclass
-        rattler_error = RuntimeError(
-            "failed to link package: ENOTEMPTY: directory not empty"
-        )
+        rattler_error = RuntimeError("failed to link package: ENOTEMPTY: directory not empty")
         mock_install.side_effect = [rattler_error, None]
 
         # Should succeed after retry
@@ -842,11 +804,8 @@ class TestCreateEnvironmentRetry:
     @pytest.mark.asyncio
     @patch("wt_compiler.discovery.install", new_callable=AsyncMock)
     @patch("wt_compiler.discovery.solve", new_callable=AsyncMock)
-    async def test_retry_on_directory_not_empty_message(
-        self, mock_solve, mock_install, tmp_path
-    ):
+    async def test_retry_on_directory_not_empty_message(self, mock_solve, mock_install, tmp_path):
         """Test that exceptions with 'Directory not empty' in message trigger retry."""
-        from rattler import Channel, MatchSpec, Platform
 
         env_path = tmp_path / "env"
         requirements = [MatchSpec("test-package>=1.0.0")]
@@ -857,9 +816,7 @@ class TestCreateEnvironmentRetry:
         mock_solve.return_value = [MagicMock()]
 
         # Simulate exception with "Directory not empty" in message
-        dir_not_empty_error = Exception(
-            "ExtractError: Directory not empty: /tmp/cache/pkg-1.0"
-        )
+        dir_not_empty_error = Exception("ExtractError: Directory not empty: /tmp/cache/pkg-1.0")
         mock_install.side_effect = [dir_not_empty_error, None]
 
         # Should succeed after retry
@@ -871,11 +828,8 @@ class TestCreateEnvironmentRetry:
     @pytest.mark.asyncio
     @patch("wt_compiler.discovery.install", new_callable=AsyncMock)
     @patch("wt_compiler.discovery.solve", new_callable=AsyncMock)
-    async def test_rattler_exception_exhausts_retries(
-        self, mock_solve, mock_install, tmp_path
-    ):
+    async def test_rattler_exception_exhausts_retries(self, mock_solve, mock_install, tmp_path):
         """Test that py-rattler ENOTEMPTY exceptions exhaust all retries."""
-        from rattler import Channel, MatchSpec, Platform
 
         env_path = tmp_path / "env"
         requirements = [MatchSpec("test-package>=1.0.0")]
@@ -913,7 +867,6 @@ class TestTemporaryDirectoryCleanup:
         fail with ENOTEMPTY. The ignore_cleanup_errors=True parameter should prevent
         the cleanup error from masking the original helpful error message.
         """
-        from rattler import MatchSpec
 
         # Make _create_environment raise the original error
         original_error = RuntimeError("LinkError: failed to extract package foo")

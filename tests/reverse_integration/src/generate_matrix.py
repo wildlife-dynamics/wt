@@ -19,23 +19,21 @@ from conftest import get_repo_configs, load_manifest
 
 
 def generate_matrix() -> dict[str, list[dict[str, str]]]:
-    """Generate matrix entries for all repo×ref combinations.
+    """Generate matrix entries for all repo x ref combinations.
 
     Returns:
         Dict with "include" key containing list of matrix entries.
         Each entry has "id" (for --manifest-item) and "name" (for job display).
     """
     manifest = load_manifest()
-    refs = ["main", "latest-release"]
-
-    entries = []
     configs = get_repo_configs(manifest)
-    for config in configs:
-        entries.append({
+    entries = [
+        {
             "id": config.id,
             "name": config.id.replace("@", " @ "),
-        })
-
+        }
+        for config in configs
+    ]
     return {"include": entries}
 
 

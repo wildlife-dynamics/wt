@@ -1,4 +1,5 @@
 """Tests for wt_compiler.wizard.providers module."""
+# ruff: noqa: SIM117  # nested with-blocks read clearer here
 
 from __future__ import annotations
 
@@ -8,7 +9,6 @@ import pytest
 
 from wt_compiler.wizard.abstract import AbstractWizardProvider
 from wt_compiler.wizard.providers import get_available_providers, load_provider_class
-
 
 # ---------------------------------------------------------------------------
 # Shared helper

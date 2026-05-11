@@ -58,7 +58,7 @@ def detect_pypi_source(
         "print(json.dumps({'direct_url': direct_url, 'version': version}))\n"
     )
 
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: S603  # cmd is python -c with a fixed inline script
         [str(python_exe), "-c", script],
         capture_output=True,
         text=True,
@@ -78,7 +78,7 @@ def derive_sibling_pypi_requirement(
     source_pkg: str,
     target_pkg: str,
     direct_url: dict[str, Any] | None,
-    version: str,
+    version: str,  # noqa: ARG001  # may be used by future install-method branches
 ) -> PyPIRequirement | str:
     """Derive a PyPI requirement for a sibling package based on the source package's install method.
 

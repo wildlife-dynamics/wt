@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import subprocess
 from dataclasses import dataclass, replace
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import pytest
@@ -16,7 +16,7 @@ from helpers.diff import (
     check_diff_allowlist,
     get_changed_files,
 )
-from helpers.git import CloneResult, clone_at_ref
+from helpers.git import CloneResult, clone_at_ref, get_latest_release_tag
 
 # Path to this file's directory (src/) and parent (reverse_integration/)
 SRC_DIR = Path(__file__).parent
@@ -33,7 +33,9 @@ class RepoConfig:
     spec_path: str
     generated_path: str
     spec_name: str | None = None  # For monorepos: identifies which spec (e.g., "etl")
-    compile_flags: dict[str, str] | None = None  # Optional compiler flags (e.g., pkg_name_prefix, variant)
+    compile_flags: dict[str, str] | None = (
+        None  # Optional compiler flags (e.g., pkg_name_prefix, variant)
+    )
 
     @property
     def id(self) -> str:
@@ -66,7 +68,7 @@ class PixiInstallResult:
 
 def load_manifest() -> dict[str, Any]:
     """Load the manifest.yaml file."""
-    with open(MANIFEST_PATH) as f:
+    with MANIFEST_PATH.open() as f:
         return yaml.safe_load(f)
 
 
@@ -75,8 +77,6 @@ def _derive_spec_name(spec_path: str) -> str:
 
     For a path like 'workflows/etl/spec.yaml', returns 'etl'.
     """
-    from pathlib import PurePosixPath
-
     path = PurePosixPath(spec_path)
     # Use the parent directory name as the spec name
     return path.parent.name or path.stem
@@ -87,8 +87,7 @@ def get_repo_configs(
     repo_url_filter: str | None = None,
     ref_override: str | None = None,
 ) -> list[RepoConfig]:
-    """
-    Extract repo configurations from manifest.
+    """Extract repo configurations from manifest.
 
     Args:
         manifest: Parsed manifest dict
@@ -110,17 +109,17 @@ def get_repo_configs(
         # Handle single spec or multiple specs
         if "specs" in repo:
             # Multiple specs in monorepo
-            for spec_config in repo["specs"]:
-                configs.append(
-                    RepoConfig(
-                        url=url,
-                        ref=ref_override or repo.get("ref", "main"),
-                        spec_path=spec_config["spec_path"],
-                        generated_path=spec_config["generated_path"],
-                        spec_name=_derive_spec_name(spec_config["spec_path"]),
-                        compile_flags=spec_config.get("compile_flags") or None,
-                    )
+            configs.extend(
+                RepoConfig(
+                    url=url,
+                    ref=ref_override or repo.get("ref", "main"),
+                    spec_path=spec_config["spec_path"],
+                    generated_path=spec_config["generated_path"],
+                    spec_name=_derive_spec_name(spec_config["spec_path"]),
+                    compile_flags=spec_config.get("compile_flags") or None,
                 )
+                for spec_config in repo["specs"]
+            )
         else:
             # Single spec
             configs.append(
@@ -227,8 +226,7 @@ def show_diff_analysis(request: pytest.FixtureRequest) -> bool:
 
 
 def get_repo_configs_for_session(config: pytest.Config) -> list[RepoConfig]:
-    """
-    Get repo configs based on CLI options and manifest.
+    """Get repo configs based on CLI options and manifest.
 
     Args:
         config: Pytest Config object (from metafunc.config or request.config)
@@ -291,8 +289,7 @@ def repo_workspace(
     auth_token: str | None,
     request: pytest.FixtureRequest,
 ) -> Workspace:
-    """
-    Clone a repository and prepare it for testing.
+    """Clone a repository and prepare it for testing.
 
     This fixture clones the repo to a temp directory and returns
     a Workspace object with the clone result.
@@ -301,8 +298,6 @@ def repo_workspace(
 
     # Handle 'latest-release' special ref
     if ref == "latest-release":
-        from helpers.git import get_latest_release_tag
-
         tag = get_latest_release_tag(repo_config.url, auth_token)
         if tag is None:
             pytest.skip(f"No releases found for {repo_config.url}")
@@ -326,8 +321,7 @@ def compiled_workspace(
     repo_workspace: Workspace,
     diff_allowlist: list[str | dict[str, Any]],
 ) -> Workspace:
-    """
-    Compile the workflow in a cloned repository.
+    """Compile the workflow in a cloned repository.
 
     This fixture runs wt-compiler on the spec.yaml and checks for diffs.
     """
@@ -367,8 +361,7 @@ def test_cases(
     repo_workspace: Workspace,
     selected_cases: list[str] | None,
 ) -> list[str]:
-    """
-    Get the list of test cases to run for a repo.
+    """Get the list of test cases to run for a repo.
 
     Parses test-cases.yaml from the repo and applies any case filters.
     """
@@ -378,7 +371,7 @@ def test_cases(
     if not test_cases_path.exists():
         return []
 
-    with open(test_cases_path) as f:
+    with test_cases_path.open() as f:
         cases_data = yaml.safe_load(f)
 
     # Get all case names (keys in the YAML)
@@ -395,8 +388,7 @@ def test_cases(
 def pixi_installed_workspace(
     compiled_workspace: Workspace,
 ) -> tuple[Workspace, PixiInstallResult]:
-    """
-    Run pixi install once per compiled workspace.
+    """Run pixi install once per compiled workspace.
 
     Returns the workspace and the install result so tests can assert
     on the install outcome or skip if it failed.

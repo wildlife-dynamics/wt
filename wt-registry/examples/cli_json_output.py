@@ -5,8 +5,7 @@
 #     "wt-registry",
 # ]
 # ///
-"""
-Example: JSON Output Format
+"""Example: JSON Output Format.
 
 This example demonstrates how to output the registry as JSON,
 which is useful for programmatic processing and integration.

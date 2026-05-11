@@ -66,7 +66,7 @@ def make_otel_console_exporter_file_dst_kws(target_dir: Path) -> dict[str, Any]:
     """
     if target_dir.exists() and not target_dir.is_dir():
         raise ValueError(f"Target dir {target_dir} exists but is not a directory")
-    elif not target_dir.exists():
+    if not target_dir.exists():
         target_dir.mkdir(parents=True, exist_ok=True)
     traces_outpath = target_dir / "otel_traces.jsonl"
     return {

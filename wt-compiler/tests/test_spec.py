@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+import ruamel.yaml
 
 from wt_compiler.spec import (
     InlineValue,
@@ -18,7 +19,9 @@ from wt_compiler.spec import (
     VariableValuesList,
     _conda_or_pypi,
     _find_task_id_vars,
+    known_tasks,
 )
+from wt_compiler.spec import known_tasks as global_known_tasks
 
 
 class TestKnownTask:
@@ -101,7 +104,6 @@ class TestKnownTask:
         assert "y" not in schema["properties"]
         assert "x" in schema["properties"]
 
-
     def test_parameters_jsonschema_returns_independent_copies(self):
         """Test that multiple calls return independent dicts, not shared references.
 
@@ -150,6 +152,7 @@ class TestKnownTaskSerialization:
         assert ir["function"] == "my_func"
         # Always uses "as" clause for explicit re-export semantics
         assert ir["statement"] == "from mymodule.tasks import my_func as my_func"
+
     def test_importable_reference_serialization_with_registry_ref(self):
         """Test serialization with registry_ref > 0 uses safe_reference with suffix."""
         task = KnownTask(
@@ -230,7 +233,6 @@ class TestSkipIfKnownTasks:
 
     def test_known_tasks_property_exists(self):
         """Test that SkipIf.known_tasks property resolves conditions."""
-        from wt_compiler.spec import known_tasks as global_known_tasks
 
         # Register a mock condition task
         mock_task = KnownTask(importable_reference="mod.condition_func")
@@ -245,7 +247,6 @@ class TestSkipIfKnownTasks:
 
     def test_known_tasks_serialization(self):
         """Test that known_tasks serializes correctly for templates."""
-        from wt_compiler.spec import known_tasks as global_known_tasks
 
         mock_task = KnownTask(importable_reference="mod.check_condition")
         global_known_tasks["check_condition"] = {"mod": mock_task}
@@ -268,7 +269,6 @@ class TestSkipIfKnownTasks:
 
     def test_known_tasks_with_fully_qualified_reference(self):
         """Test known_tasks with fully qualified importable reference."""
-        from wt_compiler.spec import known_tasks as global_known_tasks
 
         mock_task = KnownTask(importable_reference="mypackage.conditions.should_skip")
         global_known_tasks["should_skip"] = {"mypackage.conditions": mock_task}
@@ -400,9 +400,7 @@ class TestPyPIRequirement:
 
     def test_to_pip_install_arg_git_with_extras(self):
         """Test pip install arg for git requirement with extras."""
-        req = PyPIRequirement(
-            name="foo", git="https://github.com/org/foo.git", extras=["dev"]
-        )
+        req = PyPIRequirement(name="foo", git="https://github.com/org/foo.git", extras=["dev"])
         assert req.to_pip_install_arg() == "foo[dev] @ git+https://github.com/org/foo.git"
 
     def test_to_pip_install_arg_path(self):
@@ -519,7 +517,6 @@ class TestTaskInstance:
 
     def test_task_instance_basic(self):
         """Test creating a basic TaskInstance."""
-        from wt_compiler.spec import known_tasks
 
         # Register the task in the global registry
         mock_task = KnownTask(importable_reference="mod.func")
@@ -540,7 +537,6 @@ class TestTaskInstance:
 
     def test_task_instance_with_partial(self):
         """Test TaskInstance with partial arguments."""
-        from wt_compiler.spec import known_tasks
 
         # Register the task in the global registry
         mock_task = KnownTask(importable_reference="mod.add")
@@ -586,9 +582,9 @@ class TestInlineValue:
 
     def test_string_with_both_quote_types(self):
         """String with both quote types is safely repr'd with escaping."""
-        val = InlineValue(value="it's a \"test\"")
+        val = InlineValue(value='it\'s a "test"')
         result = val.model_dump()
-        assert result["asstr"] == repr("it's a \"test\"")
+        assert result["asstr"] == repr('it\'s a "test"')
 
     def test_integer(self):
         """Integer value uses f-string formatting (no quotes)."""
@@ -638,7 +634,6 @@ class TestVariableValuesList:
 
     def test_mixed_list_parsing(self):
         """Test that a mixed list is parsed as VariableValuesList."""
-        from wt_compiler.spec import known_tasks
 
         mock_task = KnownTask(importable_reference="mod.func")
         known_tasks["func"] = {"mod": mock_task}
@@ -658,7 +653,6 @@ class TestVariableValuesList:
 
     def test_mixed_list_serialization_asstr(self):
         """Test that VariableValuesList serialization produces correct asstr."""
-        from wt_compiler.spec import known_tasks
 
         mock_task = KnownTask(importable_reference="mod.func")
         known_tasks["func"] = {"mod": mock_task}
@@ -679,7 +673,6 @@ class TestVariableValuesList:
 
     def test_mixed_list_serialization_aslist(self):
         """Test that VariableValuesList aslist contains properly serialized items."""
-        from wt_compiler.spec import known_tasks
 
         mock_task = KnownTask(importable_reference="mod.func")
         known_tasks["func"] = {"mod": mock_task}
@@ -705,7 +698,6 @@ class TestVariableValuesList:
 
     def test_pure_inline_list_becomes_variable_values_list(self):
         """Test that a pure inline list (no variables) becomes VariableValuesList."""
-        from wt_compiler.spec import known_tasks
 
         mock_task = KnownTask(importable_reference="mod.func")
         known_tasks["func"] = {"mod": mock_task}
@@ -726,7 +718,6 @@ class TestVariableValuesList:
 
     def test_single_variable_list(self):
         """Test a list with a single variable reference."""
-        from wt_compiler.spec import known_tasks
 
         mock_task = KnownTask(importable_reference="mod.func")
         known_tasks["func"] = {"mod": mock_task}
@@ -747,7 +738,6 @@ class TestVariableValuesList:
 
     def test_empty_list(self):
         """Test an empty list partial arg."""
-        from wt_compiler.spec import known_tasks
 
         mock_task = KnownTask(importable_reference="mod.func")
         known_tasks["func"] = {"mod": mock_task}
@@ -768,7 +758,6 @@ class TestVariableValuesList:
 
     def test_dependency_extraction_from_mixed_list(self):
         """Test TaskIdVariable extraction from VariableValuesList."""
-        from wt_compiler.spec import known_tasks
 
         mock_task = KnownTask(importable_reference="mod.func")
         known_tasks["func"] = {"mod": mock_task}
@@ -788,7 +777,6 @@ class TestVariableValuesList:
 
     def test_dependency_extraction_no_variables(self):
         """Test that pure inline lists produce empty dependency lists."""
-        from wt_compiler.spec import known_tasks
 
         mock_task = KnownTask(importable_reference="mod.func")
         known_tasks["func"] = {"mod": mock_task}
@@ -844,7 +832,6 @@ class TestVariableValuesDict:
 
     def test_nested_dict_with_variable_ref(self):
         """Test that a variable ref inside a nested dict is parsed as TaskIdVariable."""
-        from wt_compiler.spec import known_tasks
 
         mock_task = KnownTask(importable_reference="mod.func")
         known_tasks["func"] = {"mod": mock_task}
@@ -874,7 +861,6 @@ class TestVariableValuesDict:
 
     def test_variable_ref_in_dict_in_list_in_dict(self):
         """Test ${{ }} ref inside dict → list → dict nesting."""
-        from wt_compiler.spec import known_tasks
 
         mock_task = KnownTask(importable_reference="mod.func")
         known_tasks["func"] = {"mod": mock_task}
@@ -913,7 +899,6 @@ class TestVariableValuesDict:
 
     def test_nested_variable_ref_in_asdict(self):
         """Test that asdict contains properly serialized nested variable refs."""
-        from wt_compiler.spec import known_tasks
 
         mock_task = KnownTask(importable_reference="mod.func")
         known_tasks["func"] = {"mod": mock_task}
@@ -955,10 +940,9 @@ class TestSpec:
         # For this test, we need to mock KnownTask discovery
         # In real usage, discovery.py would populate known_task
         # For now, we'll test basic YAML parsing
-        import ruamel.yaml
 
         yaml = ruamel.yaml.YAML(typ="safe")
-        with open(fixture_path) as f:
+        with fixture_path.open() as f:
             data = yaml.load(f)
 
         assert data["id"] == "test-workflow"
@@ -970,14 +954,6 @@ class TestSpec:
         # Create a minimal spec
 
         # We'll create a simple spec manually
-        spec_data = {
-            "id": "test-spec",
-            "name": "Test",
-            "description": "Test spec",
-            "requirements": ["package>=1.0"],
-            "channels": ["conda-forge"],
-            "workflow": [],
-        }
 
         # The sha256 should be deterministic
         # We can't easily test this without full Spec instantiation
@@ -996,7 +972,6 @@ class TestTaskInstanceDependencies:
         """Test parsing variable references like ${{ workflow.task1.return }}."""
         # This is tested implicitly through TaskInstance.all_dependencies_dict
         # The Spec model handles this parsing
-        pass
 
 
 if __name__ == "__main__":

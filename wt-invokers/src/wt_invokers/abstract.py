@@ -10,9 +10,10 @@ from __future__ import annotations
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from rattler import MatchSpec
+if TYPE_CHECKING:
+    from rattler import MatchSpec
 
 
 @dataclass
@@ -83,7 +84,6 @@ class AbstractInvoker(ABC):
             >>> # asyncio.run(invoker.is_installed())
             >>> # True
         """
-        pass
 
     @abstractmethod
     async def install(self) -> None:
@@ -101,7 +101,6 @@ class AbstractInvoker(ABC):
             >>> # invoker = MyInvoker(matchspec=MatchSpec("my-workflow>=1.0.0"))
             >>> # asyncio.run(invoker.install())
         """
-        pass
 
     @abstractmethod
     async def run(
@@ -115,9 +114,9 @@ class AbstractInvoker(ABC):
         otel_console_exporter_dst: str | None = None,
         extra_env: dict[str, str] | None = None,
         lithops_config_text: str | None = None,
-        **kwargs: Any,
+        **kwargs: Any,  # noqa: ANN401  # subclass-specific extras
     ) -> None:
-        """Invoke the workflow with the given arguments.
+        r"""Invoke the workflow with the given arguments.
 
         Args:
             workflow_run_id: Unique identifier for this workflow run
@@ -149,7 +148,6 @@ class AbstractInvoker(ABC):
             >>> #     mock_io=False
             >>> # ))
         """
-        pass
 
     @abstractmethod
     async def wait(
@@ -181,7 +179,6 @@ class AbstractInvoker(ABC):
             >>> # exit_code
             >>> # 0
         """
-        pass
 
     @property
     @abstractmethod
@@ -202,7 +199,6 @@ class AbstractInvoker(ABC):
             >>> # invoker.is_waitable
             >>> # False
         """
-        pass
 
     async def check_output(self, command: list[str], stdin: str | None = None) -> str:
         """Get the output of a subprocess command.

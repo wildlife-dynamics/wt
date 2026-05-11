@@ -8,6 +8,7 @@ direct Python import dependencies on task libraries.
 
 import asyncio
 import errno
+import platform as plat
 import shutil
 import subprocess
 import sys
@@ -90,8 +91,6 @@ async def discover_tasks_from_requirements(
     if platform is None:
         # Determine current platform
         if sys.platform == "darwin":
-            import platform as plat
-
             platform = Platform("osx-arm64") if plat.machine() == "arm64" else Platform("osx-64")
         elif sys.platform == "linux":
             platform = Platform("linux-64")
@@ -147,7 +146,7 @@ async def discover_tasks_from_requirements(
                     ]
                 else:
                     uv_args = [str(uv_exe), "pip", "install", "--python", str(env_python), pip_arg]
-                uv_result = subprocess.run(
+                uv_result = subprocess.run(  # noqa: ASYNC221, S603  # blocking install is intentional; cmd built from configured tool path
                     uv_args,
                     capture_output=True,
                     text=True,
@@ -180,7 +179,7 @@ async def discover_tasks_from_requirements(
         # Call wt-registry CLI in the environment
         if on_progress is not None:
             on_progress("Discovering tasks...")
-        result = subprocess.run(
+        result = subprocess.run(  # noqa: ASYNC221, S603  # blocking subprocess is intentional; cmd built from configured tool path
             cli_args,
             capture_output=True,
             text=True,
@@ -202,7 +201,7 @@ async def discover_tasks_from_requirements(
         # Convert to KnownTask instances and populate known_tasks dict
         discovered_tasks: dict[str, dict[str, KnownTask]] = {}
 
-        for _, entry in registry_output.entries.items():
+        for entry in registry_output.entries.values():
             # entry is typed as RegistryEntry from wt-contracts
             # Use public_module_path for imports (via __init__.py re-exports)
             public_module_path = entry.public_module_path
@@ -238,7 +237,9 @@ async def discover_tasks_from_requirements(
         wt_pypi_deps: dict[str, str | dict[str, Any]] | None = None
         wt_registry_in_conda = any(str(r.name.normalized) == "wt-registry" for r in records)
         if not wt_registry_in_conda:
-            from wt_compiler.pypi_source import (
+            # lazy import: tests patch wt_compiler.pypi_source.detect_pypi_source directly,
+            # which only works if discovery.py looks the name up at call time.
+            from wt_compiler.pypi_source import (  # noqa: PLC0415
                 derive_sibling_pypi_requirement,
                 detect_pypi_source,
             )
@@ -273,6 +274,7 @@ async def _create_environment(
         requirements: List of package requirements (MatchSpec)
         channels: List of channels
         platform: Target platform
+        on_progress: Optional callback for progress reporting
 
     Returns:
         List of RepoDataRecord objects from the solved environment
@@ -331,7 +333,7 @@ async def _create_environment(
                 cache_dir=cache_dir,
             )
             return records  # Success
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001  # retry on any rattler install error; classified below
             last_error = e
             # Check if this is a retryable ENOTEMPTY error
             # py-rattler raises its own exception types (LinkError, ExtractError, IoError)
@@ -368,7 +370,7 @@ async def populate_known_tasks(
     channels: list[Channel] | None = None,
     pypi_requirements: list[PyPIRequirement] | None = None,
     on_progress: Callable[[str], None] | None = None,
-    **kwargs: Any,
+    **kwargs: Any,  # noqa: ANN401  # forwarded to discover_tasks_from_requirements
 ) -> DiscoveryResult:
     """Discover tasks and populate the global known_tasks dictionary.
 
@@ -409,7 +411,7 @@ async def populate_known_tasks(
 
 async def discover_tasks_from_spec_requirements(
     spec_requirements: list[Any],  # SpecRequirement from spec.py
-    **kwargs: Any,
+    **kwargs: Any,  # noqa: ANN401  # forwarded to populate_known_tasks
 ) -> DiscoveryResult:
     """Discover tasks from Spec requirements.
 
