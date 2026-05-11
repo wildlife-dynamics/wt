@@ -81,7 +81,7 @@ jobs:
         with:
           name: failed-snapshot-diffs-${{ matrix.case }}
           path: __diff_output__/
-          if-no-files-found: ignore
+          if-no-files-found: error
 
   docker:
     needs: parse-test-cases
