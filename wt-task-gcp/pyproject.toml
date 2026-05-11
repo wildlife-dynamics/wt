@@ -18,6 +18,12 @@ dependencies = [
     "opentelemetry-exporter-gcp-trace>=1.6.0",
 ]
 
+[tool.uv.sources]
+# Development override - uses local editable wt-task and wt-contracts
+# Published packages will reference PyPI versions normally
+wt-task = { path = "../wt-task", editable = true }
+wt-contracts = { path = "../wt-contracts", editable = true }
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

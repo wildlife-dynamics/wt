@@ -389,6 +389,19 @@ def main() -> None:
             "for the results URL (default: WT_RESULTS)"
         ),
     )
+    compile_parser.add_argument(
+        "--env-overrides",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Path (absolute or relative to CWD) to a wt-compiler env-overrides toml file. "
+            "The file declares per-feature conda and pypi dependencies to merge into the "
+            "compiled package's pixi.toml. Conventional filename: "
+            "wt-compiler-env-overrides.toml. Useful for development and testing of wt "
+            "feature branches; should not be used in production."
+        ),
+    )
 
     # scaffold subcommand
     scaffold_parser = subparsers.add_parser(
@@ -481,6 +494,8 @@ def _compile(args: argparse.Namespace) -> None:
         if args.variant:
             compiler_kwargs["variant"] = args.variant
         compiler_kwargs["results_env_var"] = args.results_env_var
+        if args.env_overrides is not None:
+            compiler_kwargs["env_overrides_path"] = Path(args.env_overrides).resolve()
         artifacts = asyncio.run(
             compile_workflow_from_yaml(
                 str(spec_path),

@@ -357,13 +357,15 @@ class TestPyPIRequirement:
         assert d["subdirectory"] == "packages/foo"
 
     def test_validate_no_source(self):
-        """Test that no source raises error."""
-        with pytest.raises(ValueError, match="Exactly one"):
+        """Test that no source and no version raises error."""
+        with pytest.raises(
+            ValueError, match="must declare one of 'git', 'path', 'url', or 'version'"
+        ):
             PyPIRequirement(name="foo")
 
     def test_validate_multiple_sources(self):
         """Test that multiple sources raises error."""
-        with pytest.raises(ValueError, match="Exactly one"):
+        with pytest.raises(ValueError, match="At most one"):
             PyPIRequirement(name="foo", git="https://github.com/org/foo.git", path="/opt/foo")
 
     def test_validate_rev_without_git(self):

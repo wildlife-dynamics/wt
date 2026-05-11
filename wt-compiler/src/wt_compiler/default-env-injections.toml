@@ -1,0 +1,38 @@
+# Default per-feature dependency injections for compiled workflow packages.
+#
+# This file is bundled with wt-compiler and loaded as the bottom layer of the
+# pixi.toml dependency merge. It uses the same shape as a user-supplied
+# --env-overrides file: `[feature.<name>.dependencies]` for conda specs and
+# `[feature.<name>.pypi-dependencies]` for pypi entries.
+#
+# Layering rules (see docs/content/reference/wt-compiler.md → "Injected
+# Dependencies"):
+#   1. This file provides the baseline.
+#   2. Spec-side `requirements:` entries (direct or transitive) suppress
+#      same-name baseline entries.
+#   3. A user --env-overrides file has the final say.
+
+[feature.default.dependencies]
+click             = { version = ">=8.0.0,<9.0.0",  channel = "conda-forge" }
+obstore           = { version = ">=0.6.0,<0.7.0",  channel = "conda-forge" }
+pydantic          = { version = ">=2.0.0,<3.0.0",  channel = "conda-forge" }
+# Pinned <0.19.0: 0.19.1 dropped its ruamel.yaml.clib dep, so a
+# pypi-resolved 0.19.1 wheel is pure-Python with no C parser, breaking
+# YAML round-trips when dumper/loader envs land on different parsers.
+"ruamel.yaml"     = { version = ">=0.18.0,<0.19.0", channel = "conda-forge" }
+opentelemetry-api = { version = ">=1.20.0,<2.0.0", channel = "conda-forge" }
+wt-task           = { version = ">=0.1.2,<1.0.0",  channel = "ecoscope-workflows" }
+
+[feature.runner.dependencies]
+wt-runner = { version = ">=0.1.5,<1.0.0", channel = "ecoscope-workflows" }
+
+[feature.test.dependencies]
+pandas         = { version = "*",        channel = "conda-forge" }
+pyarrow        = { version = "*",        channel = "conda-forge" }
+pytest         = { version = "*",        channel = "conda-forge" }
+pytest-asyncio = { version = "*",        channel = "conda-forge" }
+pytest-check   = { version = "*",        channel = "conda-forge" }
+pillow         = { version = "*",        channel = "conda-forge" }
+scikit-image   = { version = "*",        channel = "conda-forge" }
+syrupy         = { version = "*",        channel = "conda-forge" }
+playwright     = { version = ">=1.52.0", channel = "microsoft" }

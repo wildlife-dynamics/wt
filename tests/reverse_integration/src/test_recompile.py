@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -37,16 +37,17 @@ class TestRecompile:
     def test_no_unexpected_diff(
         self,
         compiled_workspace: Workspace,
-        diff_allowlist: list[str | dict[str, Any]],
         show_diff_analysis: bool,
     ) -> None:
         """Verify that only allowlisted files have changes after recompilation.
 
         This test ensures that regenerating the code produces identical
         output except for expected dynamic files (README.md, pixi.lock, etc.).
+        The allowlist is taken from the manifest entry's ``diff_allowlist``.
         """
         compile_result = compiled_workspace.compile_result
         diff_result = compiled_workspace.diff_result
+        diff_allowlist = compiled_workspace.repo_config.diff_allowlist
 
         # Skip if compilation failed (test_compile_succeeds will catch this)
         if compile_result is None or not compile_result.success:
