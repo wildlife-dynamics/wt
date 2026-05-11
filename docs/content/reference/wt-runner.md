@@ -92,9 +92,35 @@ Get data connection property names from workflow metadata.
 
 Convert hierarchical form data to flat workflow parameters.
 
+On schema-validation failure, returns ``422`` with a
+[`ValidationErrorResponse`](#validation-error-shape) body.
+
 #### `POST /params-to-formdata`
 
 Convert flat workflow parameters to hierarchical form data.
+
+On schema-validation failure, returns ``422`` with a
+[`ValidationErrorResponse`](#validation-error-shape) body.
+
+#### Validation error shape
+
+Both conversion endpoints surface ``jsonschema``-native error entries
+directly (no FastAPI/pydantic-shape translation):
+
+```python
+class ValidationErrorItem(BaseModel):
+    message: str
+    path: list[str | int]
+    schema_path: list[str | int]
+    validator: str
+    input: Any  # the failing instance value
+
+
+class ValidationErrorResponse(BaseModel):
+    detail: list[ValidationErrorItem]
+```
+
+Both models are exported from `wt_contracts`.
 
 ### Response Model
 

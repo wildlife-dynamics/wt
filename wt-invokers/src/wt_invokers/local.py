@@ -68,10 +68,6 @@ class LocalSubprocessInvoker(AbstractInvoker):
         )
     )
 
-    def __post_init__(self) -> None:
-        """Initialize the invoker state."""
-        self._process: subprocess.Popen[bytes] | None = None
-
     @property
     def entrypoint(self) -> str:
         """Get the entrypoint command for the workflow.
@@ -141,7 +137,7 @@ class LocalSubprocessInvoker(AbstractInvoker):
             "Dynamic installation of workflows is not yet supported."
         )
 
-    async def run(
+    async def _run(
         self,
         workflow_run_id: str,  # noqa: ARG002  # interface compatibility
         config_text: str,
@@ -192,7 +188,9 @@ class LocalSubprocessInvoker(AbstractInvoker):
         # Create results directory if using file:// URL
         parse_results_url = urlparse(results_url)
         if parse_results_url.scheme in ("file", ""):
-            Path(parse_results_url.path).mkdir(parents=True, exist_ok=True)
+            Path(parse_results_url.path).mkdir(  # noqa: ASYNC240  # local mkdir; fast metadata op
+                parents=True, exist_ok=True
+            )
 
         # Setup environment variables
         if extra_env is None:
@@ -236,8 +234,7 @@ class LocalSubprocessInvoker(AbstractInvoker):
             # Merge environment variables
             env = os.environ.copy() | (extra_env or {})
 
-            # Start subprocess
-            self._process = subprocess.Popen(  # noqa: ASYNC220, S603  # subprocess is intentional; cmd is built from a configured entrypoint
+            self.run_state["process"] = subprocess.Popen(  # noqa: ASYNC220, S603  # subprocess is intentional; cmd is built from a configured entrypoint
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -264,9 +261,9 @@ class LocalSubprocessInvoker(AbstractInvoker):
         """
         return True
 
-    async def wait(
+    async def _wait(
         self,
-        timeout: float | None = None,
+        timeout: float | None = None,  # noqa: ASYNC109  # mirrors abstract _wait signature
         error_msg: str | None = None,
     ) -> int:
         """Wait for the subprocess to finish and return the exit code.
@@ -295,10 +292,11 @@ class LocalSubprocessInvoker(AbstractInvoker):
             >>> # exit_code
             >>> # 0
         """
-        if self._process is None:
+        process: subprocess.Popen[bytes] | None = self.run_state.get("process")
+        if process is None:
             raise RuntimeError("Process not started. Call run() first.")
         try:
-            return self._process.wait(timeout=timeout)
+            return process.wait(timeout=timeout)
         except TimeoutExpired as e:
             raise InvocationTimeoutError(error_msg or str(e)) from e
 

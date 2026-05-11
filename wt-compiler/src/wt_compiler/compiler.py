@@ -6,7 +6,6 @@ import json
 import logging
 import os
 import pathlib
-import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -706,7 +705,9 @@ class DagCompiler(BaseModel):
         # 6b. Inject python conda dep for environments with only PyPI dependencies
         # When an environment has pypi deps but zero conda deps, pixi needs a
         # conda `python` package to provide the interpreter for resolution.
-        python_dep = NamelessMatchSpec.from_match_spec(MatchSpec("conda-forge::python >=3.10,<4.0"))
+        python_dep = NamelessMatchSpec.from_match_spec(
+            MatchSpec("conda-forge::python >=3.10,<3.14")
+        )
         feature_map = {"runner": runner_feature, "test": test_feature}
 
         for env in environments.values():
@@ -794,47 +795,6 @@ class DagCompiler(BaseModel):
         return template.render(
             self.get_dag_config(dag_type, mock_io=mock_io) | {"testing": mock_io}
         )
-
-    @ruff_formatted
-    def generate_params_model(self, params_jsonschema: dict[str, Any], file_header: str) -> str:
-        """Generate Pydantic model from parameters JSON schema.
-
-        Uses datamodel-code-generator to create a Pydantic V2 BaseModel
-        from the JSON schema.
-
-        Args:
-            params_jsonschema: JSON schema for parameters
-            file_header: File header comment
-
-        Returns:
-            Formatted Python code for Pydantic model
-
-        Examples:
-            >>> compiler = DagCompiler(spec=Spec(...))  # doctest: +SKIP
-            >>> schema = {"properties": {"x": {"type": "integer"}}}  # doctest: +SKIP
-            >>> model = compiler.generate_params_model(schema, "# Header")  # doctest: +SKIP
-            >>> "class" in model  # doctest: +SKIP
-            True
-        """
-        import datamodel_code_generator as dcg  # noqa: PLC0415  # deferred: heavy import (drags in black, jinja2 templates) only needed during model generation
-        import datamodel_code_generator.format as dcg_format  # noqa: PLC0415  # deferred: see above
-
-        with tempfile.NamedTemporaryFile(suffix=".py", mode="w+", delete=False) as tmp:
-            output = Path(tmp.name)
-            try:
-                dcg.generate(
-                    json.dumps(params_jsonschema),
-                    input_file_type=dcg.InputFileType.JsonSchema,
-                    output=output,
-                    output_model_type=dcg.DataModelType.PydanticV2BaseModel,
-                    output_datetime_class=dcg_format.DatetimeClassType.Datetime,
-                    use_subclass_enum=True,
-                    custom_file_header=file_header,
-                )
-                model: str = output.read_text()
-            finally:
-                output.unlink()  # Clean up temp file
-        return model
 
     @ruff_formatted
     def ruffrender(self, template: str, **kws: Any) -> str:  # noqa: ANN401  # template kwargs are dynamic
@@ -953,18 +913,18 @@ class DagCompiler(BaseModel):
         params_schema_flat = self.get_params_jsonschema(flat=True)
         params_schema_hierarchical = self.get_params_jsonschema(flat=False)
 
-        # Apply RJSF overrides only to hierarchical schema (rjsf.json),
-        # not to flat schema (params.json), matching legacy behavior.
+        # Hierarchical schema gets the full override set; flat schema gets only
+        # the $defs subset so it remains a valid JSON Schema when a task
+        # contributes a placeholder (e.g. `oneOf: []`) that is filled by
+        # rjsf-overrides. properties/uiSchema overrides are written against the
+        # hierarchical layout and would mis-target the flat schema.
         if self.spec.rjsf_overrides:
             params_schema_hierarchical = self.spec.rjsf_overrides.apply_overrides(
                 params_schema_hierarchical
             )
+            params_schema_flat = self.spec.rjsf_overrides.apply_defs_only(params_schema_flat)
 
-        # Create titled versions for model generation
-        params_mod = params_schema_flat.model_copy(update={"title": "Params"})
-        formdata_mod = params_schema_hierarchical.model_copy(update={"title": "FormData"})
-
-        def _mdump(j: Any) -> dict[str, Any]:  # noqa: ANN401  # accepts any pydantic model
+        def _mdump(j: ReactJSONSchemaFormConfiguration) -> dict[str, Any]:
             result: dict[str, Any] = j.model_dump(by_alias=True, exclude_none=True)
             return result
 
@@ -987,8 +947,6 @@ class DagCompiler(BaseModel):
             **{  # type: ignore[arg-type]
                 "rjsf.json": _mdump(params_schema_hierarchical),
                 "params.json": _mdump(params_schema_flat),
-                "params.py": self.generate_params_model(_mdump(params_mod), self.file_header),
-                "formdata.py": self.generate_params_model(_mdump(formdata_mod), self.file_header),
                 "cli.py": self.ruffrender(
                     "pkg/cli.jinja2",
                     release_name=self.release_name,
@@ -1040,6 +998,14 @@ class DagCompiler(BaseModel):
         # Generate .dockerignore
         dockerignore = self.plainrender("dockerignore.jinja2")
 
+        # Generate pyproject.toml and hatch_build.py
+        pyproject_toml = self.plainrender(
+            "pyproject.jinja2",
+            release_name=self.release_name,
+            package_name=self.package_name,
+        )
+        hatch_build_py = self.ruffrender("hatch_build.jinja2")
+
         if on_progress is not None:
             on_progress("Building graph...")
         # Generate pydot graph
@@ -1057,6 +1023,8 @@ class DagCompiler(BaseModel):
                 "graph.png": pydot_graph,
                 "Dockerfile": dockerfile,
                 ".dockerignore": dockerignore,
+                "pyproject.toml": pyproject_toml,
+                "hatch_build.py": hatch_build_py,
             },
         )
 

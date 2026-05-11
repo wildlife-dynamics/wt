@@ -32,10 +32,13 @@ from fastapi.responses import JSONResponse
 from opentelemetry import trace as otel_trace
 from pydantic import BaseModel, Field, SecretStr
 from rattler import MatchSpec
+from wt_contracts import ValidationError, ValidationErrorResponse
 from wt_invokers import (
     AbstractInvoker,
     CloudBatchInvoker,
+    CloudRunJobsSandboxInvoker,
     LocalSubprocessInvoker,
+    SandboxInvoker,
 )
 
 from wt_runner.tracing import (
@@ -80,6 +83,8 @@ INVOKERS: dict[str, type[AbstractInvoker]] = {
     "BlockingLocalSubprocessInvoker": LocalSubprocessInvoker,
     "AsyncLocalSubprocessInvoker": LocalSubprocessInvoker,
     "CloudBatchInvoker": CloudBatchInvoker,
+    "SandboxInvoker": SandboxInvoker,
+    "CloudRunJobsSandboxInvoker": CloudRunJobsSandboxInvoker,
 }
 
 TITLE = "wt-runner"
@@ -390,7 +395,7 @@ async def run(
         yaml.dump(params, config_text_stream)
         lithops_kws = {}
         if execution_mode == "async":
-            lithops_config = lithops_config if lithops_config else LithopsConfig()
+            lithops_config = lithops_config or LithopsConfig()
             lithops_text_stream = StringIO()
             yaml.dump(lithops_config.model_dump(), lithops_text_stream)
             lithops_kws = {"lithops_config_text": lithops_text_stream.getvalue()}
@@ -657,8 +662,12 @@ async def _convert(
     to: str,
     json_: str,
     invoker: AbstractInvoker,
-) -> dict[str, Any] | list[dict[str, Any]]:
-    """Convert between params and formdata, and visa-versa.
+) -> dict[str, Any]:
+    """Convert between params and formdata via the compiled CLI.
+
+    The CLI emits a single-key envelope: either ``{"result": ...}`` on success
+    or ``{"validation_errors": [...]}`` on schema-validation failure. Exit
+    code is ``0`` for both — the discriminator is the envelope key.
 
     Args:
         from_: Source format
@@ -667,40 +676,33 @@ async def _convert(
         invoker: Invoker instance
 
     Returns:
-        Converted data as dictionary, or list of dicts for validation errors
+        Converted data dictionary (the ``result`` payload).
 
     Raises:
-        RuntimeError: If conversion or parsing fails
+        RuntimeError: If conversion or parsing fails.
+        ValidationError: If the CLI returned ``validation_errors``.
     """
     cmd = f"convert --from {from_} --to {to}"
     out = await invoker.check_output(cmd.split(), stdin=json_)
     if not out:
         raise RuntimeError(f"Failed to convert {from_} to {to} for '{json_}'.")
     try:
-        as_json: dict[str, Any] | list[dict[str, Any]] = json.loads(out)
+        envelope: dict[str, Any] = json.loads(out)
     except json.JSONDecodeError as e:
-        raise RuntimeError(f"Failed to parse rjsf from str: {out}") from e
-    return as_json
+        raise RuntimeError(f"Failed to parse convert envelope from str: {out}") from e
+    if "validation_errors" in envelope:
+        raise ValidationError(errors=envelope["validation_errors"])
+    if "result" in envelope:
+        result: dict[str, Any] = envelope["result"]
+        return result
+    raise RuntimeError(f"Unexpected convert envelope (missing result/validation_errors): {out}")
 
 
-def _is_422(json_: dict[str, Any] | list[dict[str, Any]]) -> bool:
-    """Check if the json is a 422 validation error.
-
-    Args:
-        json_: JSON data to check
-
-    Returns:
-        True if data represents a 422 error
-    """
-    return (
-        isinstance(json_, list)
-        and len(json_) > 0
-        and all(isinstance(e, dict) for e in json_)
-        and all(set(e) == {"type", "loc", "msg", "input", "url"} for e in json_)
-    )
-
-
-@app.post("/formdata-to-params", status_code=200)
+@app.post(
+    "/formdata-to-params",
+    status_code=200,
+    responses={422: {"model": ValidationErrorResponse}},
+)
 async def validate_formdata(
     formdata: dict[str, Any], invoker: AbstractInvoker = Depends(resolve_invoker)
 ) -> dict[str, Any]:
@@ -714,22 +716,25 @@ async def validate_formdata(
         Validated parameters dictionary
 
     Raises:
-        HTTPException: If validation fails (422 error)
+        HTTPException: 422 with a :class:`ValidationErrorResponse` body if the
+            compiled CLI rejects ``formdata`` against the rjsf schema.
     """
-    outjson = await _convert(
-        from_="formdata",
-        to="params",
-        json_=json.dumps(formdata),
-        invoker=invoker,
-    )
-    if _is_422(outjson):
-        raise HTTPException(status_code=422, detail=outjson)
-    # At this point, outjson is not a 422 error list, so it's a dict
-    assert isinstance(outjson, dict)  # noqa: S101  # type narrowing for mypy after the 422 check
-    return outjson
+    try:
+        return await _convert(
+            from_="formdata",
+            to="params",
+            json_=json.dumps(formdata),
+            invoker=invoker,
+        )
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors) from e
 
 
-@app.post("/params-to-formdata", status_code=200)
+@app.post(
+    "/params-to-formdata",
+    status_code=200,
+    responses={422: {"model": ValidationErrorResponse}},
+)
 async def generate_nested_params(
     params: dict[str, Any], invoker: AbstractInvoker = Depends(resolve_invoker)
 ) -> dict[str, Any]:
@@ -743,16 +748,15 @@ async def generate_nested_params(
         Form data dictionary
 
     Raises:
-        HTTPException: If conversion fails (422 error)
+        HTTPException: 422 with a :class:`ValidationErrorResponse` body if the
+            compiled CLI rejects ``params`` against the params schema.
     """
-    outjson = await _convert(
-        from_="params",
-        to="formdata",
-        json_=json.dumps(params),
-        invoker=invoker,
-    )
-    if _is_422(outjson):
-        raise HTTPException(status_code=422, detail=outjson)
-    # At this point, outjson is not a 422 error list, so it's a dict
-    assert isinstance(outjson, dict)  # noqa: S101  # type narrowing for mypy after the 422 check
-    return outjson
+    try:
+        return await _convert(
+            from_="params",
+            to="formdata",
+            json_=json.dumps(params),
+            invoker=invoker,
+        )
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors) from e

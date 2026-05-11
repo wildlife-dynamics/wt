@@ -25,7 +25,6 @@ dependencies = [
     "jinja2>=3.0.0",
     "ruamel.yaml>=0.17.0,<0.19.0",  # <0.19.0 pin; xref src/wt_compiler/default-env-injections.toml for detail
     "py-rattler>=0.22.0,<0.23.0",
-    "datamodel-code-generator==0.42.1",
     "pydot>=1.4.0",
     "ruff>=0.1.0",
     "tomli-w>=1.0.0",
@@ -42,6 +41,8 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "mypy>=1.0.0",
     "ruff>=0.1.0",
+    "build>=1.0.0",
+    "hatchling>=1.18.0",
 ]
 
 [dependency-groups]
@@ -51,6 +52,8 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "mypy>=1.0.0",
     "ruff>=0.1.0",
+    "build>=1.0.0",
+    "hatchling>=1.18.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -173,7 +176,6 @@ pydantic = ">=2.0.0,<3.0.0"
 jinja2 = ">=3.0.0"
 "ruamel.yaml" = ">=0.17.0,<0.19.0"  # <0.19.0 pin; xref src/wt_compiler/default-env-injections.toml for detail
 py-rattler = ">=0.22.0,<0.23.0"
-datamodel-code-generator = "==0.42.1"
 pydot = ">=1.4.0"
 ruff = ">=0.1.0"
 tomli-w = ">=1.0.0"

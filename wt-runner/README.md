@@ -204,6 +204,9 @@ Convert form data format to workflow parameters.
 }
 ```
 
+On schema-validation failure, returns ``422`` with the
+[validation error shape](#validation-error-shape) below.
+
 ### Convert Params to Form Data
 
 ```bash
@@ -217,6 +220,29 @@ Convert workflow parameters to form data format.
 {
   "param1": "value1",
   "param2": "value2"
+}
+```
+
+On schema-validation failure, returns ``422`` with the
+[validation error shape](#validation-error-shape) below.
+
+### Validation error shape
+
+Both conversion endpoints surface ``jsonschema``-native error entries
+directly. The 422 response body matches the
+``wt_contracts.ValidationErrorResponse`` Pydantic model:
+
+```json
+{
+  "detail": [
+    {
+      "message": "42 is not of type 'string'",
+      "path": ["fetch_data", "since"],
+      "schema_path": ["properties", "fetch_data", "properties", "since", "type"],
+      "validator": "type",
+      "input": 42
+    }
+  ]
 }
 ```
 

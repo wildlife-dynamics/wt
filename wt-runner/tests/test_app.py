@@ -9,14 +9,15 @@ import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
 from rattler import MatchSpec
+from wt_contracts import ValidationError, ValidationErrorResponse
 
 from wt_runner.app import (
     _convert,
     _get_metadata_attribute,
-    _is_422,
     app,
     extract_payload_from_pubsub_request,
     prepare_invoker_parameters,
+    resolve_invoker,
     resolve_matchspec,
     resolve_results_url,
     upload_error_to_gcs,
@@ -167,28 +168,6 @@ async def test_extract_payload_from_pubsub_request():
     assert result.invoker_type == "BlockingLocalSubprocessInvoker"
 
 
-def test_is_422_with_valid_error():
-    """Test _is_422 identifies validation errors correctly."""
-    error_data = [
-        {
-            "type": "missing",
-            "loc": ["body", "params"],
-            "msg": "Field required",
-            "input": {},
-            "url": "https://errors.pydantic.dev/...",
-        }
-    ]
-
-    assert _is_422(error_data) is True
-
-
-def test_is_422_with_invalid_data():
-    """Test _is_422 returns False for non-error data."""
-    assert not _is_422([{"result": "success"}])
-    assert not _is_422({"error": "message"})
-    assert not _is_422([])
-
-
 @pytest.mark.asyncio
 async def test_upload_error_to_gcs():
     """Test error upload to GCS."""
@@ -247,9 +226,9 @@ async def test_get_metadata_attribute_invalid_json():
 
 @pytest.mark.asyncio
 async def test_convert_success():
-    """Test successful conversion between formats."""
+    """Test successful conversion: envelope ``{"result": ...}`` is unwrapped."""
     mock_invoker = AsyncMock()
-    mock_invoker.check_output = AsyncMock(return_value='{"converted": "data"}')
+    mock_invoker.check_output = AsyncMock(return_value='{"result": {"converted": "data"}}')
 
     result = await _convert("formdata", "params", '{"input": "data"}', mock_invoker)
 
@@ -257,6 +236,22 @@ async def test_convert_success():
     mock_invoker.check_output.assert_called_once_with(
         ["convert", "--from", "formdata", "--to", "params"], stdin='{"input": "data"}'
     )
+
+
+@pytest.mark.asyncio
+async def test_convert_validation_error_envelope():
+    """Test ``{"validation_errors": [...]}`` envelope raises ValidationError."""
+    payload = {
+        "validation_errors": [
+            {"message": "boom", "path": ["x"], "schema_path": [], "validator": "type"}
+        ]
+    }
+    mock_invoker = AsyncMock()
+    mock_invoker.check_output = AsyncMock(return_value=json.dumps(payload))
+
+    with pytest.raises(ValidationError) as exc_info:
+        await _convert("formdata", "params", '{"input": "data"}', mock_invoker)
+    assert exc_info.value.errors == payload["validation_errors"]
 
 
 @pytest.mark.asyncio
@@ -277,3 +272,42 @@ async def test_convert_invalid_json():
 
     with pytest.raises(RuntimeError, match="Failed to parse"):
         await _convert("formdata", "params", '{"input": "data"}', mock_invoker)
+
+
+@pytest.mark.asyncio
+async def test_convert_unexpected_envelope():
+    """Test envelope missing both keys raises."""
+    mock_invoker = AsyncMock()
+    mock_invoker.check_output = AsyncMock(return_value='{"unknown": "key"}')
+
+    with pytest.raises(RuntimeError, match="Unexpected convert envelope"):
+        await _convert("formdata", "params", '{"input": "data"}', mock_invoker)
+
+
+@pytest.mark.parametrize("endpoint", ["/formdata-to-params", "/params-to-formdata"])
+def test_convert_endpoint_422_body_matches_validation_error_response(
+    client: TestClient, endpoint: str
+):
+    """422 body from convert endpoints conforms to ``ValidationErrorResponse``."""
+    error_item = {
+        "message": "'old' is not of type 'integer'",
+        "path": ["age"],
+        "schema_path": ["properties", "age", "type"],
+        "validator": "type",
+        "input": "old",
+    }
+    mock_invoker = AsyncMock()
+    mock_invoker.check_output = AsyncMock(
+        return_value=json.dumps({"validation_errors": [error_item]})
+    )
+
+    app.dependency_overrides[resolve_invoker] = lambda: mock_invoker
+    try:
+        response = client.post(endpoint, json={"any": "payload"})
+    finally:
+        app.dependency_overrides.pop(resolve_invoker, None)
+
+    assert response.status_code == 422
+    parsed = ValidationErrorResponse(**response.json())
+    assert len(parsed.detail) == 1
+    assert parsed.detail[0].model_dump() == error_item

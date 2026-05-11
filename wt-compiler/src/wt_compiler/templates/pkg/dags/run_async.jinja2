@@ -10,15 +10,18 @@ that they would not be included (or would be different) in the production versio
 """
 {% endif -%}
 
-import json
 import os
+from typing import Any
 {%- if testing %}
 import warnings  # 🧪
 from wt_task.testing import create_func_magicmock  # 🧪
 {% endif %}
 
+from wt_contracts import validate as _validate
 from wt_task import task
 from ecoscope_workflows_core.graph import DependsOn, DependsOnSequence, Graph, Node
+
+from .. import metadata as _metadata
 
 {% for t in spec.flat_workflow -%}
 {{ t.known_task.importable_reference.statement }}
@@ -29,21 +32,20 @@ from ecoscope_workflows_core.graph import DependsOn, DependsOnSequence, Graph, N
 {% endif -%}
 {% endfor -%}
 
-from ..params import Params
 
-
-def main(params: Params):
+def main(params: dict[str, Any], validate_params_schema: bool = True):
     {%- if testing %}
     warnings.warn("This test script should not be used in production!")  # 🧪
     {% endif %}
-    params_dict = json.loads(params.model_dump_json(exclude_unset=True))
+    if validate_params_schema:
+        _validate(params, _metadata.load_params_schema())
 
     dependencies = {{ spec.task_instance_dependencies }}
 
     nodes = {
         {% for t in spec.flat_workflow %}
         {% set validate = not t.known_task.importable_reference.is_mocked %}
-        {% set params = '(params_dict.get("' ~ t.id ~ '") or {})' %}
+        {% set params = '(params.get("' ~ t.id ~ '") or {})' %}
         {% set set_executor = '"lithops"' %}
         "{{ t.id }}": Node(
             async_task={{ call_task_macros.create_callable(t, false, false, validate, false, set_executor) }},

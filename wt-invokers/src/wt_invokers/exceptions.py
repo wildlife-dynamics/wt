@@ -49,3 +49,43 @@ class InstallationError(InvokerError):
             ...
         wt_invokers.exceptions.InstallationError: Failed to install my-workflow>=1.0.0
     """
+
+
+class PixiUnpackError(InvokerError):
+    """Exception raised when the ``pixi-unpack`` subprocess fails.
+
+    Wraps :class:`subprocess.CalledProcessError` so callers can handle a
+    domain-specific exception while still inspecting the captured output
+    from the failed ``pixi-unpack`` invocation.
+
+    Attributes:
+        returncode: Exit code returned by ``pixi-unpack``.
+        stdout: Captured standard output (bytes or str, depending on how
+            ``subprocess.run`` was invoked).
+        stderr: Captured standard error.
+
+    Examples:
+        Raising with captured output:
+
+        >>> err = PixiUnpackError(
+        ...     "pixi-unpack failed", returncode=2, stdout=b"", stderr=b"boom"
+        ... )
+        >>> err.returncode
+        2
+        >>> err.stderr
+        b'boom'
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        returncode: int,
+        stdout: bytes | str | None,
+        stderr: bytes | str | None,
+    ) -> None:
+        """Initialise with stdout/stderr captured from the failed pixi-unpack call."""
+        super().__init__(message)
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
