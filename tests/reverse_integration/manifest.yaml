@@ -74,49 +74,49 @@ _env_overrides: &env_overrides
 
 repos:
   - url: https://github.com/ecoscope-platform-workflows-releases/event-details
-    ref: main
+    ref: wt-compiler-v0.6.0rc
     spec_path: spec.yaml
     generated_path: ecoscope-workflows-event-details-workflow
     <<: *compile_only
 
   - url: https://github.com/ecoscope-platform-workflows-releases/events
-    ref: main
+    ref: wt-compiler-v0.6.0rc
     spec_path: spec.yaml
     generated_path: ecoscope-workflows-events-workflow
     <<: *compile_only
 
   - url: https://github.com/ecoscope-platform-workflows-releases/patrols
-    ref: main
+    ref: wt-compiler-v0.6.0rc
     spec_path: spec.yaml
     generated_path: ecoscope-workflows-patrols-workflow
     <<: *compile_only
 
   - url: https://github.com/ecoscope-platform-workflows-releases/subject-tracking
-    ref: main
+    ref: wt-compiler-v0.6.0rc
     spec_path: spec.yaml
     generated_path: ecoscope-workflows-subject-tracking-workflow
     <<: *compile_only
 
   - url: https://github.com/ecoscope-platform-workflows-releases/event-details
-    ref: main
+    ref: wt-compiler-v0.6.0rc
     spec_path: spec.yaml
     generated_path: ecoscope-workflows-event-details-workflow
     <<: *env_overrides
 
   - url: https://github.com/ecoscope-platform-workflows-releases/events
-    ref: main
+    ref: wt-compiler-v0.6.0rc
     spec_path: spec.yaml
     generated_path: ecoscope-workflows-events-workflow
     <<: *env_overrides
 
   - url: https://github.com/ecoscope-platform-workflows-releases/patrols
-    ref: main
+    ref: wt-compiler-v0.6.0rc
     spec_path: spec.yaml
     generated_path: ecoscope-workflows-patrols-workflow
     <<: *env_overrides
 
   - url: https://github.com/ecoscope-platform-workflows-releases/subject-tracking
-    ref: main
+    ref: wt-compiler-v0.6.0rc
     spec_path: spec.yaml
     generated_path: ecoscope-workflows-subject-tracking-workflow
     <<: *env_overrides
