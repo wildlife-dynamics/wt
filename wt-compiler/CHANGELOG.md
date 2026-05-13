@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.6.0 — 2026-05-13
+
+- Pluggable environment injection: new `default-env-injections.toml` ships with the package as the baseline conda/pypi spec; spec `requirements:` entries suppress same-name baseline entries; user `--env-overrides` files take final precedence. New `env_overrides` and `pixi_toml_fragment` modules implement the layered merge ([#156](https://github.com/wildlife-dynamics/wt/pull/156))
+- Export `compute_merged_default_feature` from the top-level package ([#156](https://github.com/wildlife-dynamics/wt/pull/156))
+- Compiled workflow artifacts now include `pyproject.toml` and `hatch_build.py` so the templated package can be built as a wheel. `PackageDirectory` drops the standalone `params.py` / `formdata.py` artifact fields ([#164](https://github.com/wildlife-dynamics/wt/pull/164))
+- Add snapshot-update step to the generated `ci.yml` template; error on failed upload ([#162](https://github.com/wildlife-dynamics/wt/pull/162))
+- Fix deferred dispatcher imports ([#159](https://github.com/wildlife-dynamics/wt/pull/159))
+- Revert `to_windows_safe_path` ([#158](https://github.com/wildlife-dynamics/wt/pull/158))
+- Remove the standalone `pypi_source.py` module (functionality folded into the new env-injection layer) ([#156](https://github.com/wildlife-dynamics/wt/pull/156))
+- Standardize ruff lint config to enforce type annotations and Google-style docstrings ([#155](https://github.com/wildlife-dynamics/wt/pull/155))
+- Bump `wt-task` floor to `>=0.1.3` and `wt-runner` floor to `>=0.2.0` in `default-env-injections.toml` to match this release's downstream versions
+
 ## v0.5.2 — 2026-04-29
 
 - Fix `VariableValuesDict` to resolve `${{ ... }}` refs inside nested partial arguments (dict-in-dict, dict-in-list, list-in-dict); rewrites the `handle_async_partial_arg` Jinja macros to recurse through nested structures ([#140](https://github.com/wildlife-dynamics/wt/pull/140))

@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.3.0 — 2026-05-13
+
+- Add `SandboxInvoker`: downloads a pixi-pack environment tarball, runs the workflow inside the unpacked env, and uploads a results archive to a signed URL. Exposed via the `wt-invokers.sandbox` console entry point as a Docker image ENTRYPOINT ([#164](https://github.com/wildlife-dynamics/wt/pull/164))
+- Add `CloudRunJobsSandboxInvoker`: proxy that triggers a pre-deployed Cloud Run Job whose container runs the sandbox CLI ([#164](https://github.com/wildlife-dynamics/wt/pull/164))
+- Refactor `AbstractInvoker.run()` / `wait()` into concrete lifecycle wrappers around `_pre_run` / `_run` / `_wait` / `_post_run` hooks, with an immutable `run_args` view and mutable `run_state` dict for hook-to-hook state sharing. Existing invokers internally renamed `run`→`_run` / `wait`→`_wait` — external call sites unchanged ([#164](https://github.com/wildlife-dynamics/wt/pull/164))
+- Add `PixiUnpackMixin` (`_pre_run` hook: stamina-retried environment download + pixi-unpack) and `UploadResultsArchiveMixin` (`_post_run` hook: stream-PUT tar of results to signed URL, or copy to `file://` for tests) ([#164](https://github.com/wildlife-dynamics/wt/pull/164))
+- Add `PixiUnpackError` wrapping `subprocess.CalledProcessError` with `returncode` / `stdout` / `stderr` ([#164](https://github.com/wildlife-dynamics/wt/pull/164))
+- Add `publish-docker` CI job that builds and pushes the sandbox image on `wt-invokers/v*` tags after the conda package is available on prefix.dev ([#164](https://github.com/wildlife-dynamics/wt/pull/164))
+- Standardize ruff lint config to enforce type annotations and Google-style docstrings ([#155](https://github.com/wildlife-dynamics/wt/pull/155))
+
 ## v0.2.0 — 2026-04-28
 
 - Add optional `network`, `subnetwork`, and `no_external_ip` kwargs to `CloudBatchInvoker` for routing batch VMs through a specific VPC and egressing via Cloud NAT ([#143](https://github.com/wildlife-dynamics/wt/pull/143))
