@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.0 — 2026-05-13
+
+- Register the new `SandboxInvoker` and `CloudRunJobsSandboxInvoker` in the `INVOKERS` dispatch map ([#164](https://github.com/wildlife-dynamics/wt/pull/164))
+- Rewrite `_convert` to consume the compiled CLI's single-key envelope (`{"result": ...}` or `{"validation_errors": [...]}`), raising `wt_contracts.ValidationError` on schema-validation failure. Remove the obsolete `_is_422` helper ([#164](https://github.com/wildlife-dynamics/wt/pull/164))
+- Standardize ruff lint config to enforce type annotations and Google-style docstrings ([#155](https://github.com/wildlife-dynamics/wt/pull/155))
+
 ## v0.1.5 — 2026-03-27
 
 - Fix errant injection of `wt-task` into the wt-runner conda environment
