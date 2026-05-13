@@ -10,11 +10,13 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, NamedTuple
 
+import jsonschema  # type: ignore[import-untyped]  # transitive dep via wt-contracts; no stubs in wt-compiler env
 import pydot as dot
 import ruamel.yaml
 from jinja2 import Environment, FileSystemLoader
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 from rattler import Channel, MatchSpec, NamelessMatchSpec
+from wt_contracts import ValidationError
 
 from wt_compiler.artifacts import (
     Dags,
@@ -78,6 +80,39 @@ def _load_default_injections() -> PixiTomlFragment:
     return PixiTomlFragment.from_file(
         DEFAULT_INJECTIONS_PATH, diagnostic_label="default-env-injections"
     )
+
+
+def _check_artifact_is_valid_jsonschema(schema: dict[str, Any], artifact_name: str) -> None:
+    """Validate a compiled artifact against the JSON Schema meta-schema.
+
+    Args:
+        schema: Compiled artifact contents to validate.
+        artifact_name: Human-readable artifact name (e.g. ``"params.json"``)
+            used in the surfaced error message.
+
+    Raises:
+        ValidationError: If ``schema`` is not a valid JSON Schema. The wrapped
+            ``jsonschema.SchemaError`` is surfaced as a single
+            :class:`wt_contracts.ValidationErrorItemDict` so the failure travels
+            through the project's existing error wire format.
+    """
+    try:
+        jsonschema.Draft202012Validator.check_schema(schema)
+    except jsonschema.SchemaError as e:
+        raise ValidationError(
+            [
+                {
+                    "message": (
+                        f"Compiled artifact {artifact_name!r} is not a valid "
+                        f"JSON Schema: {e.message}"
+                    ),
+                    "path": list(e.absolute_path),
+                    "schema_path": list(e.absolute_schema_path),
+                    "validator": e.validator if isinstance(e.validator, str) else None,
+                    "input": e.instance,
+                }
+            ]
+        ) from e
 
 
 def compute_merged_default_feature(
@@ -913,20 +948,19 @@ class DagCompiler(BaseModel):
         params_schema_flat = self.get_params_jsonschema(flat=True)
         params_schema_hierarchical = self.get_params_jsonschema(flat=False)
 
-        # Hierarchical schema gets the full override set; flat schema gets only
-        # the $defs subset so it remains a valid JSON Schema when a task
-        # contributes a placeholder (e.g. `oneOf: []`) that is filled by
-        # rjsf-overrides. properties/uiSchema overrides are written against the
-        # hierarchical layout and would mis-target the flat schema.
         if self.spec.rjsf_overrides:
             params_schema_hierarchical = self.spec.rjsf_overrides.apply_overrides(
                 params_schema_hierarchical
             )
-            params_schema_flat = self.spec.rjsf_overrides.apply_defs_only(params_schema_flat)
 
         def _mdump(j: ReactJSONSchemaFormConfiguration) -> dict[str, Any]:
             result: dict[str, Any] = j.model_dump(by_alias=True, exclude_none=True)
             return result
+
+        params_flat_dict = _mdump(params_schema_flat)
+        params_hier_dict = _mdump(params_schema_hierarchical)
+        _check_artifact_is_valid_jsonschema(params_flat_dict, "params.json")
+        _check_artifact_is_valid_jsonschema(params_hier_dict, "rjsf.json")
 
         if on_progress is not None:
             on_progress("Rendering DAGs...")
@@ -945,8 +979,8 @@ class DagCompiler(BaseModel):
         package = PackageDirectory(
             dags=dags,
             **{  # type: ignore[arg-type]
-                "rjsf.json": _mdump(params_schema_hierarchical),
-                "params.json": _mdump(params_schema_flat),
+                "rjsf.json": params_hier_dict,
+                "params.json": params_flat_dict,
                 "cli.py": self.ruffrender(
                     "pkg/cli.jinja2",
                     release_name=self.release_name,

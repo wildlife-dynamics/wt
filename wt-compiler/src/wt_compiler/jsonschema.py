@@ -267,30 +267,3 @@ class ReactJSONSchemaFormOverrides(BaseModel):
             uiSchema=_apply_dict_overrides(self.uiSchema, initial_uischema),
             additionalProperties=initial.additionalProperties,
         )
-
-    def apply_defs_only(
-        self,
-        initial: ReactJSONSchemaFormConfiguration,
-    ) -> ReactJSONSchemaFormConfiguration:
-        """Apply only $defs overrides; leave properties and uiSchema untouched.
-
-        Used for the flat ``params.json`` artifact, whose top-level shape
-        differs from the hierarchical ``rjsf.json`` so ``properties.*`` and
-        ``uiSchema`` overrides written for the hierarchical layout would
-        silently mis-target. ``$defs`` is shared between the two artifacts,
-        so its overrides apply cleanly to both.
-
-        Args:
-            initial: The initial configuration to override
-
-        Returns:
-            A new configuration with only ``$defs`` overrides applied
-        """
-        initial_defs = copy.deepcopy(initial.definitions)
-        return ReactJSONSchemaFormConfiguration(
-            title=initial.title,
-            properties=initial.properties,
-            **{"$defs": _apply_dict_overrides(self.definitions, initial_defs)},
-            uiSchema=initial.uiSchema,
-            additionalProperties=initial.additionalProperties,
-        )

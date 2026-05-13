@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 import ruamel.yaml
+from wt_contracts import ValidationError
 
 from wt_compiler.artifacts import (
     Dags,
@@ -1263,10 +1264,21 @@ class TestHatchDynamicVersion:
         assert version == "1.3.7"
 
 
-class TestRjsfOverridesAppliedToFlatSchemaDefs:
-    """MRE: compiled `params.json` must be a valid JSON Schema even when a task contributes a `$defs` entry with an empty `oneOf: []` placeholder filled by `rjsf-overrides.$defs`."""
+class TestCompiledArtifactsAreValidJsonSchema:
+    """Compile-time validation that ``params.json`` and ``rjsf.json`` are valid JSON Schemas.
 
-    def test_defs_override_propagates_to_flat_params_schema(self, merged_default_feature):
+    ``rjsf-overrides`` are a UI-layer concern bound to ``rjsf.json``; they are
+    not applied to the flat ``params.json``, which is derived purely from task
+    contracts. If a task contributes a malformed placeholder (e.g.
+    ``oneOf: []``) to its contract, the resulting ``params.json`` would be an
+    invalid JSON Schema. The compiler must surface that failure as a
+    :class:`wt_contracts.ValidationError`, naming the offending artifact, so
+    callers get the project's standard error wire format rather than a raw
+    ``jsonschema.SchemaError``.
+    """
+
+    def test_invalid_params_json_raises_validation_error(self, merged_default_feature):
+        """A task contract with ``oneOf: []`` makes ``params.json`` invalid; compile() must surface it."""
         task = KnownTask(
             importable_reference="mymod.with_grouper",
             json_schema={
@@ -1276,7 +1288,7 @@ class TestRjsfOverridesAppliedToFlatSchemaDefs:
                         "type": "object",
                         "properties": {
                             "index_name": {
-                                "oneOf": [],  # placeholder, filled by rjsf-overrides
+                                "oneOf": [],
                                 "type": "string",
                             },
                         },
@@ -1289,7 +1301,7 @@ class TestRjsfOverridesAppliedToFlatSchemaDefs:
         try:
             spec = Spec(
                 **{
-                    "id": "defs_override_mre",
+                    "id": "invalid_params_mre",
                     "requirements": [],
                     "rjsf-overrides": ReactJSONSchemaFormOverrides(
                         **{
@@ -1314,24 +1326,76 @@ class TestRjsfOverridesAppliedToFlatSchemaDefs:
                 spec=spec,
                 wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/",
             )
-            artifacts = compiler.compile(
-                spec_relpath="spec.yaml",
-                merged_default_feature=merged_default_feature,
-            )
+            with pytest.raises(ValidationError) as exc_info:
+                compiler.compile(
+                    spec_relpath="spec.yaml",
+                    merged_default_feature=merged_default_feature,
+                )
         finally:
             known_tasks.clear()
 
-        flat = artifacts.package.params_json
+        assert len(exc_info.value.errors) == 1
+        err = exc_info.value.errors[0]
+        assert err["validator"] == "minItems"
+        assert "params.json" in err["message"]
+        assert "is not a valid JSON Schema" in err["message"]
+        # rjsf.json is checked after params.json; the params.json failure
+        # short-circuits compile(), so only that single error is surfaced.
+        assert err["input"] == []
 
-        # Root cause: $defs override must reach the flat schema.
-        assert flat["$defs"]["ValueGrouper"]["properties"]["index_name"]["oneOf"] == [
-            {"const": "a", "title": "A"},
-            {"const": "b", "title": "B"},
-        ]
+    def test_invalid_rjsf_json_raises_validation_error(self, merged_default_feature):
+        """An rjsf-overrides entry that yields an invalid rjsf.json must be surfaced."""
+        task = KnownTask(
+            importable_reference="mymod.with_grouper",
+            json_schema={
+                "properties": {"grouper": {"$ref": "#/$defs/ValueGrouper"}},
+                "$defs": {
+                    "ValueGrouper": {
+                        "type": "object",
+                        "properties": {"index_name": {"type": "string"}},
+                        "required": ["index_name"],
+                    },
+                },
+            },
+        )
+        known_tasks["with_grouper"] = {"mymod": task}
+        try:
+            spec = Spec(
+                **{
+                    "id": "invalid_rjsf_mre",
+                    "requirements": [],
+                    "rjsf-overrides": ReactJSONSchemaFormOverrides(
+                        **{
+                            "$defs": {
+                                "ValueGrouper.properties.index_name.type": "not-a-type",
+                            },
+                        }
+                    ),
+                    "workflow": [
+                        TaskInstance(
+                            id="step_one",
+                            name="Step One",
+                            task="mymod.with_grouper",
+                        ),
+                    ],
+                }
+            )
+            compiler = DagCompiler(
+                spec=spec,
+                wt_runner_channel="https://repo.prefix.dev/ecoscope-workflows/",
+            )
+            with pytest.raises(ValidationError) as exc_info:
+                compiler.compile(
+                    spec_relpath="spec.yaml",
+                    merged_default_feature=merged_default_feature,
+                )
+        finally:
+            known_tasks.clear()
 
-        # Symptom: flat schema must be a valid JSON Schema (oneOf requires minItems: 1).
-        jsonschema = pytest.importorskip("jsonschema")
-        jsonschema.validators.Draft202012Validator.check_schema(flat)
+        assert len(exc_info.value.errors) == 1
+        err = exc_info.value.errors[0]
+        assert "rjsf.json" in err["message"]
+        assert "is not a valid JSON Schema" in err["message"]
 
 
 if __name__ == "__main__":
