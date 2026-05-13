@@ -10,7 +10,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, NamedTuple
 
-import jsonschema  # type: ignore[import-untyped]  # transitive dep via wt-contracts; no stubs in wt-compiler env
+import jsonschema
 import pydot as dot
 import ruamel.yaml
 from jinja2 import Environment, FileSystemLoader
