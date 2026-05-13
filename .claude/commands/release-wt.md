@@ -45,19 +45,19 @@ Using the dependency graph from the script output:
 
 ## Step 5 — Synchronize wt-compiler version lower bounds
 
-When wt-task or wt-runner are being released, their version lower bounds hardcoded in `wt-compiler/src/wt_compiler/compiler.py` must be updated to match.
+When wt-task or wt-runner are being released, their version lower bounds declared in `wt-compiler/src/wt_compiler/default-env-injections.toml` must be updated to match.
 
-1. Read the current lower bounds from `wt-compiler/src/wt_compiler/compiler.py`:
-   - The `>=X.Y.Z` in the wt-task MatchSpec string (in `get_pixi_toml`, conda-mode wt-task dependency)
-   - The `>=X.Y.Z` in the wt-runner MatchSpec string (in `get_pixi_toml`, conda-mode wt-runner dependency)
+1. Read the current lower bounds from `wt-compiler/src/wt_compiler/default-env-injections.toml`:
+   - The `>=X.Y.Z` portion of the `version` field on the `wt-task` entry under `[feature.default.dependencies]`
+   - The `>=X.Y.Z` portion of the `version` field on the `wt-runner` entry under `[feature.runner.dependencies]`
 
 2. For each of wt-task/wt-runner being released, compare the new version against the current lower bound:
    - If the new version is **greater than** the current lower bound → update needed
    - Otherwise → no change needed
 
 3. If any update is needed:
-   a. Update the `>=X.Y.Z` in the relevant MatchSpec string(s) in `compiler.py` to the new release version
-   b. If wt-compiler is **not** already in the release set, add it with a **patch bump** (reason: "Update wt-task/wt-runner version floor in compiled output")
+   a. Update the `>=X.Y.Z` portion of the `version` constraint in the relevant entry/entries in `default-env-injections.toml` to the new release version (preserve the existing `<1.0.0` upper bound)
+   b. If wt-compiler is **not** already in the release set, add it with a **patch bump** (reason: "Update wt-task/wt-runner version floors in default-env-injections.toml")
    c. Present the changes (old → new lower bounds, wt-compiler version bump) and ask for confirmation
 
 4. If no updates needed, report that and move on
@@ -82,7 +82,7 @@ For each package being released:
    ```
 4. Update `[tool.pixi.package] version` in each released package's `pyproject.toml` to match the new version. For GCP metapackages released in lockstep, update their `pyproject.toml` too.
 5. After preparing all CHANGELOG and pyproject.toml updates, ask the user for final confirmation before committing
-6. Commit **all** CHANGELOG, pyproject.toml, **and any compiler.py lower-bound** updates in a single commit (message: `Update CHANGELOGs and pixi versions for release`)
+6. Commit **all** CHANGELOG, pyproject.toml, **and any default-env-injections.toml lower-bound** updates in a single commit (message: `Update CHANGELOGs and pixi versions for release`)
 7. Push the release branch and create a PR to `main` via `gh pr create`. Include today's date in the PR title (e.g., `Update CHANGELOGs for release YYYY-MM-DD`) to avoid duplicate PR names across releases.
 8. Ask the user to merge the PR (branch protection requires a PR to update `main`)
 9. After the user confirms the PR is merged, checkout `main` and pull to get the merge commit — tags must point to commits on `main`
