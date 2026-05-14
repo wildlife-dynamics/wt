@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.7.0 — 2026-05-14
+
+- Drop `rjsf-overrides` `$defs` propagation to the flat `params.json` artifact; overrides now apply only to `rjsf.json`. Removes `ReactJSONSchemaFormOverrides.apply_defs_only()` ([#173](https://github.com/wildlife-dynamics/wt/pull/173))
+- Validate compiled `params.json` and `rjsf.json` against the JSON Schema meta-schema at compile time; invalid artifacts now raise `wt_contracts.ValidationError` naming the offending artifact ([#173](https://github.com/wildlife-dynamics/wt/pull/173))
+- Bump `wt-contracts` dependency floor to `>=0.2.0` ([#173](https://github.com/wildlife-dynamics/wt/pull/173))
+
 ## v0.6.0 — 2026-05-13
 
 - Pluggable environment injection: new `default-env-injections.toml` ships with the package as the baseline conda/pypi spec; spec `requirements:` entries suppress same-name baseline entries; user `--env-overrides` files take final precedence. New `env_overrides` and `pixi_toml_fragment` modules implement the layered merge ([#156](https://github.com/wildlife-dynamics/wt/pull/156))
