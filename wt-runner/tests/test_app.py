@@ -288,9 +288,7 @@ async def test_convert_unexpected_envelope():
     ("endpoint", "attr"),
     [("/rjsf", "rjsf"), ("/params", "params")],
 )
-def test_metadata_endpoint_returns_invoker_output(
-    client: TestClient, endpoint: str, attr: str
-):
+def test_metadata_endpoint_returns_invoker_output(client: TestClient, endpoint: str, attr: str):
     """GET /rjsf and /params return the parsed CLI output and call ``get <attr>``."""
     expected = {"some": "schema"}
     mock_invoker = AsyncMock()
