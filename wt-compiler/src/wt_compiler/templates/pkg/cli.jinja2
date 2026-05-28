@@ -166,7 +166,7 @@ def run(
 )
 def get(metadata_attribute: str) -> None:
     """Get the metadata for the workflow."""
-    from .metadata import get_data_connection_property_names, load_rjsf_schema, load_params_schema
+    from .metadata import get_data_connection_property_names, load_params_schema, load_rjsf_schema
 
     getter = {
         "rjsf": load_rjsf_schema,
