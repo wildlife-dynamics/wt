@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.3.0 — 2026-05-28
+
+- Add `GET /params` endpoint that returns the workflow's `params.json` by proxying the compiled CLI's new `get params` metadata attribute ([#178](https://github.com/wildlife-dynamics/wt/pull/178))
+
 ## v0.2.0 — 2026-05-13
 
 - Register the new `SandboxInvoker` and `CloudRunJobsSandboxInvoker` in the `INVOKERS` dispatch map ([#164](https://github.com/wildlife-dynamics/wt/pull/164))

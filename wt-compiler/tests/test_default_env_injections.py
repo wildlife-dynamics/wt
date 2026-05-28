@@ -28,7 +28,7 @@ EXPECTED_SPECS = {
         ("wt-task", ">=0.1.3,<1.0.0", RELEASE_CHANNEL.base_url),
     ],
     "runner": [
-        ("wt-runner", ">=0.2.0,<1.0.0", RELEASE_CHANNEL.base_url),
+        ("wt-runner", ">=0.3.0,<1.0.0", RELEASE_CHANNEL.base_url),
     ],
     "test": [
         ("pandas", "*", CONDA_FORGE_CHANNEL.base_url),
