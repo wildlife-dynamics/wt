@@ -108,7 +108,7 @@ convention = "google"
 
 [tool.pixi.package]
 name = "wt-runner-gcp"
-version = "0.2.0"
+version = "0.3.0"
 
 [tool.pixi.package.build]
 backend = { name = "pixi-build-python", version = "*", channels = ["conda-forge", "https://prefix.dev/pixi-build-backends"] }

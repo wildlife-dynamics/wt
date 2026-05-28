@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.8.0 — 2026-05-28
+
+- Add `params` choice to the `wt-compiler get <metadata_attribute>` CLI, exposing the workflow's `params.json` schema alongside the existing `rjsf` and `data-connection-property-names` attributes ([#178](https://github.com/wildlife-dynamics/wt/pull/178))
+- Bump `wt-runner` floor to `>=0.3.0` in `default-env-injections.toml` to match the new `/params` endpoint added in `wt-runner` v0.3.0
+
 ## v0.7.0 — 2026-05-14
 
 - Drop `rjsf-overrides` `$defs` propagation to the flat `params.json` artifact; overrides now apply only to `rjsf.json`. Removes `ReactJSONSchemaFormOverrides.apply_defs_only()` ([#173](https://github.com/wildlife-dynamics/wt/pull/173))
