@@ -284,6 +284,27 @@ async def test_convert_unexpected_envelope():
         await _convert("formdata", "params", '{"input": "data"}', mock_invoker)
 
 
+@pytest.mark.parametrize(
+    ("endpoint", "attr"),
+    [("/rjsf", "rjsf"), ("/params", "params")],
+)
+def test_metadata_endpoint_returns_invoker_output(client: TestClient, endpoint: str, attr: str):
+    """GET /rjsf and /params return the parsed CLI output and call ``get <attr>``."""
+    expected = {"some": "schema"}
+    mock_invoker = AsyncMock()
+    mock_invoker.check_output = AsyncMock(return_value=json.dumps(expected))
+
+    app.dependency_overrides[resolve_invoker] = lambda: mock_invoker
+    try:
+        response = client.get(endpoint)
+    finally:
+        app.dependency_overrides.pop(resolve_invoker, None)
+
+    assert response.status_code == 200
+    assert response.json() == expected
+    mock_invoker.check_output.assert_called_once_with(["get", attr])
+
+
 @pytest.mark.parametrize("endpoint", ["/formdata-to-params", "/params-to-formdata"])
 def test_convert_endpoint_422_body_matches_validation_error_response(
     client: TestClient, endpoint: str

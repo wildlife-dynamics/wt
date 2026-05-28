@@ -642,6 +642,19 @@ async def rjsf(invoker: AbstractInvoker = Depends(resolve_invoker)) -> dict[str,
     return await _get_metadata_attribute("rjsf", invoker)
 
 
+@app.get("/params", status_code=200)
+async def params(invoker: AbstractInvoker = Depends(resolve_invoker)) -> dict[str, Any]:
+    """Get the params json for the workflow.
+
+    Args:
+        invoker: Invoker instance
+
+    Returns:
+        Workflow's params.json
+    """
+    return await _get_metadata_attribute("params", invoker)
+
+
 @app.get("/data-connection-property-names", status_code=200)
 async def data_connection_property_names(
     invoker: AbstractInvoker = Depends(resolve_invoker),
