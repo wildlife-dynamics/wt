@@ -161,15 +161,16 @@ def run(
 @cli.command()
 @click.argument(
     "metadata_attribute",
-    type=click.Choice(["rjsf", "data-connection-property-names"]),
+    type=click.Choice(["rjsf", "params", "data-connection-property-names"]),
     required=True,
 )
 def get(metadata_attribute: str) -> None:
     """Get the metadata for the workflow."""
-    from .metadata import get_data_connection_property_names, load_rjsf_schema
+    from .metadata import get_data_connection_property_names, load_rjsf_schema, load_params_schema
 
     getter = {
         "rjsf": load_rjsf_schema,
+        "params": load_params_schema,
         "data-connection-property-names": get_data_connection_property_names,
     }.get(metadata_attribute)
     if getter is None:
