@@ -265,6 +265,13 @@ class UploadResultsArchiveMixin:
     Supports ``file://`` destinations for local testing as well as ``http://``
     / ``https://`` signed-URL uploads via ``PUT`` (used for GCS signed URLs).
 
+    If the ``skip_results_archive_upload`` run-arg is truthy, the hook is a
+    no-op: no archive is created and no upload occurs. In that mode the
+    ``results_url`` / ``results_upload_url`` validations are also skipped —
+    the workflow is expected to write results directly to a destination the
+    caller controls, so ``results_upload_url`` is not required and
+    ``results_url`` need not be a ``file://`` URL.
+
     This hook runs even when the workflow exited non-zero so that a
     ``result.json`` describing the failure is still uploaded.
 
@@ -283,6 +290,8 @@ class UploadResultsArchiveMixin:
 
     async def _post_run(self) -> None:
         await super()._post_run()  # type: ignore[misc]
+        if self.run_args.get("skip_results_archive_upload"):
+            return
         results_url = self.run_args.get("results_url")
         if not results_url:
             raise ValueError("results_url is required -- pass it as an arg to run()")

@@ -201,11 +201,25 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--workflow-run-id", required=True)
     p.add_argument("--environment-tar-url", required=True)
-    p.add_argument("--results-upload-url", required=True)
+    # Effectively required unless --dangerously-skip-results-archive-upload is
+    # passed; requiredness is enforced post-parse in main() so the error
+    # message can reference the skip flag.
+    p.add_argument("--results-upload-url", default=None)
     p.add_argument(
         "--results-url",
         default="file:///results",
         help="Local directory URL for workflow outputs (file://)",
+    )
+    p.add_argument(
+        "--dangerously-skip-results-archive-upload",
+        dest="skip_results_archive_upload",
+        action="store_true",
+        default=False,
+        help=(
+            "Skip the post-run results archive upload. Requires --results-url "
+            "to be set to a real destination (not the default file:///results) "
+            "and is mutually exclusive with --results-upload-url."
+        ),
     )
     p.add_argument("--config-json", required=True)
     p.add_argument(
@@ -239,6 +253,7 @@ async def _amain(args: argparse.Namespace) -> int:
         otel_console_exporter_dst=args.otel_console_exporter_dst,
         environment_tar_url=args.environment_tar_url,
         results_upload_url=args.results_upload_url,
+        skip_results_archive_upload=args.skip_results_archive_upload,
     )
     return await invoker.wait()
 
@@ -247,6 +262,24 @@ def main(argv: list[str] | None = None) -> int:
     """CLI entry point: parse args, run the sandbox invoker, exit with its code."""
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
+    if not args.skip_results_archive_upload:
+        if args.results_upload_url is None:
+            parser.error(
+                "--results-upload-url is required unless "
+                "--dangerously-skip-results-archive-upload is passed"
+            )
+    else:
+        if args.results_upload_url is not None:
+            parser.error(
+                "--results-upload-url is mutually exclusive with "
+                "--dangerously-skip-results-archive-upload"
+            )
+        if args.results_url == "file:///results":
+            parser.error(
+                "--dangerously-skip-results-archive-upload requires --results-url "
+                "to point at a real destination, not the staging default "
+                "file:///results"
+            )
     return asyncio.run(_amain(args))
 
 

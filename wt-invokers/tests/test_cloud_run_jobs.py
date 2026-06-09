@@ -195,22 +195,21 @@ async def test_ensure_job_exists_raises_clear_error_on_missing(
             )
 
 
-@pytest.mark.asyncio
-async def test_run_builds_container_args(mock_run_modules: Any) -> None:
-    """Container args forwarded to the sandbox CLI include all workflow inputs."""
-    captured: dict[str, Any] = {}
+class FakeContainerOverride:
+    def __init__(self) -> None:
+        self.args: list[str] = []
+        self.env: list[Any] = []
 
+
+class FakeOverrides:
+    def __init__(self) -> None:
+        self.container_overrides: list[Any] = []
+
+
+def _make_fakes(captured: dict[str, Any]) -> tuple[Any, type]:
+    """Build a fake JobsAsyncClient and RunJobRequest that record into ``captured``."""
     fake_client = MagicMock()
     fake_client.get_job = AsyncMock()
-
-    class FakeContainerOverride:
-        def __init__(self) -> None:
-            self.args: list[str] = []
-            self.env: list[Any] = []
-
-    class FakeOverrides:
-        def __init__(self) -> None:
-            self.container_overrides: list[Any] = []
 
     class FakeRunJobRequest:
         class Overrides:
@@ -233,10 +232,18 @@ async def test_run_builds_container_args(mock_run_modules: Any) -> None:
         return op
 
     fake_client.run_job = fake_run_job
+    return fake_client, FakeRunJobRequest
+
+
+@pytest.mark.asyncio
+async def test_run_builds_container_args(mock_run_modules: Any) -> None:
+    """Container args forwarded to the sandbox CLI include all workflow inputs."""
+    captured: dict[str, Any] = {}
+    fake_client, fake_request_cls = _make_fakes(captured)
 
     with (
         patch("wt_invokers.cloud_run_jobs.JobsAsyncClient", return_value=fake_client),
-        patch("wt_invokers.cloud_run_jobs.RunJobRequest", FakeRunJobRequest),
+        patch("wt_invokers.cloud_run_jobs.RunJobRequest", fake_request_cls),
         patch("wt_invokers.cloud_run_jobs.EnvVar", MagicMock),
     ):
         inv = CloudRunJobsSandboxInvoker(matchspec=MatchSpec("my-wf>=1.0.0"))
@@ -274,3 +281,93 @@ async def test_run_builds_container_args(mock_run_modules: Any) -> None:
     assert "http://otel" in args
     assert "--otel-console-exporter-dst" in args
     assert "stdout" in args
+    assert "--dangerously-skip-results-archive-upload" not in args
+
+
+@pytest.mark.asyncio
+async def test_run_skip_upload_builds_container_args(mock_run_modules: Any) -> None:
+    """Skipping the upload forwards the skip flag and omits --results-upload-url."""
+    captured: dict[str, Any] = {}
+    fake_client, fake_request_cls = _make_fakes(captured)
+
+    with (
+        patch("wt_invokers.cloud_run_jobs.JobsAsyncClient", return_value=fake_client),
+        patch("wt_invokers.cloud_run_jobs.RunJobRequest", fake_request_cls),
+        patch("wt_invokers.cloud_run_jobs.EnvVar", MagicMock),
+    ):
+        inv = CloudRunJobsSandboxInvoker(matchspec=MatchSpec("my-wf>=1.0.0"))
+        await inv.run(
+            workflow_run_id="run-42",
+            config_text="k: v",
+            results_url="gs://bucket/results",
+            execution_mode="sequential",
+            mock_io=False,
+            environment_tar_url="https://e/env.tar",
+            skip_results_archive_upload=True,
+            job_name="j",
+            project_id="p",
+        )
+        await inv.wait()
+
+    args = captured["overrides"].container_overrides[0].args
+    assert "--dangerously-skip-results-archive-upload" in args
+    assert "--results-upload-url" not in args
+    assert "--results-url" in args
+    assert "gs://bucket/results" in args
+
+
+@pytest.mark.asyncio
+async def test_run_skip_upload_with_upload_url_raises(mock_run_modules: Any) -> None:
+    inv = CloudRunJobsSandboxInvoker(matchspec=MatchSpec("w>=1.0.0"))
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        await inv.run(
+            workflow_run_id="r",
+            config_text="k: v",
+            results_url="gs://bucket/results",
+            execution_mode="sequential",
+            mock_io=False,
+            environment_tar_url="https://x/e.tar",
+            results_upload_url="https://x/o",
+            skip_results_archive_upload=True,
+            job_name="j",
+            project_id="p",
+        )
+
+
+@pytest.mark.asyncio
+async def test_run_missing_upload_url_without_skip_raises(
+    mock_run_modules: Any,
+) -> None:
+    """results_upload_url stays effectively required when not skipping."""
+    inv = CloudRunJobsSandboxInvoker(matchspec=MatchSpec("w>=1.0.0"))
+    with pytest.raises(ValueError, match="results_upload_url is required"):
+        await inv.run(
+            workflow_run_id="r",
+            config_text="k: v",
+            results_url="file:///r",
+            execution_mode="sequential",
+            mock_io=False,
+            environment_tar_url="https://x/e.tar",
+            job_name="j",
+            project_id="p",
+        )
+
+
+@pytest.mark.asyncio
+async def test_run_skip_upload_with_default_results_url_raises(
+    mock_run_modules: Any,
+) -> None:
+    """The sandbox staging default results_url is meaningless when not uploading."""
+    inv = CloudRunJobsSandboxInvoker(matchspec=MatchSpec("w>=1.0.0"))
+    with pytest.raises(ValueError, match="real destination"):
+        await inv.run(
+            workflow_run_id="r",
+            config_text="k: v",
+            results_url="file:///results",
+            execution_mode="sequential",
+            mock_io=False,
+            environment_tar_url="https://x/e.tar",
+            skip_results_archive_upload=True,
+            job_name="j",
+            project_id="p",
+        )
