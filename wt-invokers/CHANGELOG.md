@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.0 — 2026-06-11
+
+- Add `--dangerously-skip-results-archive-upload` flag to the sandbox CLI, which skips the post-run results archive upload; requires `--results-url` to point at a real destination and is mutually exclusive with `--results-upload-url` ([#185](https://github.com/wildlife-dynamics/wt/pull/185))
+- Add corresponding `skip_results_archive_upload` parameter to `CloudRunJobsSandboxInvoker`, with eager validation at job-submission time mirroring the sandbox CLI's rules ([#185](https://github.com/wildlife-dynamics/wt/pull/185))
+- `results_upload_url` is now optional on `CloudRunJobsSandboxInvoker` and the sandbox CLI — required only when the results archive upload is not skipped ([#185](https://github.com/wildlife-dynamics/wt/pull/185))
+
 ## v0.3.0 — 2026-05-13
 
 - Add `SandboxInvoker`: downloads a pixi-pack environment tarball, runs the workflow inside the unpacked env, and uploads a results archive to a signed URL. Exposed via the `wt-invokers.sandbox` console entry point as a Docker image ENTRYPOINT ([#164](https://github.com/wildlife-dynamics/wt/pull/164))
