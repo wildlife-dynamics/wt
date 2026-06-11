@@ -72,6 +72,11 @@ jobs:
           TAG: ${{ needs.parse.outputs.package }}/v${{ needs.parse.outputs.version }}
           PACKAGE: ${{ needs.parse.outputs.package }}
         run: |
+          # actions/checkout replaces the annotated tag with a lightweight one
+          # pointing at the commit (actions/checkout#290); re-fetch the real tag
+          # object so %(contents) reads the annotation, not the commit message.
+          git fetch origin --force "refs/tags/${TAG}:refs/tags/${TAG}"
+
           # Try to extract notes from annotated tag (skip the header line)
           annotation="$(git tag -l --format='%(contents)' "$TAG")"
           body="$(echo "$annotation" | tail -n +3)"
