@@ -107,7 +107,8 @@ class CloudRunJobsSandboxInvoker(AbstractInvoker):
         lithops_config_text: str | None = None,  # noqa: ARG002  # interface compatibility — proxy invoker doesn't run lithops
         *,
         environment_tar_url: str,
-        results_upload_url: str,
+        results_upload_url: str | None = None,
+        skip_results_archive_upload: bool = False,
         job_name: str,
         project_id: str,
         region: str = "us-central1",
@@ -128,11 +129,42 @@ class CloudRunJobsSandboxInvoker(AbstractInvoker):
                 with the abstract :meth:`_run` signature.
             environment_tar_url: Signed URL of the pixi-pack environment tarball.
             results_upload_url: Signed URL where the results archive should be
-                uploaded after the workflow finishes.
+                uploaded after the workflow finishes. Required unless
+                ``skip_results_archive_upload`` is ``True``, in which case it
+                must be omitted.
+            skip_results_archive_upload: Skip the post-run results archive
+                upload inside the sandbox container. Requires ``results_url``
+                to be a real destination (not the sandbox staging default
+                ``file:///results``) and is mutually exclusive with
+                ``results_upload_url``.
             job_name: Short name of the pre-deployed Cloud Run Job.
             project_id: GCP project ID.
             region: GCP region (default ``us-central1``).
+
+        Raises:
+            ValueError: If ``results_upload_url`` and
+                ``skip_results_archive_upload`` are combined inconsistently.
+                Validation happens eagerly here — mirroring the sandbox CLI's
+                rules — because the job runs asynchronously, so a CLI-level
+                error would otherwise only surface inside the container.
         """
+        if not skip_results_archive_upload and results_upload_url is None:
+            raise ValueError(
+                "results_upload_url is required unless skip_results_archive_upload=True"
+            )
+        if skip_results_archive_upload:
+            if results_upload_url is not None:
+                raise ValueError(
+                    "results_upload_url is mutually exclusive with "
+                    "skip_results_archive_upload=True"
+                )
+            if results_url == "file:///results":
+                raise ValueError(
+                    "skip_results_archive_upload=True requires results_url "
+                    "to point at a real destination, not the sandbox staging "
+                    "default file:///results"
+                )
+
         config_as_json = yaml_to_json(text=config_text)
         fq_job_name = f"projects/{project_id}/locations/{region}/jobs/{job_name}"
         await self._ensure_job_exists(fq_job_name)
@@ -145,8 +177,6 @@ class CloudRunJobsSandboxInvoker(AbstractInvoker):
             workflow_run_id,
             "--environment-tar-url",
             environment_tar_url,
-            "--results-upload-url",
-            results_upload_url,
             "--results-url",
             results_url,
             "--config-json",
@@ -154,6 +184,10 @@ class CloudRunJobsSandboxInvoker(AbstractInvoker):
             "--execution-mode",
             execution_mode,
         ]
+        if skip_results_archive_upload:
+            container_args.append("--dangerously-skip-results-archive-upload")
+        elif results_upload_url is not None:
+            container_args.extend(["--results-upload-url", results_upload_url])
         if mock_io:
             container_args.append("--mock-io")
         else:

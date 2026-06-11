@@ -312,6 +312,54 @@ async def test_end_to_end_lifecycle_with_mocked_externals(tmp_path: Path) -> Non
     assert inv.is_running is False
 
 
+@pytest.mark.asyncio
+async def test_end_to_end_lifecycle_with_skip_upload(tmp_path: Path) -> None:
+    """With skip_results_archive_upload, wait() succeeds and nothing is uploaded."""
+    source_tar = tmp_path / "env.tar"
+    source_tar.write_bytes(b"fake")
+    results_dir = tmp_path / "results"
+    results_dir.mkdir()
+    (results_dir / "result.json").write_text('{"ok": true}')
+
+    inv = SandboxInvoker(
+        matchspec=MatchSpec("my-workflow>=1.0.0"),
+        work_dir=str(tmp_path / "work"),
+    )
+
+    mock_proc = MagicMock()
+    mock_proc.wait.return_value = 0
+
+    with (
+        patch("wt_invokers.mixins.shutil.which", return_value="/usr/bin/pixi-unpack"),
+        patch("wt_invokers.mixins.subprocess.run"),
+        patch("wt_invokers.sandbox.subprocess.Popen", return_value=mock_proc),
+    ):
+        await inv.run(
+            workflow_run_id="r1",
+            config_text="k: v",
+            results_url=f"file://{results_dir}",
+            execution_mode="sequential",
+            mock_io=False,
+            environment_tar_url=f"file://{source_tar}",
+            skip_results_archive_upload=True,
+        )
+        exit_code = await inv.wait()
+
+    assert exit_code == 0
+    # No upload artifact was created anywhere under tmp_path.
+    assert not list(tmp_path.rglob("*.tar.gz"))  # noqa: ASYNC240  # test-only local FS scan; no event loop at stake
+    assert inv.is_running is False
+
+
+@pytest.mark.asyncio
+async def test_post_run_skip_accepts_non_file_results_url(tmp_path: Path) -> None:
+    """With the skip flag set, the file:// scheme validation is bypassed."""
+    inv = SandboxInvoker(matchspec=MatchSpec("w>=1.0.0"), work_dir=str(tmp_path))
+    inv._run_args["results_url"] = "gs://bucket/results"
+    inv._run_args["skip_results_archive_upload"] = True
+    await inv._post_run()  # no upload, no validation error
+
+
 # ---------------------------------------------------------------------------
 # check_output
 # ---------------------------------------------------------------------------
@@ -329,6 +377,20 @@ async def test_check_output_is_not_supported(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # CLI main()
 # ---------------------------------------------------------------------------
+
+
+def _cli_args_without_upload_url() -> list[str]:
+    """Required CLI args, minus ``--results-upload-url``."""
+    return [
+        "--matchspec",
+        "w>=1.0.0",
+        "--workflow-run-id",
+        "r",
+        "--environment-tar-url",
+        "https://x/e.tar",
+        "--config-json",
+        "{}",
+    ]
 
 
 def test_cli_parses_required_args() -> None:
@@ -422,3 +484,96 @@ def test_cli_main_invokes_run_and_wait(tmp_path: Path) -> None:
     assert called["run_kwargs"]["workflow_run_id"] == "r1"
     assert called["run_kwargs"]["environment_tar_url"] == f"file://{tmp_path}/env.tar"
     assert called["run_kwargs"]["results_upload_url"] == f"file://{tmp_path}/out.tar.gz"
+    assert called["run_kwargs"]["skip_results_archive_upload"] is False
+
+
+def test_cli_skip_upload_flag_defaults_false() -> None:
+    parser = _build_arg_parser()
+    args = parser.parse_args(
+        [*_cli_args_without_upload_url(), "--results-upload-url", "https://x/o"]
+    )
+    assert args.skip_results_archive_upload is False
+
+
+def test_cli_skip_upload_flag_parses_true() -> None:
+    parser = _build_arg_parser()
+    args = parser.parse_args(
+        [
+            *_cli_args_without_upload_url(),
+            "--dangerously-skip-results-archive-upload",
+        ]
+    )
+    assert args.skip_results_archive_upload is True
+    assert args.results_upload_url is None
+
+
+def test_cli_missing_results_upload_url_without_skip_exits() -> None:
+    """--results-upload-url is still effectively required without the skip flag."""
+    with pytest.raises(SystemExit) as exc:
+        main(_cli_args_without_upload_url())
+    assert exc.value.code != 0
+
+
+def test_cli_skip_upload_mutually_exclusive_with_upload_url() -> None:
+    with pytest.raises(SystemExit) as exc:
+        main(
+            [
+                *_cli_args_without_upload_url(),
+                "--results-upload-url",
+                "https://x/o",
+                "--dangerously-skip-results-archive-upload",
+                "--results-url",
+                "file:///real/dest",
+            ]
+        )
+    assert exc.value.code != 0
+
+
+@pytest.mark.parametrize(
+    "results_url_args",
+    [
+        pytest.param([], id="results-url-omitted"),
+        pytest.param(["--results-url", "file:///results"], id="results-url-explicit"),
+    ],
+)
+def test_cli_skip_upload_rejects_default_results_url(
+    results_url_args: list[str],
+) -> None:
+    """Skipping the upload requires --results-url to be a real destination."""
+    with pytest.raises(SystemExit) as exc:
+        main(
+            [
+                *_cli_args_without_upload_url(),
+                "--dangerously-skip-results-archive-upload",
+                *results_url_args,
+            ]
+        )
+    assert exc.value.code != 0
+
+
+def test_cli_main_skip_upload_happy_path(tmp_path: Path) -> None:
+    """With the flag and a real --results-url, run() receives the skip kwarg."""
+    called: dict[str, Any] = {}
+
+    async def fake_run(self: Any, **kwargs: Any) -> None:
+        called["run_kwargs"] = kwargs
+
+    async def fake_wait(self: Any, *args: Any, **kwargs: Any) -> int:
+        return 0
+
+    with (
+        patch.object(SandboxInvoker, "run", new=fake_run),
+        patch.object(SandboxInvoker, "wait", new=fake_wait),
+    ):
+        exit_code = main(
+            [
+                *_cli_args_without_upload_url(),
+                "--dangerously-skip-results-archive-upload",
+                "--results-url",
+                f"file://{tmp_path}/results",
+            ]
+        )
+
+    assert exit_code == 0
+    assert called["run_kwargs"]["skip_results_archive_upload"] is True
+    assert called["run_kwargs"]["results_upload_url"] is None
