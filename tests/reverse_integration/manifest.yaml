@@ -38,6 +38,7 @@ _compile_only: &compile_only
     - file: VERSION.yaml
       allowed_variance:
         - 'MIN: \d+'
+        - 'PATCH: \d+'
     - file: Dockerfile
       allowed_variance:
         - 'PIXI_VERSION=\S+'
@@ -68,6 +69,7 @@ _env_overrides: &env_overrides
     - file: VERSION.yaml
       allowed_variance:
         - 'MIN: \d+'
+        - 'PATCH: \d+'
     - file: Dockerfile
       allowed_variance:
         - 'PIXI_VERSION=\S+'
