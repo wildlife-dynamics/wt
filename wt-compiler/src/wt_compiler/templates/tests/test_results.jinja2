@@ -18,18 +18,6 @@ _UUID_RE = re.compile(
 )
 
 
-def _replace_ephemeral_values(value, tmp_root: str):
-    if isinstance(value, dict):
-        return {k: _replace_ephemeral_values(v, tmp_root) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_replace_ephemeral_values(v, tmp_root) for v in value]
-    if isinstance(value, str):
-        if value.startswith(tmp_root):
-            return "tmpfile"
-        return _UUID_RE.sub("uuid", value)
-    return value
-
-
 def test_failure_response(
     response_json_failure: dict, snapshot_json: SnapshotAssertion
 ):
@@ -53,7 +41,15 @@ def test_dashboard_json(
 ):
     # replace any UUIDs or paths to test output in the response_json
     tmp_root = str(tmp_path.parent)
-    assert _replace_ephemeral_values(response_json_success, tmp_root) == snapshot_json()
+
+    def _replace_ephemeral_values(*, data, path):
+        if not isinstance(data, str):
+            return data
+        if data.startswith(tmp_root):
+            return "tmpfile"
+        return _UUID_RE.sub("uuid", data)
+
+    assert response_json_success == snapshot_json(matcher=_replace_ephemeral_values)
 
 
 @pytest.mark.asyncio
