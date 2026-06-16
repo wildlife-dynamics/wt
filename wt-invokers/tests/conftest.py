@@ -51,6 +51,13 @@ class _UploadHandler(http.server.SimpleHTTPRequestHandler):
             self.send_response(500)
             self.end_headers()
             return None
+        # Simulate a GitHub-release-style 302 to a signed asset URL: a
+        # request to /redirect/<name> redirects to /<name>.
+        if self.path.startswith("/redirect/"):
+            self.send_response(302)
+            self.send_header("Location", self.path[len("/redirect") :])
+            self.end_headers()
+            return None
         return super().do_GET()
 
 

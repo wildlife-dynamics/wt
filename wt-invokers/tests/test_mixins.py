@@ -240,6 +240,28 @@ async def test_pre_run_https_download_integration(
 
 
 @pytest.mark.asyncio
+async def test_pre_run_follows_redirect(
+    tmp_path: Path,
+    http_server: tuple[str, Path, dict[str, int]],
+) -> None:
+    """A 302 redirect (as GitHub release URLs return) is followed."""
+    url, directory, _fail = http_server
+    (directory / "env.tar").write_bytes(b"redirected-bytes")
+
+    work = tmp_path / "work"
+    work.mkdir()
+    inv = _make_pixi(work, environment_tar_url=f"{url}/redirect/env.tar")
+
+    with (
+        patch("wt_invokers.mixins.shutil.which", return_value="/usr/bin/pixi-unpack"),
+        patch("wt_invokers.mixins.subprocess.run"),
+    ):
+        await inv._pre_run()
+
+    assert (work / "environment.tar").read_bytes() == b"redirected-bytes"
+
+
+@pytest.mark.asyncio
 async def test_pre_run_retries_on_5xx(
     tmp_path: Path,
     http_server: tuple[str, Path, dict[str, int]],
