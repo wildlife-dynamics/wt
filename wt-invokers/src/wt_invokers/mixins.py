@@ -230,7 +230,7 @@ async def _download_with_retries(url: str, dest: Path) -> None:
     )
     async def _do_download() -> None:
         async with (
-            httpx.AsyncClient(timeout=_timeout()) as client,
+            httpx.AsyncClient(timeout=_timeout(), follow_redirects=True) as client,
             client.stream("GET", url) as response,
         ):
             if 500 <= response.status_code < 600:
