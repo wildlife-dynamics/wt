@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.4.1 — 2026-06-15
+
+- Follow HTTP redirects when downloading the environment tar, so a GitHub-release-style 302 to a signed asset URL is handled ([#193](https://github.com/wildlife-dynamics/wt/pull/193))
+
 ## v0.4.0 — 2026-06-11
 
 - Add `--dangerously-skip-results-archive-upload` flag to the sandbox CLI, which skips the post-run results archive upload; requires `--results-url` to point at a real destination and is mutually exclusive with `--results-upload-url` ([#185](https://github.com/wildlife-dynamics/wt/pull/185))

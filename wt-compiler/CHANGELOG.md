@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.8.1 — 2026-06-15
+
+- Rework the generated `test_dashboard_json` snapshot test to mask ephemeral values — UUIDs and tmp-output paths — with a custom matcher, replacing the previous `no_data`/`path_type` field-exclusion approach so nested dashboard JSON snapshots compare robustly ([#184](https://github.com/wildlife-dynamics/wt/pull/184))
+
 ## v0.8.0 — 2026-05-28
 
 - Add `params` choice to the `wt-compiler get <metadata_attribute>` CLI, exposing the workflow's `params.json` schema alongside the existing `rjsf` and `data-connection-property-names` attributes ([#178](https://github.com/wildlife-dynamics/wt/pull/178))
