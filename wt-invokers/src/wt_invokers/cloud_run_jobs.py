@@ -24,7 +24,7 @@ except ImportError:
     CLOUD_RUN_AVAILABLE = False
 
 from .abstract import AbstractInvoker
-from .utils import yaml_to_json
+from .utils import validate_environment_tar_digest, yaml_to_json
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +107,7 @@ class CloudRunJobsSandboxInvoker(AbstractInvoker):
         lithops_config_text: str | None = None,  # noqa: ARG002  # interface compatibility — proxy invoker doesn't run lithops
         *,
         environment_tar_url: str,
+        environment_tar_digest: str,
         results_upload_url: str | None = None,
         skip_results_archive_upload: bool = False,
         job_name: str,
@@ -128,6 +129,10 @@ class CloudRunJobsSandboxInvoker(AbstractInvoker):
             lithops_config_text: Unused; accepted for interface compatibility
                 with the abstract :meth:`_run` signature.
             environment_tar_url: Signed URL of the pixi-pack environment tarball.
+            environment_tar_digest: Expected sha256 digest of the environment
+                tarball, formatted as ``"sha256:<64 hex chars>"``. Forwarded to
+                the sandbox CLI, which verifies the downloaded tarball against
+                it before unpacking.
             results_upload_url: Signed URL where the results archive should be
                 uploaded after the workflow finishes. Required unless
                 ``skip_results_archive_upload`` is ``True``, in which case it
@@ -142,12 +147,14 @@ class CloudRunJobsSandboxInvoker(AbstractInvoker):
             region: GCP region (default ``us-central1``).
 
         Raises:
-            ValueError: If ``results_upload_url`` and
-                ``skip_results_archive_upload`` are combined inconsistently.
-                Validation happens eagerly here — mirroring the sandbox CLI's
-                rules — because the job runs asynchronously, so a CLI-level
-                error would otherwise only surface inside the container.
+            ValueError: If ``environment_tar_digest`` is malformed, or if
+                ``results_upload_url`` and ``skip_results_archive_upload`` are
+                combined inconsistently. Validation happens eagerly here —
+                mirroring the sandbox CLI's rules — because the job runs
+                asynchronously, so a CLI-level error would otherwise only
+                surface inside the container.
         """
+        validate_environment_tar_digest(environment_tar_digest)
         if not skip_results_archive_upload and results_upload_url is None:
             raise ValueError(
                 "results_upload_url is required unless skip_results_archive_upload=True"
@@ -177,6 +184,8 @@ class CloudRunJobsSandboxInvoker(AbstractInvoker):
             workflow_run_id,
             "--environment-tar-url",
             environment_tar_url,
+            "--environment-tar-digest",
+            environment_tar_digest,
             "--results-url",
             results_url,
             "--config-json",

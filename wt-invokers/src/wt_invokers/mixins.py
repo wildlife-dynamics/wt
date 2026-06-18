@@ -27,6 +27,7 @@ silently drop its hook.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import shutil
 import subprocess
@@ -40,7 +41,7 @@ from urllib.request import url2pathname
 import httpx
 import stamina
 
-from .exceptions import PixiUnpackError
+from .exceptions import EnvironmentTarDigestError, PixiUnpackError
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -152,6 +153,31 @@ def archive_results_safely(results_dir: Path, dest: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _sha256_file(path: Path) -> str:
+    """Compute the sha256 digest of a file, streamed in chunks.
+
+    Reads the file in ``TRANSFER_CHUNK_SIZE`` chunks so arbitrarily large
+    tarballs are hashed without being read fully into memory. The returned
+    value is formatted as ``"sha256:<lowercase hex>"`` so it can be compared
+    directly against the ``environment_tar_digest`` produced by the
+    workflow-environment build pipeline.
+
+    Args:
+        path: Path to the file to hash.
+
+    Returns:
+        The digest string ``"sha256:<hexdigest>"``.
+    """
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        while True:
+            chunk = f.read(TRANSFER_CHUNK_SIZE)
+            if not chunk:
+                break
+            h.update(chunk)
+    return f"sha256:{h.hexdigest()}"
+
+
 class PixiUnpackMixin:
     """Pre-run hook that downloads and unpacks a pixi-pack environment tarball.
 
@@ -164,6 +190,14 @@ class PixiUnpackMixin:
     Supports ``file://``, ``http://``, and ``https://`` URL schemes for the
     tarball source. HTTP(S) downloads are retried via ``stamina`` on transport
     errors and 5xx responses.
+
+    The (required) ``environment_tar_digest`` run-arg is verified against the
+    sha256 of the downloaded tarball *before* unpacking. On mismatch the hook
+    raises :class:`~wt_invokers.exceptions.EnvironmentTarDigestError` and never
+    runs ``pixi-unpack``, so a tampered or corrupted environment never
+    executes. This mirrors the adjacent pre-run failure mode (a failing
+    ``pixi-unpack`` raises :class:`~wt_invokers.exceptions.PixiUnpackError`):
+    both propagate out of ``run()`` and leave ``"activate_path"`` unset.
     """
 
     # These attributes come from :class:`AbstractInvoker` at runtime; declared
@@ -188,6 +222,12 @@ class PixiUnpackMixin:
                 "environment_tar_url is required -- pass it as a kwarg to run()"
             )
 
+        environment_tar_digest = self.run_args.get("environment_tar_digest")
+        if not environment_tar_digest:
+            raise ValueError(
+                "environment_tar_digest is required -- pass it as a kwarg to run()"
+            )
+
         Path(self.work_dir).mkdir(parents=True, exist_ok=True)  # noqa: ASYNC240  # local mkdir; fast metadata op, no event-loop blocking risk
         tar_path = Path(self.work_dir) / "environment.tar"
 
@@ -199,6 +239,19 @@ class PixiUnpackMixin:
         else:
             raise ValueError(
                 f"Unsupported scheme for environment_tar_url: {parsed.scheme}"
+            )
+
+        # Integrity gate: verify the downloaded tarball against the expected
+        # digest BEFORE unpacking or running anything. On mismatch, raise so the
+        # run fails before unpacking — leaving activate_path unset — exactly like
+        # a failing pixi-unpack below. A tampered or corrupted environment never
+        # executes. Compare case-insensitively so an uppercase-hex digest still
+        # matches our lowercase computed digest.
+        actual_digest = _sha256_file(tar_path)
+        if actual_digest.lower() != environment_tar_digest.lower():
+            raise EnvironmentTarDigestError(
+                f"environment.tar integrity check failed: "
+                f"expected {environment_tar_digest}, got {actual_digest}"
             )
 
         try:

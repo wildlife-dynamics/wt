@@ -51,6 +51,26 @@ class InstallationError(InvokerError):
     """
 
 
+class EnvironmentTarDigestError(InvokerError):
+    """Exception raised when the environment tarball fails its integrity check.
+
+    Raised by :class:`~wt_invokers.mixins.PixiUnpackMixin` when the sha256 of
+    the downloaded ``environment.tar`` does not match the expected
+    ``environment_tar_digest``. The mismatch aborts the run before unpacking,
+    so a tampered or corrupted environment never executes.
+
+    Examples:
+        Raising an integrity-check failure:
+
+        >>> raise EnvironmentTarDigestError(
+        ...     "environment.tar integrity check failed: expected x, got y"
+        ... )
+        Traceback (most recent call last):
+            ...
+        wt_invokers.exceptions.EnvironmentTarDigestError: environment.tar integrity check failed: expected x, got y
+    """
+
+
 class PixiUnpackError(InvokerError):
     """Exception raised when the ``pixi-unpack`` subprocess fails.
 
