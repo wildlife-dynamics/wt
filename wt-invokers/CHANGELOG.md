@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## v0.5.0 — 2026-06-18
 
-- **Breaking:** `--environment-tar-digest sha256:<hex>` is now **required** on the sandbox CLI and as the `environment_tar_digest` keyword argument on `CloudRunJobsSandboxInvoker.run(...)`. The downloaded `environment.tar` is verified against this digest before unpacking; on mismatch the run **fails before unpacking, raising and exiting non-zero** (no `result.json` written), so a tampered or corrupted environment never executes. Callers populating `invoker_kwargs` for wt-runner must now include `environment_tar_digest` ([#191](https://github.com/wildlife-dynamics/wt/issues/191))
+- **Breaking:** `--environment-tar-digest sha256:<hex>` is now **required** on the sandbox CLI and as the `environment_tar_digest` keyword argument on `CloudRunJobsSandboxInvoker.run(...)`. The downloaded `environment.tar` is verified against this digest before unpacking; on mismatch the run **fails before unpacking, raising and exiting non-zero** (no `result.json` written), so a tampered or corrupted environment never executes. Callers populating `invoker_kwargs` for wt-runner must now include `environment_tar_digest` ([#196](https://github.com/wildlife-dynamics/wt/pull/196))
 
 ## v0.4.1 — 2026-06-15
 
