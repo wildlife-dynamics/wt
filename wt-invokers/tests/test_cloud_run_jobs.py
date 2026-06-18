@@ -16,6 +16,10 @@ from rattler import MatchSpec
 import wt_invokers.cloud_run_jobs as module
 from wt_invokers.cloud_run_jobs import CloudRunJobsSandboxInvoker
 
+# A syntactically valid digest; the proxy validates format and forwards it
+# verbatim to the sandbox CLI, so the exact value is never hashed here.
+_VALID_DIGEST = "sha256:" + "a" * 64
+
 
 @pytest.fixture
 def mock_run_modules(monkeypatch: pytest.MonkeyPatch) -> Any:
@@ -106,6 +110,7 @@ async def test_run_triggers_job_with_correct_args(mock_run_modules: Any) -> None
             execution_mode="sequential",
             mock_io=False,
             environment_tar_url="https://x/env.tar",
+            environment_tar_digest=_VALID_DIGEST,
             results_upload_url="https://x/out",
             job_name="sandbox-job",
             project_id="my-proj",
@@ -142,6 +147,7 @@ async def test_run_defaults_region_to_us_central1(mock_run_modules: Any) -> None
             execution_mode="sequential",
             mock_io=False,
             environment_tar_url="https://x/e.tar",
+            environment_tar_digest=_VALID_DIGEST,
             results_upload_url="https://x/o",
             job_name="j",
             project_id="p",
@@ -189,6 +195,7 @@ async def test_ensure_job_exists_raises_clear_error_on_missing(
                 execution_mode="sequential",
                 mock_io=False,
                 environment_tar_url="https://x/e.tar",
+                environment_tar_digest=_VALID_DIGEST,
                 results_upload_url="https://x/o",
                 job_name="j",
                 project_id="p",
@@ -257,6 +264,7 @@ async def test_run_builds_container_args(mock_run_modules: Any) -> None:
             otel_console_exporter_dst="stdout",
             extra_env={"X": "1"},
             environment_tar_url="https://e/env.tar",
+            environment_tar_digest=_VALID_DIGEST,
             results_upload_url="https://e/out",
             job_name="j",
             project_id="p",
@@ -272,6 +280,10 @@ async def test_run_builds_container_args(mock_run_modules: Any) -> None:
     assert "run-42" in args
     assert "--environment-tar-url" in args
     assert "https://e/env.tar" in args
+    assert "--environment-tar-digest" in args
+    assert _VALID_DIGEST in args
+    # The digest immediately follows its flag in the argv.
+    assert args[args.index("--environment-tar-digest") + 1] == _VALID_DIGEST
     assert "--results-upload-url" in args
     assert "https://e/out" in args
     assert "--results-url" in args
@@ -303,6 +315,7 @@ async def test_run_skip_upload_builds_container_args(mock_run_modules: Any) -> N
             execution_mode="sequential",
             mock_io=False,
             environment_tar_url="https://e/env.tar",
+            environment_tar_digest=_VALID_DIGEST,
             skip_results_archive_upload=True,
             job_name="j",
             project_id="p",
@@ -327,6 +340,7 @@ async def test_run_skip_upload_with_upload_url_raises(mock_run_modules: Any) -> 
             execution_mode="sequential",
             mock_io=False,
             environment_tar_url="https://x/e.tar",
+            environment_tar_digest=_VALID_DIGEST,
             results_upload_url="https://x/o",
             skip_results_archive_upload=True,
             job_name="j",
@@ -348,6 +362,7 @@ async def test_run_missing_upload_url_without_skip_raises(
             execution_mode="sequential",
             mock_io=False,
             environment_tar_url="https://x/e.tar",
+            environment_tar_digest=_VALID_DIGEST,
             job_name="j",
             project_id="p",
         )
@@ -367,7 +382,45 @@ async def test_run_skip_upload_with_default_results_url_raises(
             execution_mode="sequential",
             mock_io=False,
             environment_tar_url="https://x/e.tar",
+            environment_tar_digest=_VALID_DIGEST,
             skip_results_archive_upload=True,
+            job_name="j",
+            project_id="p",
+        )
+
+
+@pytest.mark.asyncio
+async def test_run_bad_digest_format_raises_eagerly(mock_run_modules: Any) -> None:
+    """A malformed environment_tar_digest is rejected before the job is submitted."""
+    inv = CloudRunJobsSandboxInvoker(matchspec=MatchSpec("w>=1.0.0"))
+    with pytest.raises(ValueError, match="environment_tar_digest must be"):
+        await inv.run(
+            workflow_run_id="r",
+            config_text="k: v",
+            results_url="file:///r",
+            execution_mode="sequential",
+            mock_io=False,
+            environment_tar_url="https://x/e.tar",
+            environment_tar_digest="not-a-valid-digest",
+            results_upload_url="https://x/o",
+            job_name="j",
+            project_id="p",
+        )
+
+
+@pytest.mark.asyncio
+async def test_run_missing_digest_kwarg_raises(mock_run_modules: Any) -> None:
+    """environment_tar_digest is a required keyword-only argument."""
+    inv = CloudRunJobsSandboxInvoker(matchspec=MatchSpec("w>=1.0.0"))
+    with pytest.raises(TypeError):
+        await inv.run(
+            workflow_run_id="r",
+            config_text="k: v",
+            results_url="file:///r",
+            execution_mode="sequential",
+            mock_io=False,
+            environment_tar_url="https://x/e.tar",
+            results_upload_url="https://x/o",
             job_name="j",
             project_id="p",
         )

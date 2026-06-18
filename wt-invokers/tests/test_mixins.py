@@ -10,6 +10,7 @@ mock httpx for fine-grained retry behaviour.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import subprocess
 import tarfile
@@ -26,7 +27,7 @@ from rattler import MatchSpec
 
 from wt_invokers import mixins
 from wt_invokers.abstract import AbstractInvoker
-from wt_invokers.exceptions import PixiUnpackError
+from wt_invokers.exceptions import EnvironmentTarDigestError, PixiUnpackError
 from wt_invokers.mixins import (
     PixiUnpackMixin,
     RetryableHTTPError,
@@ -94,6 +95,11 @@ class _UploadOnly(UploadResultsArchiveMixin, AbstractInvoker):
         return True
 
 
+def _digest(data: bytes) -> str:
+    """sha256 of ``data`` in the ``sha256:<hex>`` form the mixin compares against."""
+    return f"sha256:{hashlib.sha256(data).hexdigest()}"
+
+
 def _make_pixi(tmp_path: Path, **run_args: Any) -> _PixiUnpackOnly:
     inv = _PixiUnpackOnly(matchspec=MatchSpec("w>=1.0.0"), work_dir=str(tmp_path))
     inv._run_args.update(run_args)
@@ -149,7 +155,11 @@ async def test_pre_run_missing_env_url_raises(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_pre_run_unsupported_scheme(tmp_path: Path) -> None:
-    inv = _make_pixi(tmp_path, environment_tar_url="s3://bucket/env.tar")
+    inv = _make_pixi(
+        tmp_path,
+        environment_tar_url="s3://bucket/env.tar",
+        environment_tar_digest=_digest(b"x"),
+    )
     with (
         patch("wt_invokers.mixins.shutil.which", return_value="/usr/bin/pixi-unpack"),
         pytest.raises(ValueError, match="Unsupported scheme"),
@@ -170,6 +180,7 @@ async def test_pre_run_file_url_copies_and_unpacks(tmp_path: Path) -> None:
     inv = _make_pixi(
         work,
         environment_tar_url=f"file://{source_tar}",
+        environment_tar_digest=_digest(b"fake-tarball"),
     )
 
     with (
@@ -199,7 +210,11 @@ async def test_pre_run_pixi_unpack_failure_wraps_in_domain_exception(
     """
     source_tar = tmp_path / "env.tar"
     source_tar.write_bytes(b"bad")
-    inv = _make_pixi(tmp_path, environment_tar_url=f"file://{source_tar}")
+    inv = _make_pixi(
+        tmp_path,
+        environment_tar_url=f"file://{source_tar}",
+        environment_tar_digest=_digest(b"bad"),
+    )
     underlying = subprocess.CalledProcessError(
         2, "pixi-unpack", output=b"out", stderr=b"err"
     )
@@ -227,7 +242,11 @@ async def test_pre_run_https_download_integration(
 
     work = tmp_path / "work"
     work.mkdir()
-    inv = _make_pixi(work, environment_tar_url=f"{url}/env.tar")
+    inv = _make_pixi(
+        work,
+        environment_tar_url=f"{url}/env.tar",
+        environment_tar_digest=_digest(b"streamed-bytes"),
+    )
 
     with (
         patch("wt_invokers.mixins.shutil.which", return_value="/usr/bin/pixi-unpack"),
@@ -250,7 +269,11 @@ async def test_pre_run_follows_redirect(
 
     work = tmp_path / "work"
     work.mkdir()
-    inv = _make_pixi(work, environment_tar_url=f"{url}/redirect/env.tar")
+    inv = _make_pixi(
+        work,
+        environment_tar_url=f"{url}/redirect/env.tar",
+        environment_tar_digest=_digest(b"redirected-bytes"),
+    )
 
     with (
         patch("wt_invokers.mixins.shutil.which", return_value="/usr/bin/pixi-unpack"),
@@ -272,7 +295,11 @@ async def test_pre_run_retries_on_5xx(
 
     work = tmp_path / "work"
     work.mkdir()
-    inv = _make_pixi(work, environment_tar_url=f"{url}/env.tar")
+    inv = _make_pixi(
+        work,
+        environment_tar_url=f"{url}/env.tar",
+        environment_tar_digest=_digest(b"bytes-v1"),
+    )
 
     with (
         patch("wt_invokers.mixins.shutil.which", return_value="/usr/bin/pixi-unpack"),
@@ -286,7 +313,11 @@ async def test_pre_run_retries_on_5xx(
 @pytest.mark.asyncio
 async def test_pre_run_download_does_not_retry_on_4xx(tmp_path: Path) -> None:
     """A 4xx response surfaces immediately as HTTPStatusError (no retry)."""
-    inv = _make_pixi(tmp_path, environment_tar_url="https://example.com/env.tar")
+    inv = _make_pixi(
+        tmp_path,
+        environment_tar_url="https://example.com/env.tar",
+        environment_tar_digest=_digest(b"x"),
+    )
 
     response = httpx.Response(
         404,
@@ -322,6 +353,121 @@ async def test_pre_run_download_does_not_retry_on_4xx(tmp_path: Path) -> None:
         pytest.raises(httpx.HTTPStatusError),
     ):
         await inv._pre_run()
+
+
+# ---------------------------------------------------------------------------
+# PixiUnpackMixin — environment.tar integrity check
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pre_run_missing_digest_raises(tmp_path: Path) -> None:
+    """environment_tar_digest is required -- absence raises before download."""
+    source_tar = tmp_path / "env.tar"
+    source_tar.write_bytes(b"fake-tarball")
+    inv = _make_pixi(tmp_path, environment_tar_url=f"file://{source_tar}")
+    with (
+        patch("wt_invokers.mixins.shutil.which", return_value="/usr/bin/pixi-unpack"),
+        pytest.raises(ValueError, match="environment_tar_digest is required"),
+    ):
+        await inv._pre_run()
+
+
+@pytest.mark.asyncio
+async def test_pre_run_digest_mismatch_raises_file(tmp_path: Path) -> None:
+    """A wrong digest raises and never runs pixi-unpack (file:// path)."""
+    source = tmp_path / "source"
+    source.mkdir()
+    source_tar = source / "env.tar"
+    source_tar.write_bytes(b"fake-tarball")
+
+    work = tmp_path / "work"
+    work.mkdir()
+
+    wrong_digest = _digest(b"different-bytes")
+    inv = _make_pixi(
+        work,
+        environment_tar_url=f"file://{source_tar}",
+        environment_tar_digest=wrong_digest,
+    )
+
+    with (
+        patch("wt_invokers.mixins.shutil.which", return_value="/usr/bin/pixi-unpack"),
+        patch("wt_invokers.mixins.subprocess.run") as mock_run,
+        pytest.raises(
+            EnvironmentTarDigestError,
+            match=r"environment\.tar integrity check failed",
+        ),
+    ):
+        await inv._pre_run()
+
+    # The tarball was downloaded, but unpack was skipped and no env activated.
+    assert (work / "environment.tar").read_bytes() == b"fake-tarball"
+    mock_run.assert_not_called()
+    assert "activate_path" not in inv.run_state
+
+
+@pytest.mark.asyncio
+async def test_pre_run_digest_mismatch_raises_http(
+    tmp_path: Path,
+    http_server: tuple[str, Path, dict[str, int]],
+) -> None:
+    """A wrong digest raises and never runs pixi-unpack (http path)."""
+    url, directory, _fail = http_server
+    (directory / "env.tar").write_bytes(b"streamed-bytes")
+
+    work = tmp_path / "work"
+    work.mkdir()
+    inv = _make_pixi(
+        work,
+        environment_tar_url=f"{url}/env.tar",
+        environment_tar_digest=_digest(b"not-the-bytes"),
+    )
+
+    with (
+        patch("wt_invokers.mixins.shutil.which", return_value="/usr/bin/pixi-unpack"),
+        patch("wt_invokers.mixins.subprocess.run") as mock_run,
+        pytest.raises(
+            EnvironmentTarDigestError,
+            match=r"environment\.tar integrity check failed",
+        ),
+    ):
+        await inv._pre_run()
+
+    mock_run.assert_not_called()
+    assert "activate_path" not in inv.run_state
+
+
+@pytest.mark.asyncio
+async def test_pre_run_digest_match_is_case_insensitive(tmp_path: Path) -> None:
+    """An uppercase-hex digest still matches the lowercase computed digest."""
+    source_tar = tmp_path / "env.tar"
+    source_tar.write_bytes(b"fake-tarball")
+
+    work = tmp_path / "work"
+    work.mkdir()
+    inv = _make_pixi(
+        work,
+        environment_tar_url=f"file://{source_tar}",
+        environment_tar_digest=_digest(b"fake-tarball").upper(),
+    )
+
+    with (
+        patch("wt_invokers.mixins.shutil.which", return_value="/usr/bin/pixi-unpack"),
+        patch("wt_invokers.mixins.subprocess.run") as mock_run,
+    ):
+        await inv._pre_run()
+
+    mock_run.assert_called_once()
+    assert inv.run_state["activate_path"] == str(work / "activate.sh")
+
+
+def test_sha256_file_matches_hashlib(tmp_path: Path) -> None:
+    """_sha256_file streams the file and returns the sha256:<hex> form."""
+    data = b"some-environment-tarball-bytes" * 1000
+    f = tmp_path / "env.tar"
+    f.write_bytes(data)
+    assert mixins._sha256_file(f) == f"sha256:{hashlib.sha256(data).hexdigest()}"
 
 
 # ---------------------------------------------------------------------------
@@ -838,7 +984,11 @@ async def test_pre_run_file_url_with_space_in_path(tmp_path: Path) -> None:
     # urlparse("file:///tmp/src%20with%20space/env.tar").path keeps the
     # percent-encoded form; without url2pathname, shutil.copy2 would fail.
     url = f"file://{str(source_tar).replace(' ', '%20')}"
-    inv = _make_pixi(work, environment_tar_url=url)
+    inv = _make_pixi(
+        work,
+        environment_tar_url=url,
+        environment_tar_digest=_digest(b"bytes"),
+    )
 
     with (
         patch("wt_invokers.mixins.shutil.which", return_value="/usr/bin/pixi-unpack"),

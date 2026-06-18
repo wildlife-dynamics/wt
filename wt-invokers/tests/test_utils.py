@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from wt_invokers.utils import yaml_to_json
+from wt_invokers.utils import validate_environment_tar_digest, yaml_to_json
 
 
 def test_yaml_to_json_simple() -> None:
@@ -185,3 +185,41 @@ def test_yaml_to_json_numeric_keys() -> None:
     # YAML treats numeric keys as integers, which become strings in JSON
     assert str(2023) in json_str or 2023 in data
     assert str(42) in json_str or 42 in data
+
+
+# ---------------------------------------------------------------------------
+# validate_environment_tar_digest
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "digest",
+    [
+        pytest.param("sha256:" + "a" * 64, id="lowercase-hex"),
+        pytest.param("sha256:" + "A" * 64, id="uppercase-hex"),
+        pytest.param("sha256:" + "0123456789abcdef" * 4, id="mixed-hex"),
+    ],
+)
+def test_validate_environment_tar_digest_accepts_valid(digest: str) -> None:
+    """A sha256:<64 hex> digest (any case) is accepted: no exception is raised."""
+    validate_environment_tar_digest(digest)
+
+
+@pytest.mark.parametrize(
+    "digest",
+    [
+        pytest.param("a" * 64, id="missing-prefix"),
+        pytest.param("md5:" + "a" * 32, id="wrong-algorithm-md5"),
+        pytest.param("sha512:" + "a" * 128, id="wrong-algorithm-sha512"),
+        pytest.param("sha256:" + "a" * 63, id="too-few-hex"),
+        pytest.param("sha256:" + "a" * 65, id="too-many-hex"),
+        pytest.param("sha256:" + "g" * 64, id="non-hex-chars"),
+        pytest.param("sha256:", id="empty-hex"),
+        pytest.param("", id="empty-string"),
+        pytest.param("SHA256:" + "a" * 64, id="uppercase-prefix"),
+    ],
+)
+def test_validate_environment_tar_digest_rejects_invalid(digest: str) -> None:
+    """Anything that is not sha256:<64 hex chars> raises ValueError."""
+    with pytest.raises(ValueError, match="environment_tar_digest must be"):
+        validate_environment_tar_digest(digest)

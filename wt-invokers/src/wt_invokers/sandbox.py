@@ -34,7 +34,7 @@ from rattler import MatchSpec
 from .abstract import AbstractInvoker
 from .exceptions import InvocationTimeoutError
 from .mixins import PixiUnpackMixin, UploadResultsArchiveMixin
-from .utils import yaml_to_json
+from .utils import validate_environment_tar_digest, yaml_to_json
 
 
 @dataclass
@@ -201,6 +201,16 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--workflow-run-id", required=True)
     p.add_argument("--environment-tar-url", required=True)
+    p.add_argument(
+        "--environment-tar-digest",
+        required=True,
+        help=(
+            "Expected sha256 digest of the environment tarball, formatted as "
+            "'sha256:<64 hex chars>'. The downloaded environment.tar is verified "
+            "against this before unpacking; on mismatch the run fails before "
+            "unpacking, raising and exiting non-zero (no result.json written)."
+        ),
+    )
     # Effectively required unless --dangerously-skip-results-archive-upload is
     # passed; requiredness is enforced post-parse in main() so the error
     # message can reference the skip flag.
@@ -252,6 +262,7 @@ async def _amain(args: argparse.Namespace) -> int:
         otel_exporter=args.otel_exporter,
         otel_console_exporter_dst=args.otel_console_exporter_dst,
         environment_tar_url=args.environment_tar_url,
+        environment_tar_digest=args.environment_tar_digest,
         results_upload_url=args.results_upload_url,
         skip_results_archive_upload=args.skip_results_archive_upload,
     )
@@ -262,6 +273,10 @@ def main(argv: list[str] | None = None) -> int:
     """CLI entry point: parse args, run the sandbox invoker, exit with its code."""
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
+    try:
+        validate_environment_tar_digest(args.environment_tar_digest)
+    except ValueError as e:
+        parser.error(str(e))
     if not args.skip_results_archive_upload:
         if args.results_upload_url is None:
             parser.error(

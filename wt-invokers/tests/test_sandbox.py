@@ -8,6 +8,7 @@ with all external calls mocked.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import subprocess
 import sys
@@ -17,11 +18,20 @@ from unittest.mock import MagicMock, patch
 import pytest
 from rattler import MatchSpec
 
-from wt_invokers.exceptions import InvocationTimeoutError
+from wt_invokers.exceptions import EnvironmentTarDigestError, InvocationTimeoutError
 from wt_invokers.sandbox import SandboxInvoker, _build_arg_parser, main
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+def _digest(data: bytes) -> str:
+    """sha256 of ``data`` in the ``sha256:<hex>`` form the invoker expects."""
+    return f"sha256:{hashlib.sha256(data).hexdigest()}"
+
+
+# A syntactically valid digest for CLI tests where the value is never hashed.
+_VALID_DIGEST = "sha256:" + "a" * 64
 
 
 def test_initialization_default_work_dir() -> None:
@@ -303,6 +313,7 @@ async def test_end_to_end_lifecycle_with_mocked_externals(tmp_path: Path) -> Non
             execution_mode="sequential",
             mock_io=False,
             environment_tar_url=f"file://{source_tar}",
+            environment_tar_digest=_digest(b"fake"),
             results_upload_url=f"file://{upload_dest}",
         )
         exit_code = await inv.wait()
@@ -341,6 +352,7 @@ async def test_end_to_end_lifecycle_with_skip_upload(tmp_path: Path) -> None:
             execution_mode="sequential",
             mock_io=False,
             environment_tar_url=f"file://{source_tar}",
+            environment_tar_digest=_digest(b"fake"),
             skip_results_archive_upload=True,
         )
         exit_code = await inv.wait()
@@ -348,6 +360,55 @@ async def test_end_to_end_lifecycle_with_skip_upload(tmp_path: Path) -> None:
     assert exit_code == 0
     # No upload artifact was created anywhere under tmp_path.
     assert not list(tmp_path.rglob("*.tar.gz"))  # noqa: ASYNC240  # test-only local FS scan; no event loop at stake
+    assert inv.is_running is False
+
+
+@pytest.mark.asyncio
+async def test_end_to_end_digest_mismatch_raises_before_unpack(tmp_path: Path) -> None:
+    """A digest mismatch fails before unpack.
+
+    ``run()`` raises :class:`EnvironmentTarDigestError`; pixi-unpack and the
+    workflow ``Popen`` never run, no ``result.json`` is written, nothing is
+    uploaded, and the invoker is reset to the IDLE state.
+    """
+    source_tar = tmp_path / "env.tar"
+    source_tar.write_bytes(b"fake")
+    results_dir = tmp_path / "results"
+    results_dir.mkdir()
+    upload_dest = tmp_path / "out.tar.gz"
+
+    inv = SandboxInvoker(
+        matchspec=MatchSpec("my-workflow>=1.0.0"),
+        work_dir=str(tmp_path / "work"),
+    )
+
+    with (
+        patch("wt_invokers.mixins.shutil.which", return_value="/usr/bin/pixi-unpack"),
+        patch("wt_invokers.mixins.subprocess.run") as mock_unpack,
+        patch("wt_invokers.sandbox.subprocess.Popen") as mock_popen,
+        pytest.raises(
+            EnvironmentTarDigestError,
+            match=r"environment\.tar integrity check failed",
+        ),
+    ):
+        await inv.run(
+            workflow_run_id="r1",
+            config_text="k: v",
+            results_url=f"file://{results_dir}",
+            execution_mode="sequential",
+            mock_io=False,
+            environment_tar_url=f"file://{source_tar}",
+            environment_tar_digest=_digest(b"WRONG"),
+            results_upload_url=f"file://{upload_dest}",
+        )
+
+    # Neither pixi-unpack nor the workflow process ran.
+    mock_unpack.assert_not_called()
+    mock_popen.assert_not_called()
+    # No result.json was written and nothing was uploaded.
+    assert not (results_dir / "result.json").exists()
+    assert not upload_dest.exists()
+    # The invoker was reset to IDLE.
     assert inv.is_running is False
 
 
@@ -388,6 +449,8 @@ def _cli_args_without_upload_url() -> list[str]:
         "r",
         "--environment-tar-url",
         "https://x/e.tar",
+        "--environment-tar-digest",
+        _VALID_DIGEST,
         "--config-json",
         "{}",
     ]
@@ -403,6 +466,8 @@ def test_cli_parses_required_args() -> None:
             "r1",
             "--environment-tar-url",
             "https://x/env.tar",
+            "--environment-tar-digest",
+            _VALID_DIGEST,
             "--results-upload-url",
             "https://x/out",
             "--config-json",
@@ -413,6 +478,7 @@ def test_cli_parses_required_args() -> None:
     assert args.execution_mode == "sequential"
     assert args.mock_io is False
     assert args.results_url == "file:///results"
+    assert args.environment_tar_digest == _VALID_DIGEST
 
 
 def test_cli_mock_io_flag() -> None:
@@ -425,6 +491,8 @@ def test_cli_mock_io_flag() -> None:
             "r",
             "--environment-tar-url",
             "https://x/e.tar",
+            "--environment-tar-digest",
+            _VALID_DIGEST,
             "--results-upload-url",
             "https://x/o",
             "--config-json",
@@ -444,6 +512,56 @@ def test_cli_help_exits_zero() -> None:
 def test_cli_missing_required_args_exits() -> None:
     with pytest.raises(SystemExit) as exc:
         main([])
+    assert exc.value.code != 0
+
+
+def test_cli_missing_environment_tar_digest_exits() -> None:
+    """--environment-tar-digest is required on the sandbox CLI."""
+    with pytest.raises(SystemExit) as exc:
+        main(
+            [
+                "--matchspec",
+                "w>=1.0.0",
+                "--workflow-run-id",
+                "r",
+                "--environment-tar-url",
+                "https://x/e.tar",
+                "--results-upload-url",
+                "https://x/o",
+                "--config-json",
+                "{}",
+            ]
+        )
+    assert exc.value.code != 0
+
+
+@pytest.mark.parametrize(
+    "bad_digest",
+    [
+        pytest.param("not-a-digest", id="no-prefix"),
+        pytest.param("md5:" + "a" * 32, id="wrong-algorithm"),
+        pytest.param("sha256:" + "a" * 10, id="bad-hex-length"),
+    ],
+)
+def test_cli_bad_digest_format_exits(bad_digest: str) -> None:
+    """A malformed --environment-tar-digest funnels to parser.error (SystemExit)."""
+    with pytest.raises(SystemExit) as exc:
+        main(
+            [
+                "--matchspec",
+                "w>=1.0.0",
+                "--workflow-run-id",
+                "r",
+                "--environment-tar-url",
+                "https://x/e.tar",
+                "--environment-tar-digest",
+                bad_digest,
+                "--results-upload-url",
+                "https://x/o",
+                "--config-json",
+                "{}",
+            ]
+        )
     assert exc.value.code != 0
 
 
@@ -470,6 +588,8 @@ def test_cli_main_invokes_run_and_wait(tmp_path: Path) -> None:
                 "r1",
                 "--environment-tar-url",
                 f"file://{tmp_path}/env.tar",
+                "--environment-tar-digest",
+                _VALID_DIGEST,
                 "--results-upload-url",
                 f"file://{tmp_path}/out.tar.gz",
                 "--results-url",
@@ -483,6 +603,7 @@ def test_cli_main_invokes_run_and_wait(tmp_path: Path) -> None:
     assert called["waited"] is True
     assert called["run_kwargs"]["workflow_run_id"] == "r1"
     assert called["run_kwargs"]["environment_tar_url"] == f"file://{tmp_path}/env.tar"
+    assert called["run_kwargs"]["environment_tar_digest"] == _VALID_DIGEST
     assert called["run_kwargs"]["results_upload_url"] == f"file://{tmp_path}/out.tar.gz"
     assert called["run_kwargs"]["skip_results_archive_upload"] is False
 
