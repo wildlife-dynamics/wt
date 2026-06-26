@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.8.2 — 2026-06-26
 
 - Allow custom (e.g. prefix.dev) conda channels without hardcoding them in an allowlist: explicit channel URLs in `requirements:` now pass through generically and are emitted into the generated `pixi.toml` workspace channels, while unknown bare channel names still raise to guard against typos ([#203](https://github.com/wildlife-dynamics/wt/issues/203))
 
