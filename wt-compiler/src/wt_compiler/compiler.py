@@ -657,6 +657,17 @@ class DagCompiler(BaseModel):
             channels.append(CUSTOM_LOCAL_CHANNEL.base_url)
         if any(r.channel.base_url == CUSTOM_RELEASE_CHANNEL.base_url for r in conda_reqs):
             channels.append(CUSTOM_RELEASE_CHANNEL.base_url)
+        # Append any custom (e.g. prefix.dev) channel base_urls from requirements that
+        # aren't already listed and aren't one of the standard channels added below, so
+        # the runtime pixi solve can find packages from those channels (#203).
+        standard_base_urls = {
+            RELEASE_CHANNEL.base_url,
+            CONDA_FORGE_CHANNEL.base_url,
+            MICROSOFT_CHANNEL.base_url,
+        }
+        for r in conda_reqs:
+            if r.channel.base_url not in channels and r.channel.base_url not in standard_base_urls:
+                channels.append(r.channel.base_url)
         # Always add standard channels at the end
         # Note: name can be None for custom channels but not for these standard channels
         assert CONDA_FORGE_CHANNEL.name is not None  # noqa: S101  # type narrowing for mypy
