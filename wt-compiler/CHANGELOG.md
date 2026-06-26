@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Allow custom (e.g. prefix.dev) conda channels without hardcoding them in an allowlist: explicit channel URLs in `requirements:` now pass through generically and are emitted into the generated `pixi.toml` workspace channels, while unknown bare channel names still raise to guard against typos ([#203](https://github.com/wildlife-dynamics/wt/issues/203))
+
 ## v0.8.1 — 2026-06-15
 
 - Rework the generated `test_dashboard_json` snapshot test to mask ephemeral values — UUIDs and tmp-output paths — with a custom matcher, replacing the previous `no_data`/`path_type` field-exclusion approach so nested dashboard JSON snapshots compare robustly ([#184](https://github.com/wildlife-dynamics/wt/pull/184))

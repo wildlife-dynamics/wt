@@ -248,6 +248,27 @@ class TestDagCompiler:
         assert "test-all" in pixi_toml.feature["test"].tasks
         assert "playwright-install" in pixi_toml.feature["test"].tasks
 
+    def test_get_pixi_toml_with_custom_channel(self, merged_default_feature):
+        """A custom (prefix.dev) channel surfaces in workspace channels and the dep (#203)."""
+        custom_channel = "https://repo.prefix.dev/ecoscope-workflows-gcf/"
+        spec = Spec(
+            id="custom_channel_workflow",
+            requirements=[
+                SpecRequirement(name="custom-pkg", version=">=1.0", channel=custom_channel),
+            ],
+            workflow=[],
+        )
+        compiler = DagCompiler(spec=spec)
+        pixi_toml = compiler.get_pixi_toml(merged_default_feature=merged_default_feature)
+
+        # The custom channel is listed in the workspace channels (not just the
+        # hardcoded standard channels), so the runtime pixi solve can find it.
+        assert custom_channel in [c.base_url for c in pixi_toml.workspace.channels]
+
+        # The dependency entry references the custom channel.
+        assert "custom-pkg" in pixi_toml.dependencies
+        assert pixi_toml.dependencies["custom-pkg"].channel.base_url == custom_channel
+
     def test_get_pixi_toml_with_pypi_deps(self, merged_default_feature):
         """Test pixi.toml generation with mixed conda and pypi requirements."""
         spec = Spec(

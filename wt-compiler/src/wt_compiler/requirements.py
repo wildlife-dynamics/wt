@@ -51,30 +51,55 @@ PLATFORMS: list[Platform] = [
 
 
 def _channel_from_str(value: str) -> Channel:
-    """Convert a string to a Channel object."""
+    """Convert a string to a Channel object.
+
+    Known channel names and base URLs resolve to their preconfigured
+    :data:`CHANNELS` shortcut. Any other explicit channel URL (one with a
+    URL scheme) is parsed directly into a :class:`Channel`, so custom
+    channels need not be hardcoded. A bare name that is neither a known
+    shortcut nor a URL raises ``ValueError`` to guard against typos.
+
+    Examples:
+        A known shortcut resolves to its preconfigured channel:
+
+        >>> _channel_from_str("conda-forge").name
+        'conda-forge'
+
+        An explicit custom channel URL passes through generically:
+
+        >>> _channel_from_str("https://repo.prefix.dev/ecoscope-workflows-gcf/").name
+        'ecoscope-workflows-gcf'
+    """
     for channel in CHANNELS:
         # TODO(cisaacstern): base_url equality check can be stymied by presence or absence
         # of trailing slash on the base_url. Sanitize the base_url to prevent this issue.
         if channel.name == value or channel.base_url == value:
             return channel
-    raise ValueError(f"Unknown channel {value}; only {CHANNELS} are supported")
+    if urlparse(value).scheme:
+        return Channel(value)
+    raise ValueError(
+        f"Unknown channel {value}; expected an explicit channel URL or one of the "
+        f"known channel shortcuts {CHANNELS}"
+    )
 
 
 def _serialize_channel(value: Channel | str) -> str:
-    """Serialize a Channel object to a string."""
+    """Serialize a Channel object to a string.
+
+    A channel is serialized as its bare ``name`` only when that name
+    round-trips to the same ``base_url`` under rattler's default channel
+    alias (``conda.anaconda.org``); otherwise it is serialized as its
+    explicit ``base_url`` so it reconstructs unambiguously. This keeps
+    standard channels (e.g. ``conda-forge``, ``microsoft``) compact while
+    letting prefix.dev, ``file://``, and other custom channels round-trip.
+    """
     # Handle strings that might have been stored in defaults
     if isinstance(value, str):
         return value
-    if value in [
-        LOCAL_CHANNEL,
-        RELEASE_CHANNEL,
-        CUSTOM_LOCAL_CHANNEL,
-        CUSTOM_RELEASE_CHANNEL,
-        WT_LOCAL_CHANNEL,
-    ]:
-        return value.base_url
     assert value.name is not None, f"Expected name to be set for {value}"  # noqa: S101  # type narrowing for mypy
-    return value.name
+    if Channel(value.name).base_url == value.base_url:
+        return value.name
+    return value.base_url
 
 
 ChannelType = Annotated[
@@ -136,8 +161,10 @@ def _namelessmatchspec_from_dict(
 ) -> NamelessMatchSpec:
     """Create a NamelessMatchSpec from a dictionary with version and channel.
 
-    The channel can be either a channel name or a base_url.
-    Raises ValueError if the channel is not recognized.
+    The channel can be either a known channel name or an explicit channel
+    URL. Bare names are resolved via :func:`_channel_from_str` (which still
+    rejects unknown bare names to guard against typos); explicit URLs pass
+    through generically, so custom channels need not be hardcoded.
 
     Args:
         value: Dictionary with 'version' and 'channel' keys
@@ -147,7 +174,7 @@ def _namelessmatchspec_from_dict(
 
     Raises:
         AssertionError: If 'version' or 'channel' keys are missing
-        ValueError: If the channel is not recognized
+        ValueError: If the channel is a bare name that is not a known shortcut
 
     Examples:
         >>> value = {
@@ -173,6 +200,18 @@ def _namelessmatchspec_from_dict(
         'ecoscope-workflows'
         >>> nms_from_channel_name.channel.base_url
         'https://repo.prefix.dev/ecoscope-workflows/'
+
+        A custom channel URL passes through without being hardcoded:
+
+        >>> custom = {
+        ...     "version": ">=1.0",
+        ...     "channel": "https://repo.prefix.dev/ecoscope-workflows-gcf/",
+        ... }
+        >>> nms_custom = _namelessmatchspec_from_dict(custom)
+        >>> nms_custom.version
+        '>=1.0'
+        >>> nms_custom.channel.base_url
+        'https://repo.prefix.dev/ecoscope-workflows-gcf/'
     """
     assert "version" in value, f"Expected 'version' key in {value}"  # noqa: S101  # input shape invariant
     assert "channel" in value, f"Expected 'channel' key in {value}"  # noqa: S101  # input shape invariant
@@ -180,11 +219,8 @@ def _namelessmatchspec_from_dict(
         _base_url = _channel_from_str(value["channel"]).base_url
     else:
         _base_url = value["channel"]
-    channel = next((c.base_url for c in CHANNELS if c.base_url == _base_url), None)
-    if not channel:
-        raise ValueError(f"Unknown channel {value['channel']}; only {CHANNELS} are supported")
     foo_pkg = "foo"  # placeholder to use from_match_spec constructor
-    m = MatchSpec(f"{channel}::{foo_pkg} {value['version']}")
+    m = MatchSpec(f"{_base_url}::{foo_pkg} {value['version']}")
     return NamelessMatchSpec.from_match_spec(m)
 
 
