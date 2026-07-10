@@ -14,7 +14,7 @@ jobs:
     outputs:
       tag: ${{ steps.create_tag.outputs.result }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: List existing tags
@@ -51,6 +51,12 @@ jobs:
             echo "Tag ${{ steps.create_tag.outputs.result }} is not valid. It must adhere to vMAJ.MIN.PATCH format."
             exit 1
           fi
+      - name: Validate tag is not 0.0.0
+        run: |
+          if [[ "${{ steps.create_tag.outputs.result }}" == "v0.0.0" ]]; then
+            echo "Tag ${{ steps.create_tag.outputs.result }} is not allowed. Did you forget --update?"
+            exit 1
+          fi
       - name: If this is a PR to a patch branch, ensure the patch version is not 0
         if: startsWith(github.base_ref, 'patch-')
         run: |
@@ -69,7 +75,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
           fetch-depth: 0
