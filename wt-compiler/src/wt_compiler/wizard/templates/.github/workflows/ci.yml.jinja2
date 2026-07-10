@@ -18,7 +18,7 @@ jobs:
       case_flags: ${{ steps.parse.outputs.case_flags }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Parse test cases
         id: parse
         run: |
@@ -63,7 +63,7 @@ jobs:
         case: ${{ fromJSON(needs.parse-test-cases.outputs.cases) }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install pixi
         run: curl -fsSL https://pixi.sh/install.sh | bash && echo "$HOME/.pixi/bin" >> $GITHUB_PATH
       - name: Set CI variables
@@ -87,7 +87,7 @@ jobs:
     needs: parse-test-cases
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install pixi
         run: curl -fsSL https://pixi.sh/install.sh | bash && echo "$HOME/.pixi/bin" >> $GITHUB_PATH
       - name: Set CI variables
@@ -122,7 +122,7 @@ jobs:
       group: snapshot-update-${{ github.head_ref }}
       cancel-in-progress: true
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.head_ref }}
       - name: Install pixi
@@ -144,4 +144,66 @@ jobs:
           git add __results_snapshots__/
           git commit -m "auto: snapshot update"
           git push origin HEAD:${{ github.head_ref }}
+
+  recompile-workflows:
+    needs: parse-test-cases
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - uses: prefix-dev/setup-pixi@v0.9.6
+        with:
+          run-install: false
+
+      - name: Install compiler
+        run: pixi global install wt-compiler --channel https://prefix.dev/ecoscope-workflows --channel conda-forge
+
+      - name: Recompile workflow
+        run: |
+          wt-compiler compile \
+            --spec spec.yaml \
+            --pkg-name-prefix=wt \
+            --results-env-var=WT_RESULTS \
+            --clobber --update
+
+      - name: Check for differences in generated files
+        run: |
+          WORKFLOW_DIR_NAME="${{ needs.parse-test-cases.outputs.release_dir }}"
+          EXCLUDE_PATTERNS=":(exclude)${WORKFLOW_DIR_NAME}/pixi.lock :(exclude)${WORKFLOW_DIR_NAME}/README.md :(exclude)${WORKFLOW_DIR_NAME}/VERSION.yaml :(exclude)${WORKFLOW_DIR_NAME}/graph.png"
+
+          echo "Checking for differences in ${WORKFLOW_DIR_NAME}"
+
+          if [ ! -d "${WORKFLOW_DIR_NAME}" ]; then
+            echo "::error::Generated directory ${WORKFLOW_DIR_NAME} does not exist!"
+            exit 1
+          fi
+
+          # Exclude auto-generated files: pixi.lock (dependency resolution), VERSION.yaml (auto-versioned), graph.png (binary)
+          if ! git diff --exit-code -- "${WORKFLOW_DIR_NAME}" ${EXCLUDE_PATTERNS}; then
+            echo ""
+            echo "::error::Generated files differ from committed files in ${WORKFLOW_DIR_NAME}"
+            echo "::error::Please run the compilation locally and commit the changes."
+            exit 1
+          else
+            echo "No differences found - generated files are up to date!"
+          fi
+
+      - name: Validate excluded files exist
+        run: |
+          WORKFLOW_DIR_NAME="${{ needs.parse-test-cases.outputs.release_dir }}"
+          errors=0
+
+          for file in pixi.lock VERSION.yaml README.md; do
+            if [ ! -f "${WORKFLOW_DIR_NAME}/${file}" ]; then
+              echo "::error::${WORKFLOW_DIR_NAME}/${file} does not exist!"
+              errors=$((errors + 1))
+            else
+              echo "OK: ${WORKFLOW_DIR_NAME}/${file}"
+            fi
+          done
+
+          if [ $errors -gt 0 ]; then
+            exit 1
+          fi
 {% endraw %}
