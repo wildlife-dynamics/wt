@@ -158,7 +158,7 @@ convention = "google"
 
 [tool.pixi.package]
 name = "wt-compiler"
-version = "0.8.2"
+version = "0.8.3"
 
 [tool.pixi.package.build]
 backend = { name = "pixi-build-python", version = "*", channels = ["conda-forge", "https://prefix.dev/pixi-build-backends"] }

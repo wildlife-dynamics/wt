@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.8.3 — 2026-07-17
+
+- Fix data-connection property name extraction in the generated `get_data_connection_property_names()`: use `removeprefix("#/$defs/")` / `removesuffix("Connection")` instead of `lstrip`/`rstrip`, which operate on character sets rather than literal affixes and could corrupt `$ref` names (e.g. mangling keys whose trailing characters overlap with `"Connection"`) ([#219](https://github.com/wildlife-dynamics/wt/pull/219))
+
 ## v0.8.2 — 2026-06-26
 
 - Allow custom (e.g. prefix.dev) conda channels without hardcoding them in an allowlist: explicit channel URLs in `requirements:` now pass through generically and are emitted into the generated `pixi.toml` workspace channels, while unknown bare channel names still raise to guard against typos ([#203](https://github.com/wildlife-dynamics/wt/issues/203))
