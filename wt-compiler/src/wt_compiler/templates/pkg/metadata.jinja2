@@ -35,8 +35,8 @@ def get_data_connection_property_names() -> dict[str, list[str]]:
                     if ref.endswith("Connection"):
                         key = (
                             inner_v.get("$ref")
-                            .lstrip("#/$defs/")
-                            .rstrip("Connection")
+                            .removeprefix("#/$defs/")
+                            .removesuffix("Connection")
                         )
                         if data_connections.get(key):
                             data_connections[key].append(k)
