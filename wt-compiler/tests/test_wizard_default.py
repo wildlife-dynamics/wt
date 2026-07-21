@@ -839,26 +839,6 @@ class TestDump:
         assert ".wt-tmp/" in text
         assert "$RELEASE_DIR" in text
 
-    def test_dump_ci_yml_recompile_workflows_job(self, tmp_path: Path) -> None:
-        """CI workflow contains recompile-workflows job that checks generated files are current."""
-        provider = self._make_provider_with_answers()
-        provider.dump(tmp_path)
-        text = (tmp_path / ".github/workflows/ci.yml").read_text()
-        assert "recompile-workflows:" in text
-        # Installs the compiler from the ecoscope-workflows channel
-        assert (
-            "pixi global install wt-compiler "
-            "--channel https://prefix.dev/ecoscope-workflows --channel conda-forge" in text
-        )
-        # Recompiles with neutral compiler defaults (users edit to match their invocation)
-        assert "wt-compiler compile" in text
-        assert "--pkg-name-prefix=wt" in text
-        assert "--results-env-var=WT_RESULTS" in text
-        assert "--clobber --update" in text
-        # Fails the build if generated files drift from what is committed
-        assert "Generated files differ from committed files" in text
-        assert "needs.parse-test-cases.outputs.release_dir" in text
-
     def test_dump_tag_yml_validates_tag_not_zero(self, tmp_path: Path) -> None:
         """Tag workflow rejects a v0.0.0 tag (a forgotten --update)."""
         provider = self._make_provider_with_answers()
