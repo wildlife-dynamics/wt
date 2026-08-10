@@ -839,6 +839,15 @@ class TestDump:
         assert ".wt-tmp/" in text
         assert "$RELEASE_DIR" in text
 
+    def test_dump_tag_yml_validates_tag_not_zero(self, tmp_path: Path) -> None:
+        """Tag workflow rejects a v0.0.0 tag (a forgotten --update)."""
+        provider = self._make_provider_with_answers()
+        provider.dump(tmp_path)
+        text = (tmp_path / ".github/workflows/tag.yml").read_text()
+        assert "Validate tag is not 0.0.0" in text
+        assert '== "v0.0.0"' in text
+        assert "Did you forget --update?" in text
+
     def test_dump_tag_yml_preserves_github_expressions(self, tmp_path: Path) -> None:
         """Tag workflow preserves ${{ }} GitHub Actions expressions literally."""
         provider = self._make_provider_with_answers()
