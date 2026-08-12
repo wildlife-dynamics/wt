@@ -1031,6 +1031,13 @@ class TestMetadata:
         with pytest.raises(ValidationError):
             Spec(id="my_workflow", requirements=[], metadata=metadata, workflow=[])
 
+    def test_maintainer_empty_rejected(self):
+        """Maintainers cannot be []"""
+        metadata = self._full_metadata()
+        metadata["maintainers"] = []
+        with pytest.raises(ValidationError):
+            Spec(id="my_workflow", requirements=[], metadata=metadata, workflow=[])
+
     def test_maintainer_missing_required_field_rejected(self):
         """Each maintainer requires both name and email."""
         with pytest.raises(ValidationError):

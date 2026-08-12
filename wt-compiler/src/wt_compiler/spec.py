@@ -1087,7 +1087,7 @@ class Metadata(_AllowExtra):
 
     name: str
     description: str
-    maintainers: list[Maintainer]
+    maintainers: list[Maintainer] = Field(min_length=1)
     license: str
     repository: str | None = None
     documentation: str | None = None
