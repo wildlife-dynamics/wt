@@ -6,6 +6,7 @@ __all__ = [
     "_AllowArbitraryAndForbidExtra",
     "_AllowArbitraryAndValidateAssignment",
     "_AllowArbitraryTypes",
+    "_AllowExtra",
     "_ForbidExtra",
     "_ValidateAssignment",
 ]
@@ -27,6 +28,12 @@ class _AllowArbitraryAndForbidExtra(BaseModel):
     """Base model that allows arbitrary types and forbids extra fields."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
+
+
+class _AllowExtra(BaseModel):
+    """Base model that allows (and retains) extra fields."""
+
+    model_config = ConfigDict(extra="allow")
 
 
 class _ForbidExtra(BaseModel):
