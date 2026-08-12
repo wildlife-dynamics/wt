@@ -1065,6 +1065,29 @@ class TestMetadata:
         assert dumped["citations"] == ["doi:10.1234/example"]
         assert dumped["maintainers"][0]["organization"] == "Wildlife-Dynamics"
 
+    def test_metadata_does_not_influence_sha256(self):
+        """Metadata is excluded from the workflow hash: it must not change sha256."""
+        without = Spec(id="my_workflow", requirements=[], workflow=[])
+        with_metadata = Spec(
+            id="my_workflow",
+            requirements=[],
+            metadata=self._full_metadata(),
+            workflow=[],
+        )
+        assert without.sha256 == with_metadata.sha256
+
+        # Mutating any metadata field also leaves the hash unchanged.
+        other_metadata = self._full_metadata()
+        other_metadata["name"] = "A Totally Different Name"
+        other_metadata["keywords"] = ["something", "else"]
+        with_other_metadata = Spec(
+            id="my_workflow",
+            requirements=[],
+            metadata=other_metadata,
+            workflow=[],
+        )
+        assert with_metadata.sha256 == with_other_metadata.sha256
+
 
 class TestTaskInstanceDependencies:
     """Tests for task instance dependency resolution."""
