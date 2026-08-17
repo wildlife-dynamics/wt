@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.9.0 — 2026-08-17
+
+- Add optional `metadata` field to the workflow `Spec` — new `Metadata` and `Maintainer` models for catalog discovery and attribution. Extra fields are allowed and retained, the maintainer list must be non-empty, and `metadata` is excluded from the workflow `sha256` so adding it never changes an existing workflow's hash ([#231](https://github.com/wildlife-dynamics/wt/pull/231))
+- Fix Windows path handling in the generated CLI: route `file://` results URLs through `url2pathname` before constructing the OS path ([#232](https://github.com/wildlife-dynamics/wt/pull/232))
+- Generated test `conftest` now supports both the old and new dashboard-contract JSON shapes ([#230](https://github.com/wildlife-dynamics/wt/pull/230))
+- Update generated CI/tag workflow templates: bump `actions/checkout` v6→v7 and reject invalid `0.0.0` tags ([#215](https://github.com/wildlife-dynamics/wt/pull/215))
+
 ## v0.8.3 — 2026-07-17
 
 - Fix data-connection property name extraction in the generated `get_data_connection_property_names()`: use `removeprefix("#/$defs/")` / `removesuffix("Connection")` instead of `lstrip`/`rstrip`, which operate on character sets rather than literal affixes and could corrupt `$ref` names (e.g. mangling keys whose trailing characters overlap with `"Connection"`) ([#219](https://github.com/wildlife-dynamics/wt/pull/219))

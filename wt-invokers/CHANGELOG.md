@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.5.1 — 2026-08-17
+
+- Fix Windows path handling: route `file://` results URLs through `url2pathname` before `mkdir` so paths resolve correctly on Windows; a no-op on POSIX ([#232](https://github.com/wildlife-dynamics/wt/pull/232))
+
 ## v0.5.0 — 2026-06-18
 
 - **Breaking:** `--environment-tar-digest sha256:<hex>` is now **required** on the sandbox CLI and as the `environment_tar_digest` keyword argument on `CloudRunJobsSandboxInvoker.run(...)`. The downloaded `environment.tar` is verified against this digest before unpacking; on mismatch the run **fails before unpacking, raising and exiting non-zero** (no `result.json` written), so a tampered or corrupted environment never executes. Callers populating `invoker_kwargs` for wt-runner must now include `environment_tar_digest` ([#196](https://github.com/wildlife-dynamics/wt/pull/196))
