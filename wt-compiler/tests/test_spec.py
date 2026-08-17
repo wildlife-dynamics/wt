@@ -4,10 +4,13 @@ from pathlib import Path
 
 import pytest
 import ruamel.yaml
+from pydantic import ValidationError
 
 from wt_compiler.spec import (
     InlineValue,
     KnownTask,
+    Maintainer,
+    Metadata,
     PyPIRequirement,
     SkipIf,
     Spec,
@@ -965,6 +968,132 @@ class TestSpec:
         """Test flat_workflow property that flattens task groups."""
         # This would require a more complex fixture with task groups
         # Skipping for now, but structure is in place
+
+
+class TestMetadata:
+    """Tests for the optional spec-level metadata section."""
+
+    @staticmethod
+    def _full_metadata() -> dict:
+        return {
+            "name": "Events Dashboard",
+            "description": "Summarize EarthRanger events over a time range.",
+            "maintainers": [
+                {"name": "Jane Doe", "email": "jane@example.org"},
+                {"name": "John Smith", "email": "john@example.org"},
+            ],
+            "license": "Apache-2.0",
+            "repository": "https://github.com/wildlife-dynamics/events-workflow",
+            "documentation": "https://example.org/workflows/events/docs",
+            "readme": "README.md",
+            "keywords": ["earthranger", "events", "dashboard"],
+        }
+
+    def test_metadata_omitted_is_none(self):
+        """A spec without a metadata block validates; metadata is None."""
+        spec = Spec(id="my_workflow", requirements=[], workflow=[])
+        assert spec.metadata is None
+
+    def test_metadata_full(self):
+        """A fully populated metadata block validates and is accessible."""
+        spec = Spec(
+            id="my_workflow",
+            requirements=[],
+            metadata=self._full_metadata(),
+            workflow=[],
+        )
+        assert spec.metadata is not None
+        assert spec.metadata.name == "Events Dashboard"
+        assert spec.metadata.license == "Apache-2.0"
+        assert len(spec.metadata.maintainers) == 2
+        assert spec.metadata.maintainers[0].name == "Jane Doe"
+        assert spec.metadata.maintainers[0].email == "jane@example.org"
+        assert spec.metadata.keywords == ["earthranger", "events", "dashboard"]
+
+    def test_metadata_minimal_required_only(self):
+        """Only the required fields are needed; optionals default sensibly."""
+        metadata = Metadata(
+            name="My Workflow",
+            description="Does a thing.",
+            maintainers=[{"name": "Jane Doe", "email": "jane@example.org"}],
+            license="MIT",
+        )
+        assert metadata.repository is None
+        assert metadata.documentation is None
+        assert metadata.readme is None
+        assert metadata.keywords == []
+
+    @pytest.mark.parametrize("missing", ["name", "description", "maintainers", "license"])
+    def test_metadata_missing_required_field_rejected(self, missing):
+        """If metadata is provided, each required field must be present."""
+        metadata = self._full_metadata()
+        del metadata[missing]
+        with pytest.raises(ValidationError):
+            Spec(id="my_workflow", requirements=[], metadata=metadata, workflow=[])
+
+    def test_maintainer_empty_rejected(self):
+        """Maintainers cannot be []"""
+        metadata = self._full_metadata()
+        metadata["maintainers"] = []
+        with pytest.raises(ValidationError):
+            Spec(id="my_workflow", requirements=[], metadata=metadata, workflow=[])
+
+    def test_maintainer_missing_required_field_rejected(self):
+        """Each maintainer requires both name and email."""
+        with pytest.raises(ValidationError):
+            Maintainer(name="Jane Doe")
+        with pytest.raises(ValidationError):
+            Maintainer(email="jane@example.org")
+
+    def test_metadata_optional_field_wrong_type_rejected(self):
+        """Optional fields are type-enforced when provided."""
+        metadata = self._full_metadata()
+        metadata["readme"] = {"path": "README.md"}
+        with pytest.raises(ValidationError):
+            Spec(id="my_workflow", requirements=[], metadata=metadata, workflow=[])
+
+        metadata = self._full_metadata()
+        metadata["keywords"] = "not-a-list"
+        with pytest.raises(ValidationError):
+            Spec(id="my_workflow", requirements=[], metadata=metadata, workflow=[])
+
+    def test_metadata_extra_fields_allowed_and_retained(self):
+        """Unknown keys on metadata and maintainers are allowed and retained."""
+        metadata = self._full_metadata()
+        metadata["citations"] = ["doi:10.1234/example"]
+        metadata["maintainers"][0]["organization"] = "Wildlife-Dynamics"
+
+        spec = Spec(id="my_workflow", requirements=[], metadata=metadata, workflow=[])
+        assert spec.metadata is not None
+        assert spec.metadata.model_extra["citations"] == ["doi:10.1234/example"]
+        assert spec.metadata.maintainers[0].model_extra["organization"] == "Wildlife-Dynamics"
+        # Retained through serialization for downstream tooling.
+        dumped = spec.metadata.model_dump()
+        assert dumped["citations"] == ["doi:10.1234/example"]
+        assert dumped["maintainers"][0]["organization"] == "Wildlife-Dynamics"
+
+    def test_metadata_does_not_influence_sha256(self):
+        """Metadata is excluded from the workflow hash: it must not change sha256."""
+        without = Spec(id="my_workflow", requirements=[], workflow=[])
+        with_metadata = Spec(
+            id="my_workflow",
+            requirements=[],
+            metadata=self._full_metadata(),
+            workflow=[],
+        )
+        assert without.sha256 == with_metadata.sha256
+
+        # Mutating any metadata field also leaves the hash unchanged.
+        other_metadata = self._full_metadata()
+        other_metadata["name"] = "A Totally Different Name"
+        other_metadata["keywords"] = ["something", "else"]
+        with_other_metadata = Spec(
+            id="my_workflow",
+            requirements=[],
+            metadata=other_metadata,
+            workflow=[],
+        )
+        assert with_metadata.sha256 == with_other_metadata.sha256
 
 
 class TestTaskInstanceDependencies:

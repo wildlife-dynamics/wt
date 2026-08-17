@@ -29,7 +29,7 @@ from pydantic import Tag as PydanticTag
 from pydantic.functional_validators import AfterValidator, BeforeValidator
 from rattler import MatchSpec
 
-from wt_compiler._models import _AllowArbitraryAndForbidExtra, _ForbidExtra
+from wt_compiler._models import _AllowArbitraryAndForbidExtra, _AllowExtra, _ForbidExtra
 from wt_compiler.jsonschema import ReactJSONSchemaFormOverrides
 from wt_compiler.requirements import CONDA_FORGE_CHANNEL, ChannelType, NamelessMatchSpecType
 from wt_compiler.util import rsplit_importable_reference, validate_importable_reference
@@ -1068,6 +1068,33 @@ Requirement = Annotated[
 ]
 
 
+class Maintainer(_AllowExtra):
+    """A workflow maintainer.
+
+    Extra fields (e.g. ``roles``, ``organizations``) are allowed and retained.
+    """
+
+    name: str
+    email: str
+
+
+class Metadata(_AllowExtra):
+    """Human-facing workflow metadata for catalog discovery and attribution.
+
+    Extra fields beyond those declared here are allowed and retained, so
+    downstream tooling can build conventions on top of the spec.
+    """
+
+    name: str
+    description: str
+    maintainers: list[Maintainer] = Field(min_length=1)
+    license: str
+    repository: str | None = None
+    documentation: str | None = None
+    readme: str | None = None
+    keywords: list[str] = Field(default_factory=list)
+
+
 class Spec(_ForbidExtra):
     """Complete workflow specification.
 
@@ -1083,6 +1110,10 @@ class Spec(_ForbidExtra):
         """
     )
     requirements: list[Requirement]
+    metadata: Metadata | None = Field(
+        default=None,
+        description="Optional human-facing workflow metadata for catalog discovery.",
+    )
     rjsf_overrides: ReactJSONSchemaFormOverrides = Field(
         alias="rjsf-overrides",
         default_factory=ReactJSONSchemaFormOverrides,
@@ -1103,8 +1134,10 @@ class Spec(_ForbidExtra):
 
     @property
     def sha256(self) -> str:
-        """Generate SHA256 hash of the workflow (excluding requirements)."""
-        return hashlib.sha256(self.model_dump_json(exclude={"requirements"}).encode()).hexdigest()
+        """Generate SHA256 hash of the workflow (excluding requirements and metadata)."""
+        return hashlib.sha256(
+            self.model_dump_json(exclude={"requirements", "metadata"}).encode()
+        ).hexdigest()
 
     @property
     def conda_requirements(self) -> list[SpecRequirement]:
