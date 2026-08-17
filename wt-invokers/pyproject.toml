@@ -194,7 +194,7 @@ exclude_lines = [
 
 [tool.pixi.package]
 name = "wt-invokers"
-version = "0.5.0"
+version = "0.5.1"
 
 [tool.pixi.package.build]
 backend = { name = "pixi-build-python", version = "*", channels = ["conda-forge", "https://prefix.dev/pixi-build-backends"] }
