@@ -114,6 +114,52 @@ async def test_run_creates_results_directory() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(os.name == "nt", reason="asserts POSIX path semantics")
+@pytest.mark.parametrize(
+    ("results_url", "expected"),
+    [
+        # Path.as_uri(), which is what the test harness passes.
+        ("file:///workflow/results", "/workflow/results"),
+        (
+            "file:///home/runner/.config/ecoscope-desktop/data/workflows/t/w/run-1",
+            "/home/runner/.config/ecoscope-desktop/data/workflows/t/w/run-1",
+        ),
+        ("file:///workflow/results/", "/workflow/results/"),
+        # Bare paths take the same branch (scheme == ""), as the container does.
+        ("/workflow/results", "/workflow/results"),
+    ],
+    ids=["as-uri", "nested", "trailing-slash", "bare-path"],
+)
+async def test_run_results_url_to_path_is_unchanged_on_posix(
+    results_url: str, expected: str
+) -> None:
+    """Routing the results URL through url2pathname is a no-op on POSIX.
+
+    The conversion exists for Windows, where urlparse leaves a leading slash
+    on "/C:/x". On POSIX url2pathname only unquotes, so every URL that has no
+    percent-escapes resolves to exactly the urlparse(...).path it did before.
+    Percent-escaped URLs are deliberately excluded: those now decode, which is
+    a fix rather than a regression.
+    """
+    invoker = LocalSubprocessInvoker(matchspec=MatchSpec("test-workflow>=1.0.0"))
+
+    with (
+        patch("wt_invokers.local.Path") as mock_path,
+        patch.object(subprocess, "Popen", return_value=MagicMock()),
+    ):
+        await invoker.run(
+            workflow_run_id="test-run",
+            config_text="param: value",
+            results_url=results_url,
+            execution_mode="sequential",
+            mock_io=False,
+        )
+
+    mock_path.assert_called_once_with(expected)
+    mock_path.return_value.mkdir.assert_called_once_with(parents=True, exist_ok=True)
+
+
+@pytest.mark.asyncio
 async def test_run_sets_environment_variables() -> None:
     """Test run sets correct environment variables."""
     matchspec = MatchSpec("test-workflow>=1.0.0")

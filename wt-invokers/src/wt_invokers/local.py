@@ -14,6 +14,7 @@ from pathlib import Path
 from subprocess import TimeoutExpired
 from typing import Any
 from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 from .abstract import AbstractInvoker
 from .exceptions import InvocationTimeoutError
@@ -188,7 +189,7 @@ class LocalSubprocessInvoker(AbstractInvoker):
         # Create results directory if using file:// URL
         parse_results_url = urlparse(results_url)
         if parse_results_url.scheme in ("file", ""):
-            Path(parse_results_url.path).mkdir(  # noqa: ASYNC240  # local mkdir; fast metadata op
+            Path(url2pathname(parse_results_url.path)).mkdir(  # noqa: ASYNC240  # local mkdir; fast metadata op
                 parents=True, exist_ok=True
             )
 
