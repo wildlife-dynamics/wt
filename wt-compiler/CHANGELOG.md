@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.9.1 — 2026-08-21
+
+- Fix `_iframe_widgets_from_response_json` in the generated conftest template to properly handle both versions of the dashboard contract ([#237](https://github.com/wildlife-dynamics/wt/pull/237))
+
 ## v0.9.0 — 2026-08-17
 
 - Add optional `metadata` field to the workflow `Spec` — new `Metadata` and `Maintainer` models for catalog discovery and attribution. Extra fields are allowed and retained, the maintainer list must be non-empty, and `metadata` is excluded from the workflow `sha256` so adding it never changes an existing workflow's hash ([#231](https://github.com/wildlife-dynamics/wt/pull/231))
