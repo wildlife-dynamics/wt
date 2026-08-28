@@ -46,7 +46,8 @@ def _connection_keys(node: Any, defs: dict[str, Any]) -> set[str]:
             ref = node.get("$ref")
             if isinstance(ref, str) and ref.startswith("#/$defs/"):
                 name = ref.removeprefix("#/$defs/")
-                if name.endswith("Connection"):
+                # Treats a def named "Connection" as ordinary
+                if name.endswith("Connection") and name != "Connection":
                     found.add(name.removesuffix("Connection"))
                 elif name not in seen:
                     seen.add(name)

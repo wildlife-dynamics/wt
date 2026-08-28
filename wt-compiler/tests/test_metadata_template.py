@@ -400,3 +400,27 @@ def test_property_without_properties_is_skipped() -> None:
         "$defs": {},
     }
     assert _get_data_connection_property_names(schema) == {}
+
+
+def test_def_named_exactly_connection_is_not_a_connection_key() -> None:
+    # stripping the suffix would leave an empty key, so it's walked as an ordinary def
+    schema: dict[str, Any] = {
+        "properties": {
+            "get_events": {"properties": {"base": {"$ref": "#/$defs/Connection"}}},
+        },
+        "$defs": {"Connection": {"type": "object"}},
+    }
+    assert _get_data_connection_property_names(schema) == {}
+
+
+def test_def_named_exactly_connection_is_walked_for_nested_connections() -> None:
+    schema: dict[str, Any] = {
+        "properties": {
+            "get_events": {"properties": {"base": {"$ref": "#/$defs/Connection"}}},
+        },
+        "$defs": {
+            "Connection": {"properties": {"client": {"$ref": "#/$defs/EarthRangerConnection"}}},
+            "EarthRangerConnection": {"type": "object"},
+        },
+    }
+    assert _get_data_connection_property_names(schema) == {"EarthRanger": ["get_events"]}
