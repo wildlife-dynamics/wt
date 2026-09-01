@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import pydot
 import pytest
+import rattler
 
 from wt_compiler.artifacts import (
     Dags,
@@ -17,6 +18,7 @@ from wt_compiler.artifacts import (
     Tests,
     WorkflowArtifacts,
 )
+from wt_compiler.requirements import PlatformWithLinuxRequirement
 
 
 class TestDags:
@@ -125,6 +127,39 @@ class TestPixiToml:
         )
         toml_str = pixi_toml.to_toml()
         assert "pypi-dependencies" not in toml_str
+
+    def test_pixi_toml_platforms_carry_linux_kernel_pin(self):
+        """Linux platforms pin the kernel inline; no [system-requirements] table."""
+        pixi_toml = PixiToml(
+            workspace=PixiWorkspace(name="test-workflow"),
+            dependencies={"python": ">=3.10"},
+        )
+        toml_str = pixi_toml.to_toml()
+        assert '{ platform = "linux-64", linux = "4.4.0" }' in toml_str
+        assert '{ platform = "linux-aarch64", linux = "4.4.0" }' in toml_str
+        assert '"osx-arm64"' in toml_str
+        assert "system-requirements" not in toml_str
+        # tomli_w promotes an all-mapping array into [[table]] sections, which pixi
+        # rejects for platforms; the bare-name entries keep the array mixed.
+        assert "[[workspace.platforms]]" not in toml_str
+
+    def test_pixi_toml_platforms_roundtrip(self):
+        """Rich platform entries survive a serialization roundtrip."""
+        original = PixiToml(
+            workspace=PixiWorkspace(name="test-workflow"),
+            dependencies={"python": ">=3.10"},
+        )
+        loaded = PixiToml.from_text(original.to_toml())
+
+        rich = {
+            str(p.platform): p.linux
+            for p in loaded.workspace.platforms
+            if isinstance(p, PlatformWithLinuxRequirement)
+        }
+        assert rich == {"linux-64": "4.4.0", "linux-aarch64": "4.4.0"}
+
+        bare = {str(p) for p in loaded.workspace.platforms if isinstance(p, rattler.Platform)}
+        assert bare == {"osx-arm64", "win-64", "osx-64"}
 
     def test_pixi_toml_pypi_dependencies_roundtrip(self):
         """Test pypi-dependencies survive a serialization roundtrip."""
