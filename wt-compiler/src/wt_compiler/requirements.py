@@ -235,17 +235,11 @@ WorkspacePlatformType = Annotated[
     PlainSerializer(_serialize_workspace_platform),
 ]
 
-# Platforms that take the kernel pin. Everything else in PLATFORMS stays a bare
-# name -- which also keeps the emitted array mixed; see
-# _serialize_workspace_platform.
-_LINUX_PLATFORMS = frozenset({"linux-64", "linux-aarch64"})
-
 # Default `[workspace].platforms` for a compiled workflow, derived from PLATFORMS so
-# the two cannot drift. Held as raw str/dict data rather than parsed objects: pydantic
-# deep-copies mutable field defaults, and rattler's `Platform` cannot be pickled.
+# the two cannot drift. Held as raw str/dict data rather than parsed objects:
+# pydantic deep-copies mutable field defaults, and rattler's `Platform` cannot be pickled.
 DEFAULT_WORKSPACE_PLATFORMS: list[str | dict[str, str]] = [
-    {"platform": str(p), "linux": LINUX_KERNEL_VERSION} if str(p) in _LINUX_PLATFORMS else str(p)
-    for p in PLATFORMS
+    {"platform": str(p), "linux": LINUX_KERNEL_VERSION} if p.is_linux else str(p) for p in PLATFORMS
 ]
 
 
