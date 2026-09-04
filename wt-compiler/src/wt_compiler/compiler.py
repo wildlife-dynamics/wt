@@ -562,7 +562,9 @@ class DagCompiler(BaseModel):
 
         Builds a complete pixi.toml with:
         - Dynamic channels based on which channels are used in requirements
-        - System requirements (linux = "4.4.0" for Docker compatibility)
+        - A minimum Linux kernel pinned inline on the ``[workspace].platforms``
+          linux entries for Docker compatibility (the ``[system-requirements]``
+          table that used to carry this was deprecated in pixi v0.71.0)
         - Dependencies merged from three layers (see "Injected Dependencies"
           in ``docs/content/reference/wt-compiler.md``):
           1. bundled ``default-env-injections.toml``
@@ -778,13 +780,16 @@ class DagCompiler(BaseModel):
         # Add docker-build task
         if self.spec.requires_local_release_artifacts:
             # When local artifacts are required, copy them before building
+            # `&&` must trail each line, not lead the next: pixi >=0.68 parses a
+            # multi-line task with deno_task_shell, which treats a newline as a
+            # command separator, so a line *starting* with `&&` is a syntax error.
             copy_local_artifacts = (
-                "mkdir -p .tmp/ecoscope-workflows/release/artifacts/\n"
-                "&& cp -r /tmp/ecoscope-workflows/release/artifacts/* "
-                ".tmp/ecoscope-workflows/release/artifacts/\n"
+                "mkdir -p .tmp/ecoscope-workflows/release/artifacts/ &&\n"
+                "cp -r /tmp/ecoscope-workflows/release/artifacts/* "
+                ".tmp/ecoscope-workflows/release/artifacts/ &&\n"
             )
             tasks["docker-build"] = (
-                f"{copy_local_artifacts}&& docker buildx build -t {self.release_name} .\n"
+                f"{copy_local_artifacts}docker buildx build -t {self.release_name} .\n"
             )
         else:
             tasks["docker-build"] = f"docker buildx build -t {self.release_name} ."
@@ -792,14 +797,10 @@ class DagCompiler(BaseModel):
         # Add workflow CLI task
         tasks[self.release_name] = f"python -m {self.package_name}.cli"
 
-        # 8. Build system requirements (linux = "4.4.0" for Docker compatibility)
-        system_requirements = {"linux": "4.4.0"}
-
         # Note: using field names instead of aliases; pydantic's populate_by_name allows this
         return PixiToml(  # type: ignore[call-arg]
             file_header=self.file_header,
             workspace=workspace,
-            system_requirements=system_requirements,
             dependencies=dependencies,
             pypi_dependencies=pypi_dependencies,
             feature={"runner": runner_feature, "test": test_feature},

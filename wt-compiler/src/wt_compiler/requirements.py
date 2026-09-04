@@ -5,6 +5,7 @@ from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Annotated, TypedDict, cast
 from urllib.parse import urlparse
 
+from pydantic import BaseModel, ConfigDict
 from pydantic.functional_serializers import PlainSerializer
 from pydantic.functional_validators import BeforeValidator
 from rattler import Channel, ChannelConfig, MatchSpec, NamelessMatchSpec, Platform
@@ -48,6 +49,13 @@ PLATFORMS: list[Platform] = [
     Platform("win-64"),
     Platform("osx-64"),
 ]
+
+# Minimum Linux kernel the compiled workflow must tolerate. Pixi's default for a
+# bare "linux-*" platform is __linux = "4.18"; we loosen it so the image also runs
+# on older Docker hosts. This is declared inline on the linux entries of
+# DEFAULT_WORKSPACE_PLATFORMS below -- the `[system-requirements]` table that used
+# to carry it was deprecated in pixi v0.71.0.
+LINUX_KERNEL_VERSION = "4.4.0"
 
 
 def _channel_from_str(value: str) -> Channel:
@@ -109,8 +117,15 @@ ChannelType = Annotated[
 ]
 
 
-def _platform_from_str(value: str) -> Platform:
-    """Convert a string to a Platform object."""
+def _platform_from_str(value: str | Platform) -> Platform:
+    """Convert a platform name to a Platform object, restricted to known platforms.
+
+    Already-constructed :class:`Platform` objects pass through unchanged, so the
+    same validator serves both TOML input (strings) and the in-code defaults in
+    :data:`DEFAULT_WORKSPACE_PLATFORMS`.
+    """
+    if isinstance(value, Platform):
+        return value
     for platform in PLATFORMS:
         if str(platform) == value:
             return platform
@@ -121,6 +136,110 @@ PlatformType = Annotated[
     Platform,
     BeforeValidator(_platform_from_str),
     PlainSerializer(lambda value: str(value)),
+]
+
+
+class PlatformWithLinuxRequirement(BaseModel):
+    """A ``[workspace].platforms`` entry pinning a minimum Linux kernel version.
+
+    Pixi calls these "rich platforms": a platform declared as an inline table
+    rather than a bare name, carrying system requirements alongside it. Only the
+    keys named here are customised; every other virtual package keeps pixi's
+    default for that platform.
+
+    This models exactly the one requirement we pin. Other rich-platform keys
+    (``glibc``, ``cuda``, ``archspec``) are deliberately not represented.
+
+    Examples:
+        >>> entry = PlatformWithLinuxRequirement(platform="linux-64", linux="4.4.0")
+        >>> str(entry.platform)
+        'linux-64'
+        >>> entry.linux
+        '4.4.0'
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    platform: PlatformType
+    linux: str
+
+
+def _workspace_platform_from_value(
+    value: str | dict[str, str] | Platform | PlatformWithLinuxRequirement,
+) -> Platform | PlatformWithLinuxRequirement:
+    """Parse a single ``[workspace].platforms`` entry.
+
+    An entry is either a bare platform name (``"osx-arm64"``) or an inline table
+    carrying system requirements (``{platform = "linux-64", linux = "4.4.0"}``).
+    Both shapes appear in manifests we emit and in manifests we read back via
+    :meth:`wt_compiler.artifacts.PixiToml.from_file`, so both must parse.
+
+    Dispatching explicitly on the input shape -- rather than relying on a bare
+    ``Platform | PlatformWithLinuxRequirement`` union -- keeps parsing
+    independent of pydantic's smart-union ordering.
+
+    Args:
+        value: A raw entry as read from TOML, or an already-parsed object.
+
+    Returns:
+        The parsed entry.
+
+    Raises:
+        ValueError: If a bare name is not a known platform.
+
+    Examples:
+        >>> str(_workspace_platform_from_value("osx-arm64"))
+        'osx-arm64'
+        >>> parsed = _workspace_platform_from_value({"platform": "linux-64", "linux": "4.4.0"})
+        >>> parsed.linux
+        '4.4.0'
+    """
+    if isinstance(value, PlatformWithLinuxRequirement | Platform):
+        return value
+    if isinstance(value, dict):
+        return PlatformWithLinuxRequirement.model_validate(value)
+    return _platform_from_str(value)
+
+
+def _serialize_workspace_platform(
+    value: Platform | PlatformWithLinuxRequirement,
+) -> str | dict[str, str]:
+    """Serialize a single ``[workspace].platforms`` entry to TOML-ready data.
+
+    Bare platforms stay strings and rich entries become plain dicts, so the
+    emitted list is a *mixed* array. That mix is load-bearing: ``tomli_w``
+    promotes an array whose items are *all* mappings into ``[[table]]``
+    array-of-tables sections, which pixi does not accept for ``platforms``.
+
+    Args:
+        value: A parsed platforms entry.
+
+    Returns:
+        A string for a bare platform, or a dict for a rich entry.
+
+    Examples:
+        >>> _serialize_workspace_platform(Platform("osx-arm64"))
+        'osx-arm64'
+        >>> entry = PlatformWithLinuxRequirement(platform="linux-64", linux="4.4.0")
+        >>> _serialize_workspace_platform(entry)
+        {'platform': 'linux-64', 'linux': '4.4.0'}
+    """
+    if isinstance(value, PlatformWithLinuxRequirement):
+        return {"platform": str(value.platform), "linux": value.linux}
+    return str(value)
+
+
+WorkspacePlatformType = Annotated[
+    Platform | PlatformWithLinuxRequirement,
+    BeforeValidator(_workspace_platform_from_value),
+    PlainSerializer(_serialize_workspace_platform),
+]
+
+# Default `[workspace].platforms` for a compiled workflow, derived from PLATFORMS so
+# the two cannot drift. Held as raw str/dict data rather than parsed objects:
+# pydantic deep-copies mutable field defaults, and rattler's `Platform` cannot be pickled.
+DEFAULT_WORKSPACE_PLATFORMS: list[str | dict[str, str]] = [
+    {"platform": str(p), "linux": LINUX_KERNEL_VERSION} if p.is_linux else str(p) for p in PLATFORMS
 ]
 
 

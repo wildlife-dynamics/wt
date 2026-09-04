@@ -207,8 +207,12 @@ class TestDagCompiler:
         assert "python" in pixi_toml.dependencies
         assert "pandas" in pixi_toml.dependencies
 
-        # Check system requirements
-        assert pixi_toml.system_requirements == {"linux": "4.4.0"}
+        # Linux platforms carry the kernel pin inline; the rest stay bare names.
+        # (The mix matters: an all-mapping array would serialize as [[table]] sections.)
+        platforms = pixi_toml.model_dump(by_alias=True, mode="json")["workspace"]["platforms"]
+        assert {"platform": "linux-64", "linux": "4.4.0"} in platforms
+        assert {"platform": "linux-aarch64", "linux": "4.4.0"} in platforms
+        assert "osx-arm64" in platforms
 
         # Check environments
         assert "default" in pixi_toml.environments

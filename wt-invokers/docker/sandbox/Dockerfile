@@ -1,4 +1,4 @@
-ARG PIXI_BASE_IMAGE=ghcr.io/prefix-dev/pixi:0.63.0
+ARG PIXI_BASE_IMAGE=ghcr.io/prefix-dev/pixi:0.78.0
 FROM ${PIXI_BASE_IMAGE}
 
 ARG WT_INVOKERS_VERSION

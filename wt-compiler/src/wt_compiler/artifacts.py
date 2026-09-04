@@ -22,10 +22,10 @@ from wt_compiler._models import (
 )
 from wt_compiler.requirements import (
     CHANNELS,
-    PLATFORMS,
+    DEFAULT_WORKSPACE_PLATFORMS,
     ChannelType,
     NamelessMatchSpecType,
-    PlatformType,
+    WorkspacePlatformType,
 )
 
 yaml = ruamel.yaml.YAML(typ="safe")
@@ -46,12 +46,16 @@ class PixiWorkspace(_AllowArbitraryTypes):
     # mypy throws:
     # `error: List comprehension has incompatible type List[str | None];
     #  expected List[Channel]  [misc]`
-    # `error: List comprehension has incompatible type List[str];
-    #  expected List[Platform]  [misc]`
-    # but pydantic parsing handles these correctly
+    # but pydantic parsing handles this correctly
     # (and stumbles without the list comprehension)
     channels: list[ChannelType] = [c.name for c in CHANNELS]  # type: ignore[misc]  # noqa: RUF012  # pydantic field defaults
-    platforms: list[PlatformType] = [str(p) for p in PLATFORMS]  # type: ignore[misc]  # noqa: RUF012  # pydantic field defaults
+    # validate_default is required: pydantic skips validation of defaults by
+    # default, which would leave the raw str/dict entries unparsed and serialize
+    # the rich ones as `"{'platform': ...}"` strings.
+    platforms: list[WorkspacePlatformType] = Field(
+        default_factory=lambda: list(DEFAULT_WORKSPACE_PLATFORMS),
+        validate_default=True,
+    )
 
 
 FeatureName = str
@@ -99,7 +103,6 @@ class PixiToml(_AllowArbitraryAndValidateAssignment):
     )
 
     workspace: PixiWorkspace
-    system_requirements: dict[str, str] = Field(default_factory=dict, alias="system-requirements")
     dependencies: dict[str, NamelessMatchSpecType]
     pypi_dependencies: dict[str, str | dict[str, Any]] = Field(
         default_factory=dict, alias="pypi-dependencies"
