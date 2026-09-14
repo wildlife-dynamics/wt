@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, TypeGuard, cast
 
 import questionary
 
-from wt_compiler.compiler import compile_workflow_from_yaml
+from wt_compiler.compiler import compile_workflow_from_env, compile_workflow_from_yaml
 from wt_compiler.wizard import DefaultWizardProvider
 from wt_compiler.wizard import providers as wt_providers
 
@@ -368,6 +368,38 @@ def main() -> None:
         help="Generate a new pixi lockfile and install all dependencies after compilation",
     )
     compile_parser.add_argument(
+        "--from-env",
+        action="store_true",
+        help=(
+            "Discover tasks from the current environment via the installed wt-registry "
+            "instead of solving an ephemeral environment. Skips the dependency solve "
+            "entirely; intended for invoker images that bake in the wt stack and task "
+            "libraries. Combine with --clobber --update to rebuild the DAG while carrying "
+            "over an existing pixi.lock."
+        ),
+    )
+    compile_parser.add_argument(
+        "--discover-package",
+        action="append",
+        dest="discover_packages",
+        default=None,
+        metavar="MODULE",
+        help=(
+            "With --from-env, an extra dotted module path to import for task registration "
+            "(passed through to wt-registry --package). May be given multiple times."
+        ),
+    )
+    compile_parser.add_argument(
+        "--registry-exe",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "With --from-env, path to the wt-registry executable "
+            "(default: the first wt-registry found on PATH)."
+        ),
+    )
+    compile_parser.add_argument(
         "--no-progress",
         action="store_true",
         help="Disable the progress spinner during compilation",
@@ -496,13 +528,25 @@ def _compile(args: argparse.Namespace) -> None:
         compiler_kwargs["results_env_var"] = args.results_env_var
         if args.env_overrides is not None:
             compiler_kwargs["env_overrides_path"] = Path(args.env_overrides).resolve()
-        artifacts = asyncio.run(
-            compile_workflow_from_yaml(
+        if args.from_env:
+            # Solve-free discovery against the current (baked-in) environment.
+            artifacts = compile_workflow_from_env(
                 str(spec_path),
                 progress=not args.no_progress,
+                discover_packages=args.discover_packages,
+                registry_exe=(
+                    Path(args.registry_exe).resolve() if args.registry_exe is not None else None
+                ),
                 **compiler_kwargs,
             )
-        )
+        else:
+            artifacts = asyncio.run(
+                compile_workflow_from_yaml(
+                    str(spec_path),
+                    progress=not args.no_progress,
+                    **compiler_kwargs,
+                )
+            )
 
         # Write artifacts to disk
         artifacts.dump(clobber=args.clobber, update=args.update)

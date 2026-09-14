@@ -25,6 +25,7 @@ from wt_compiler.exceptions import (
     PyPIInstallError,
     RegistryExecutionError,
     RegistryNotFoundError,
+    RegistryNotFoundInEnvError,
 )
 from wt_compiler.requirements import CHANNELS
 from wt_compiler.spec import KnownTask, PyPIRequirement, TaskTag, known_tasks
@@ -39,6 +40,67 @@ class DiscoveryResult(NamedTuple):
 
     tasks: dict[str, dict[str, KnownTask]]
     records: list[Any]  # list[RepoDataRecord] from rattler solve()
+
+
+def _registry_output_to_known_tasks(
+    registry_output: RegistryOutput,
+) -> dict[str, dict[str, KnownTask]]:
+    """Convert parsed wt-registry CLI output into a known-tasks mapping.
+
+    This is the shared conversion used by every discovery path (the
+    ephemeral-solve path and the current-environment path). It maps the
+    typed :class:`~wt_contracts.registry.RegistryOutput` into the nested
+    ``{function_name: {public_module_path: KnownTask}}`` structure the
+    compiler indexes tasks by, disambiguating functions that share a name
+    across modules via an incrementing ``registry_ref``.
+
+    Args:
+        registry_output: Parsed output of ``wt-registry --format json``.
+
+    Returns:
+        Mapping of task function name to ``{public_module_path: KnownTask}``.
+
+    Examples:
+        >>> from wt_contracts.registry import RegistryOutput
+        >>> out = RegistryOutput(entries={}, version="1.0.0")
+        >>> _registry_output_to_known_tasks(out)
+        {}
+    """
+    discovered_tasks: dict[str, dict[str, KnownTask]] = {}
+
+    for entry in registry_output.entries.values():
+        # entry is typed as RegistryEntry from wt-contracts
+        # Use public_module_path for imports (via __init__.py re-exports)
+        public_module_path = entry.public_module_path
+        function_name = entry.function_name
+        metadata = entry.metadata
+        json_schema = dict(entry.json_schema)
+
+        # Build importable reference using public path
+        importable_reference = f"{public_module_path}.{function_name}"
+
+        # Parse tags - filter to only known TaskTag values
+        tags = [TaskTag(tag) for tag in metadata.tags if tag in [t.value for t in TaskTag]]
+
+        # Create KnownTask from typed RegistryEntry
+        known_task = KnownTask(
+            importable_reference=importable_reference,
+            tags=tags,
+            registry_ref=0,
+            json_schema=json_schema,
+            description=metadata.description or None,
+        )
+
+        # Add to discovered_tasks dict
+        if function_name not in discovered_tasks:
+            # First occurrence of this function name
+            discovered_tasks[function_name] = {public_module_path: known_task}
+        else:
+            # Function name already seen from another module - needs disambiguation
+            known_task.registry_ref = len(discovered_tasks[function_name])
+            discovered_tasks[function_name][public_module_path] = known_task
+
+    return discovered_tasks
 
 
 async def discover_tasks_from_requirements(
@@ -204,40 +266,8 @@ async def discover_tasks_from_requirements(
         # Parse and validate JSON output using wt-contracts schema
         registry_output = RegistryOutput.model_validate_json(result.stdout)
 
-        # Convert to KnownTask instances and populate known_tasks dict
-        discovered_tasks: dict[str, dict[str, KnownTask]] = {}
-
-        for entry in registry_output.entries.values():
-            # entry is typed as RegistryEntry from wt-contracts
-            # Use public_module_path for imports (via __init__.py re-exports)
-            public_module_path = entry.public_module_path
-            function_name = entry.function_name
-            metadata = entry.metadata
-            json_schema = dict(entry.json_schema)
-
-            # Build importable reference using public path
-            importable_reference = f"{public_module_path}.{function_name}"
-
-            # Parse tags - filter to only known TaskTag values
-            tags = [TaskTag(tag) for tag in metadata.tags if tag in [t.value for t in TaskTag]]
-
-            # Create KnownTask from typed RegistryEntry
-            known_task = KnownTask(
-                importable_reference=importable_reference,
-                tags=tags,
-                registry_ref=0,
-                json_schema=json_schema,
-                description=metadata.description or None,
-            )
-
-            # Add to discovered_tasks dict
-            if function_name not in discovered_tasks:
-                # First occurrence of this function name
-                discovered_tasks[function_name] = {public_module_path: known_task}
-            else:
-                # Function name already seen from another module - needs disambiguation
-                known_task.registry_ref = len(discovered_tasks[function_name])
-                discovered_tasks[function_name][public_module_path] = known_task
+        # Convert to KnownTask instances keyed by function name
+        discovered_tasks = _registry_output_to_known_tasks(registry_output)
 
         return DiscoveryResult(tasks=discovered_tasks, records=records)
 
@@ -389,6 +419,123 @@ async def populate_known_tasks(
         pypi_requirements=pypi_requirements,
         on_progress=on_progress,
         **kwargs,
+    )
+    known_tasks.clear()
+    known_tasks.update(result.tasks)
+    return result
+
+
+def discover_tasks_from_current_env(
+    packages: list[str] | None = None,
+    registry_exe: str | Path | None = None,
+    on_progress: Callable[[str], None] | None = None,
+) -> DiscoveryResult:
+    """Discover tasks by running wt-registry in the *current* environment.
+
+    Unlike :func:`discover_tasks_from_requirements`, this performs **no**
+    dependency solve and creates **no** ephemeral environment. It assumes
+    the task libraries (and ``wt-registry``) are already installed in the
+    running interpreter's environment — the situation inside an invoker
+    image that bakes in ``ecoscope.platform`` and the ``wt`` stack. It
+    simply shells out to the already-installed ``wt-registry --format
+    json`` and converts the output.
+
+    Because there is no solve, the returned :class:`DiscoveryResult` has an
+    empty ``records`` list; callers that need pinned versions for a README
+    fingerprint should source them elsewhere (e.g. an existing
+    ``pixi.lock``).
+
+    Args:
+        packages: Optional dotted module paths to import for task
+            registration, forwarded as ``--package`` flags. Auto-discovery
+            via entry points always runs regardless; this only adds
+            explicit imports.
+        registry_exe: Path to the ``wt-registry`` executable. Defaults to
+            the first ``wt-registry`` found on ``PATH``.
+        on_progress: Optional callback invoked with a status message.
+
+    Returns:
+        DiscoveryResult with discovered tasks and an empty ``records`` list.
+
+    Raises:
+        RegistryNotFoundInEnvError: If no ``wt-registry`` executable is
+            found in the current environment.
+        RegistryExecutionError: If ``wt-registry`` returns a non-zero exit
+            code.
+
+    Examples:
+        >>> # In an environment with wt-registry and task libraries installed:
+        >>> # result = discover_tasks_from_current_env()  # doctest: +SKIP
+        >>> # len(result.tasks) > 0  # doctest: +SKIP
+        True
+    """
+    if registry_exe is None:
+        found = shutil.which("wt-registry")
+        if found is None:
+            raise RegistryNotFoundInEnvError()
+        registry_exe = found
+    registry_exe = Path(registry_exe)
+    if not registry_exe.exists():
+        raise RegistryNotFoundInEnvError(executable_path=registry_exe)
+
+    cli_args = [str(registry_exe), "--format", "json"]
+    for package in packages or []:
+        cli_args.extend(["--package", package])
+
+    if on_progress is not None:
+        on_progress("Discovering tasks in current environment...")
+    result = subprocess.run(  # noqa: S603  # cmd built from a resolved tool path
+        cli_args,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    if result.returncode != 0:
+        raise RegistryExecutionError(
+            executable_path=registry_exe,
+            returncode=result.returncode,
+            stdout=result.stdout,
+            stderr=result.stderr,
+            requirements=[],
+        )
+
+    registry_output = RegistryOutput.model_validate_json(result.stdout)
+    discovered_tasks = _registry_output_to_known_tasks(registry_output)
+    return DiscoveryResult(tasks=discovered_tasks, records=[])
+
+
+def populate_known_tasks_from_current_env(
+    packages: list[str] | None = None,
+    registry_exe: str | Path | None = None,
+    on_progress: Callable[[str], None] | None = None,
+) -> DiscoveryResult:
+    """Discover tasks in the current environment and populate ``known_tasks``.
+
+    Synchronous sibling of :func:`populate_known_tasks` that sources tasks
+    from the current environment (no solve) via
+    :func:`discover_tasks_from_current_env`, then replaces the global
+    ``known_tasks`` dict in ``spec.py``.
+
+    Args:
+        packages: Optional dotted module paths forwarded as ``--package``
+            flags to wt-registry.
+        registry_exe: Optional path to the ``wt-registry`` executable.
+        on_progress: Optional callback invoked with a status message.
+
+    Returns:
+        DiscoveryResult with discovered tasks and an empty ``records`` list.
+
+    Examples:
+        >>> # from wt_compiler.spec import known_tasks  # doctest: +SKIP
+        >>> # populate_known_tasks_from_current_env()  # doctest: +SKIP
+        >>> # len(known_tasks) > 0  # doctest: +SKIP
+        True
+    """
+    result = discover_tasks_from_current_env(
+        packages=packages,
+        registry_exe=registry_exe,
+        on_progress=on_progress,
     )
     known_tasks.clear()
     known_tasks.update(result.tasks)

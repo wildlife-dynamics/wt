@@ -92,6 +92,48 @@ To fix this issue, ensure your task packages include wt-registry as a dependency
   2. Add 'wt-registry' to the requirements in your spec.yaml"""
 
 
+class RegistryNotFoundInEnvError(DiscoveryError):
+    """Raised when wt-registry is not found in the current environment.
+
+    This is the current-environment analogue of :class:`RegistryNotFoundError`.
+    It is raised by :func:`~wt_compiler.discovery.discover_tasks_from_current_env`
+    when no ``wt-registry`` executable can be located on ``PATH`` (or at an
+    explicitly supplied path). Unlike the ephemeral-solve case, there are no
+    requirements to report — the fix is to install ``wt-registry`` into the
+    running environment.
+
+    Attributes:
+        executable_path: The path that was probed, or ``None`` when ``PATH``
+            was searched and nothing was found.
+
+    Examples:
+        >>> error = RegistryNotFoundInEnvError()
+        >>> "wt-registry" in str(error)
+        True
+        >>> from pathlib import Path
+        >>> error = RegistryNotFoundInEnvError(executable_path=Path("/env/bin/wt-registry"))
+        >>> "/env/bin/wt-registry" in str(error)
+        True
+    """
+
+    def __init__(self, executable_path: Path | None = None) -> None:
+        self.executable_path = executable_path
+        super().__init__(str(self))
+
+    def __str__(self) -> str:
+        where = f"at '{self.executable_path}'" if self.executable_path is not None else "on PATH"
+        return f"""wt-registry executable not found {where}
+
+Current-environment discovery requires wt-registry (and the task libraries) to
+be installed in the running interpreter's environment. This mode is intended
+for invoker images that bake in the wt stack and task packages.
+
+To fix this issue:
+  1. Install wt-registry into the current environment, OR
+  2. Pass an explicit path to the executable, OR
+  3. Use the default ephemeral-solve discovery (compile without --from-env)."""
+
+
 class RegistryExecutionError(DiscoveryError):
     """Raised when wt-registry CLI fails during execution.
 

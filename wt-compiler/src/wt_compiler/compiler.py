@@ -30,7 +30,10 @@ from wt_compiler.artifacts import (
 from wt_compiler.artifacts import (
     Environment as PixiEnvironment,
 )
-from wt_compiler.discovery import populate_known_tasks
+from wt_compiler.discovery import (
+    populate_known_tasks,
+    populate_known_tasks_from_current_env,
+)
 from wt_compiler.env_overrides import load_env_overrides_file
 from wt_compiler.formatting import ruff_formatted
 from wt_compiler.jsonschema import ReactJSONSchemaFormConfiguration, find_referenced_defs
@@ -1397,6 +1400,119 @@ async def compile_workflow_from_yaml(
             env_overrides=env_overrides,
             merged_default_feature=merged_default,
             installed_requirements=installed_requirements,
+            on_progress=sp.update,
+            **compiler_kwargs,
+        )
+
+
+def compile_workflow_from_env(
+    yaml_path: str | Path,
+    progress: bool = True,
+    env_overrides_path: str | Path | None = None,
+    discover_packages: list[str] | None = None,
+    registry_exe: str | Path | None = None,
+    **compiler_kwargs: Any,  # noqa: ANN401  # forwarded to DagCompiler subclasses
+) -> WorkflowArtifacts:
+    """Compile a workflow, discovering tasks from the *current* environment.
+
+    This is the solve-free sibling of :func:`compile_workflow_from_yaml`.
+    Instead of creating an ephemeral rattler environment (solve + install)
+    to discover tasks, it runs ``wt-registry`` in the running interpreter's
+    environment via :func:`populate_known_tasks_from_current_env`. It is
+    meant for an invoker image that bakes in ``ecoscope.platform`` and the
+    ``wt`` stack, so the task libraries are already importable and the
+    multi-second-to-minutes discovery solve can be skipped entirely.
+
+    The emitted ``pixi.toml`` is still generated (from the bundled defaults
+    plus ``spec.yaml requirements:`` and any env-overrides), but no
+    dependency solve is performed and the compiled README fingerprint
+    carries no pinned ``installed_requirements`` — those come from a solve
+    or an existing lockfile, neither of which this path consults.
+
+    Args:
+        yaml_path: Path to spec.yaml file.
+        progress: Whether to display a progress spinner on stderr
+            (default: True). Automatically disabled when stderr is not a TTY.
+        env_overrides_path: Optional path to a wt-compiler env-overrides
+            toml file, layered into the compiled pixi.toml exactly as in
+            :func:`compile_workflow_from_yaml`.
+        discover_packages: Optional dotted module paths forwarded as
+            ``--package`` flags to wt-registry, in addition to entry-point
+            auto-discovery.
+        registry_exe: Optional path to the ``wt-registry`` executable
+            (defaults to the first one found on ``PATH``).
+        **compiler_kwargs: Additional arguments for DagCompiler.
+
+    Returns:
+        Compiled workflow artifacts.
+
+    Raises:
+        FileNotFoundError: If yaml_path doesn't exist.
+        ValueError: If spec is invalid.
+        RegistryNotFoundInEnvError: If wt-registry is not found in the
+            current environment.
+        RegistryExecutionError: If wt-registry returns a non-zero exit code.
+
+    Examples:
+        >>> # Inside a baked-in invoker environment:
+        >>> # artifacts = compile_workflow_from_env("spec.yaml")  # doctest: +SKIP
+        >>> # artifacts.dump(clobber=True)  # doctest: +SKIP
+    """
+    yaml_path = Path(yaml_path)
+
+    env_overrides: PixiTomlFragment | None = None
+    if env_overrides_path is not None:
+        env_overrides = load_env_overrides_file(env_overrides_path)
+
+    with spinner(progress) as sp:
+        # Phase 1: Parse requirements from YAML (needed for pixi.toml layering
+        # and to suppress spec-supplied names from the bundled defaults).
+        sp.update("Parsing requirements...")
+        parsed_reqs = _parse_requirements_from_yaml(yaml_path)
+        conda_requirements = parsed_reqs.conda
+        pypi_requirements = parsed_reqs.pypi
+
+        # Phase 2: Compute the merged default-feature dep set for the emitted
+        # pixi.toml. There is no transitive solve here, so suppression uses
+        # only spec.yaml-declared names.
+        defaults = _load_default_injections()
+        spec_yaml_names = {r.name for r in conda_requirements} | {r.name for r in pypi_requirements}
+        merged_default = compute_merged_default_feature(
+            defaults,
+            spec_supplied_names=spec_yaml_names,
+            env_overrides=env_overrides,
+        )
+        if env_overrides is not None:
+            _warn_on_override_collisions(
+                feature_name="default",
+                spec_conda_names={r.name for r in conda_requirements},
+                spec_pypi_names={r.name for r in pypi_requirements},
+                overrides_section=env_overrides.get_feature("default"),
+            )
+
+        # Phase 3: Discover tasks from the current environment (no solve).
+        populate_known_tasks_from_current_env(
+            packages=discover_packages,
+            registry_exe=registry_exe,
+            on_progress=sp.update,
+        )
+
+        # Phase 4: Validate the full Spec now that known_tasks is populated.
+        sp.update("Validating spec...")
+        with yaml_path.open() as f:
+            data = yaml.load(f)
+        spec = Spec.model_validate(data)
+
+        # Phase 5: Compile. No installed_requirements: the README fingerprint's
+        # pinned versions come from a solve or lockfile, which this path skips.
+        sp.update("Compiling artifacts...")
+        spec_relpath = str(yaml_path)
+        return compile_workflow(
+            spec,
+            spec_relpath,
+            env_overrides=env_overrides,
+            merged_default_feature=merged_default,
+            installed_requirements=None,
             on_progress=sp.update,
             **compiler_kwargs,
         )
