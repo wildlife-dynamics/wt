@@ -41,6 +41,11 @@ gcp = [
     "google-cloud-run>=0.10.0",
     "google-auth>=2.0.0",
 ]
+# On-the-fly compilation for CompileFromEnvInvoker. Only needed by invoker
+# images that bake in the wt stack and compile specs at run time.
+compile = [
+    "wt-compiler>=0.1.0",
+]
 
 [dependency-groups]
 dev = [
@@ -67,6 +72,9 @@ git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--mat
 # Development override - uses local editable wt-contracts
 # Published packages will reference PyPI version normally
 wt-contracts = { path = "../wt-contracts", editable = true }
+# Local editable wt-compiler for the optional `compile` extra
+# (CompileFromEnvInvoker); ensures the in-repo version is used.
+wt-compiler = { path = "../wt-compiler", editable = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -102,6 +110,8 @@ module = [
     "google.cloud.run_v2.*",
     "stamina",
     "stamina.*",
+    "wt_compiler",
+    "wt_compiler.*",
 ]
 ignore_missing_imports = true
 
