@@ -8,6 +8,7 @@ direct Python import dependencies on task libraries.
 
 import asyncio
 import errno
+import importlib
 import platform as plat
 import shutil
 import subprocess
@@ -537,6 +538,97 @@ def populate_known_tasks_from_current_env(
         registry_exe=registry_exe,
         on_progress=on_progress,
     )
+    known_tasks.clear()
+    known_tasks.update(result.tasks)
+    return result
+
+
+def discover_tasks_in_process(
+    packages: list[str] | None = None,
+) -> DiscoveryResult:
+    """Discover tasks by importing the registry *in the current process*.
+
+    This is the "hot registry" discovery path. Unlike
+    :func:`discover_tasks_from_current_env` (which shells out to the
+    ``wt-registry`` CLI, cold-importing the task stack on every call), this
+    imports ``wt-registry`` and the registered task libraries directly into
+    the running interpreter via ``auto_discover()`` and reads the in-memory
+    registry. The heavy import happens once; subsequent calls are cheap.
+
+    It is meant for a long-lived service (e.g. an on-the-fly compile server)
+    that pays the ``ecoscope.platform`` import cost once at startup and then
+    serves many spec→DAG compilations against the resident registry.
+
+    Because it works with the in-memory :class:`RegistryOutput` object and
+    never round-trips through ``model_dump_json()``, it also sidesteps JSON
+    serialization gaps in individual task schemas (e.g. non-serializable
+    parameter defaults) that would fail the subprocess CLI.
+
+    Args:
+        packages: Optional dotted module paths to import for task
+            registration, in addition to entry-point auto-discovery.
+
+    Returns:
+        DiscoveryResult with discovered tasks and an empty ``records`` list.
+
+    Raises:
+        ImportError: If ``wt-registry`` is not installed in the current
+            environment.
+
+    Examples:
+        >>> # In an environment with wt-registry and task libraries installed:
+        >>> # result = discover_tasks_in_process()  # doctest: +SKIP
+        >>> # len(result.tasks) > 0  # doctest: +SKIP
+        True
+    """
+    # wt-registry (and the task libraries) are optional at import time; only
+    # a process that intends in-process discovery needs them installed.
+    from wt_registry.cli import (  # noqa: PLC0415  # optional dep, scoped to in-process discovery
+        auto_discover,
+        serialize_entries,
+    )
+    from wt_registry.registry import (  # noqa: PLC0415  # optional dep, scoped to in-process discovery
+        get_registry,
+    )
+
+    discovered_modules = auto_discover()
+    all_packages: list[str] = list(discovered_modules)
+    for package in packages or []:
+        importlib.import_module(package)
+        if package not in all_packages:
+            all_packages.append(package)
+
+    registry = get_registry()
+    registry_output = serialize_entries(registry, packages=all_packages or None)
+    tasks = _registry_output_to_known_tasks(registry_output)
+    return DiscoveryResult(tasks=tasks, records=[])
+
+
+def populate_known_tasks_in_process(
+    packages: list[str] | None = None,
+) -> DiscoveryResult:
+    """Discover tasks in-process and populate the global ``known_tasks`` dict.
+
+    Synchronous "hot registry" sibling of
+    :func:`populate_known_tasks_from_current_env` that sources tasks from the
+    resident interpreter (no subprocess, no re-import after the first call)
+    via :func:`discover_tasks_in_process`, then replaces the global
+    ``known_tasks`` dict in ``spec.py``.
+
+    Args:
+        packages: Optional dotted module paths to import for task
+            registration, in addition to entry-point auto-discovery.
+
+    Returns:
+        DiscoveryResult with discovered tasks and an empty ``records`` list.
+
+    Examples:
+        >>> # from wt_compiler.spec import known_tasks  # doctest: +SKIP
+        >>> # populate_known_tasks_in_process()  # doctest: +SKIP
+        >>> # len(known_tasks) > 0  # doctest: +SKIP
+        True
+    """
+    result = discover_tasks_in_process(packages=packages)
     known_tasks.clear()
     known_tasks.update(result.tasks)
     return result
