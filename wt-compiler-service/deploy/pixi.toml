@@ -1,0 +1,67 @@
+# Baked "hot compiler" invoker environment for wt-compiler-service.
+#
+# This is the deployment env a trusted invoker image bakes in: the heavy task
+# stack (ecoscope.platform, which transitively pulls wt-registry) + a web
+# server (fastapi/uvicorn) + wt-compiler + this service. Everything needed to
+# discover tasks in-process and render DAGs on the fly, with NO runtime solve.
+#
+# The conda layer is version-pinned to a known-good task-stack lock
+# (ecoscope-platform 2.23.0 -> wt-registry 0.2.2, pydantic 2.8.2). Note that
+# ecoscope-platform pins pydantic <2.9, so wt-compiler must stay importable
+# under 2.8.x (it is: spec.py avoids PEP 695 `type` aliases as pydantic fields).
+#
+# Build/run:
+#   cd wt-compiler-service/deploy
+#   pixi install --locked          # provision the frozen env
+#   pixi run serve                 # warms in ~4s, then serves on :8099
+
+[workspace]
+name = "wt-compiler-service-deploy"
+channels = [
+    "https://repo.prefix.dev/ecoscope-workflows/",
+    "conda-forge",
+]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.12.*"
+# Task stack (pulls wt-registry transitively for in-process discovery).
+ecoscope-platform = { version = "==2.23.0", channel = "https://repo.prefix.dev/ecoscope-workflows/" }
+# Web server.
+fastapi = "*"
+uvicorn = "*"
+# wt-compiler runtime deps available on conda (so the editable pypi installs
+# below don't resolve heavy packages through pypi).
+jinja2 = "*"
+jsonschema = "*"
+pydot = "*"
+"ruamel.yaml" = ">=0.17.0,<0.19.0"
+# Match the ecoscope-platform pin (<2.9); wt-compiler stays importable here.
+pydantic = "*"
+# Compiled-workflow runtime deps. The run subprocess executes `python -m
+# <pkg>.cli run` in THIS shared env (no per-workflow install), so the baked env
+# must carry everything a compiled workflow imports at runtime -- mirroring a
+# compiled workflow's own [dependencies]. `obstore` (results store) and `click`
+# (CLI) are imported by the generated cli.py; `wt-task-gcp` provides `wt_task`
+# + OpenTelemetry tracing for the `--variant gcp` packages.
+obstore = ">=0.6.0"
+click = "*"
+opentelemetry-api = ">=1.0.0"
+wt-task-gcp = { version = "*", channel = "https://repo.prefix.dev/ecoscope-workflows/" }
+
+[pypi-dependencies]
+# The wt monorepo packages, editable from the repo. wt-registry itself comes
+# from the conda layer above (via ecoscope-platform).
+wt-contracts = { path = "../../wt-contracts", editable = true }
+wt-compiler = { path = "../../wt-compiler", editable = true }
+wt-compiler-service = { path = "..", editable = true }
+
+# Results env var: the compiled CLI reads its results URL from this var, and the
+# invoker sets it. The service sources ONE value from WT_INVOKERS__RESULTS_ENV_VAR
+# for both compile and run, so they always agree. Match the ecoscope/proxy
+# convention here (the proxy sets the same via `ENV`).
+[activation.env]
+WT_INVOKERS__RESULTS_ENV_VAR = "ECOSCOPE_WORKFLOWS_RESULTS"
+
+[tasks]
+serve = "uvicorn wt_compiler_service.app:app --host 0.0.0.0 --port 8099"

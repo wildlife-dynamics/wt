@@ -1191,6 +1191,70 @@ def compile_workflow(
     )
 
 
+def compile_spec_in_process(
+    spec: Spec,
+    *,
+    spec_relpath: str = "spec.yaml",
+    variant: str | None = None,
+    pkg_name_prefix: str = "wt",
+    results_env_var: str = "WT_RESULTS",
+    env_overrides: PixiTomlFragment | None = None,
+    installed_requirements: list[SpecRequirement] | None = None,
+) -> WorkflowArtifacts:
+    """Compile a validated Spec to full artifacts using the resident registry.
+
+    This is the "hot" full-compile primitive: it assumes the global
+    ``known_tasks`` dict is already populated (e.g. via
+    :func:`~wt_compiler.discovery.populate_known_tasks_in_process`) and performs
+    no discovery and no dependency solve. It computes the merged default feature
+    from the bundled injections plus the spec's own requirements — the same
+    layering :func:`compile_workflow_from_env` uses — so callers do not have to
+    reach into the compiler internals.
+
+    Args:
+        spec: A validated workflow specification (``known_tasks`` must be
+            populated so its task references resolve).
+        spec_relpath: Relative path recorded for the spec; also determines
+            where :meth:`WorkflowArtifacts.dump` writes (its parent joined with
+            the release name).
+        variant: Optional platform variant suffix (e.g. ``"gcp"``).
+        pkg_name_prefix: Package name prefix for the generated artifacts.
+        results_env_var: Name of the environment variable the generated CLI
+            reads for its results URL (default ``"WT_RESULTS"``). Must match
+            whatever the invoker sets at run time.
+        env_overrides: Optional parsed env-overrides fragment.
+        installed_requirements: Optional pinned requirements for the README
+            fingerprint (none by default — this path performs no solve).
+
+    Returns:
+        The compiled :class:`WorkflowArtifacts`.
+
+    Examples:
+        >>> # from wt_compiler.spec import Spec
+        >>> # spec = Spec.model_validate(data)  # doctest: +SKIP
+        >>> # artifacts = compile_spec_in_process(spec, variant="gcp")  # doctest: +SKIP
+    """
+    defaults = _load_default_injections()
+    spec_supplied_names = {r.name for r in spec.conda_requirements} | {
+        r.name for r in spec.pypi_requirements
+    }
+    merged_default = compute_merged_default_feature(
+        defaults,
+        spec_supplied_names=spec_supplied_names,
+        env_overrides=env_overrides,
+    )
+    return compile_workflow(
+        spec,
+        spec_relpath,
+        merged_default_feature=merged_default,
+        env_overrides=env_overrides,
+        installed_requirements=installed_requirements,
+        variant=variant,
+        pkg_name_prefix=pkg_name_prefix,
+        results_env_var=results_env_var,
+    )
+
+
 class ParsedRequirements(NamedTuple):
     """Result of parsing requirements from a spec YAML.
 

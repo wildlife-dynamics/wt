@@ -1,0 +1,131 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wt-compiler-service"
+dynamic = ["version"]
+description = "Hot-registry FastAPI service for on-the-fly workflow compilation"
+requires-python = ">=3.12"
+license = { text = "BSD-3-Clause" }
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "wt-compiler>=0.1.0,<1.0.0",
+    # wt-registry (and the task libraries) provide in-process discovery; the
+    # service cannot warm a registry without them.
+    "wt-registry>=0.1.0,<1.0.0",
+    # wt-invokers provides CompiledPackageInvoker, the shared run mechanic.
+    "wt-invokers>=0.1.0,<1.0.0",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.20.0",
+    "pydantic>=2.0.0,<3.0.0",
+    "ruamel.yaml>=0.17.0,<0.19.0",  # <0.19.0 pin; xref wt-compiler/src/wt_compiler/default-env-injections.toml for detail
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "httpx>=0.24.0",  # required by fastapi.testclient.TestClient
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+]
+
+[tool.uv.sources]
+# Development override - uses local editable packages
+# Published packages will reference PyPI/conda versions normally
+wt-contracts = { path = "../wt-contracts", editable = true }
+wt-registry = { path = "../wt-registry", editable = true }
+wt-compiler = { path = "../wt-compiler", editable = true }
+wt-invokers = { path = "../wt-invokers", editable = true }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+tag_regex = "^wt-compiler-service/v(?P<version>[0-9.]+)$"
+root = ".."
+version_file = "src/wt_compiler_service/_version.py"
+git_describe_command = [
+    "git", "describe", "--dirty", "--tags", "--long", "--match", "wt-compiler-service/v*",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--cov=wt_compiler_service --cov-report=term-missing"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+# Transitive dep of wt-compiler, absent/untyped when type-checking here.
+module = [
+    "rattler",
+    "rattler.*",
+]
+ignore_missing_imports = true
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+extend-select = [
+    "E",       # pycodestyle errors
+    "W",       # pycodestyle warnings
+    "I",       # isort
+    "B",       # flake8-bugbear
+    "C4",      # flake8-comprehensions
+    "UP",      # pyupgrade
+    "N",       # pep8-naming
+    "RUF",     # ruff-specific
+    "PLC0415", # import-outside-top-level (mandatory per CLAUDE.md)
+    "ANN",     # flake8-annotations
+    "D",       # pydocstyle
+    "SIM",     # flake8-simplify
+    "RET",     # flake8-return
+    "PIE",     # flake8-pie
+    "PTH",     # flake8-use-pathlib
+    "ICN",     # flake8-import-conventions
+    "TID",     # flake8-tidy-imports
+    "TC",      # flake8-type-checking
+    "ISC",     # flake8-implicit-str-concat
+    "YTT",     # flake8-2020
+    "PERF",    # Perflint
+    "FURB",    # refurb
+    "LOG",     # flake8-logging
+    "G",       # flake8-logging-format
+    "PT",      # flake8-pytest-style
+    "ASYNC",   # flake8-async
+    "S",       # flake8-bandit
+    "ARG",     # flake8-unused-arguments
+    "BLE",     # flake8-blind-except
+    "PLE",     # Pylint errors
+    "PLW",     # Pylint warnings
+]
+ignore = [
+    "E501",   # line length — handled by formatter
+    "ISC001", # conflicts with formatter
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401", "D104"]
+"tests/**/*.py" = ["D", "S101", "ANN", "ARG", "PT011"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Query", "fastapi.Depends"]

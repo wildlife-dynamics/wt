@@ -24,7 +24,7 @@ def test_is_waitable() -> None:
 async def test_is_installed_reflects_build_cache() -> None:
     invoker = _invoker()
     assert await invoker.is_installed() is False
-    invoker._release_dir = Path("/build/wt-demo-workflow")
+    invoker.release_dir = Path("/build/wt-demo-workflow")
     assert await invoker.is_installed() is True
 
 
