@@ -37,7 +37,6 @@ from wt_invokers import (
     AbstractInvoker,
     CloudBatchInvoker,
     CloudRunJobsSandboxInvoker,
-    CompileFromEnvInvoker,
     LocalSubprocessInvoker,
     SandboxInvoker,
 )
@@ -86,9 +85,6 @@ INVOKERS: dict[str, type[AbstractInvoker]] = {
     "CloudBatchInvoker": CloudBatchInvoker,
     "SandboxInvoker": SandboxInvoker,
     "CloudRunJobsSandboxInvoker": CloudRunJobsSandboxInvoker,
-    # Spec-driven (compile-on-the-fly) invoker; requires a `spec_path` rather
-    # than a `matchspec`. Runs against a baked env with wt-compiler + tasks.
-    "CompileFromEnvInvoker": CompileFromEnvInvoker,
 }
 
 TITLE = "wt-runner"
@@ -263,65 +259,45 @@ def health_check() -> dict[str, str]:
 
 def resolve_matchspec(
     matchspec: str | None = Query(None, description="Matchspec for the workflow."),
-) -> MatchSpec | None:
-    """Get the matchspec for the workflow, or None if not provided.
-
-    Spec-driven invokers (e.g. ``CompileFromEnvInvoker``) do not need a
-    matchspec, so the requirement is enforced by :func:`resolve_invoker` only
-    for matchspec-driven invokers rather than here.
+) -> MatchSpec:
+    """Get the matchspec for the workflow.
 
     Args:
-        matchspec: Rattler matchspec string.
+        matchspec: Rattler matchspec string
 
     Returns:
-        Parsed MatchSpec object, or None when neither the query param nor the
-        ``ECOSCOPE_WORKFLOWS_MATCHSPEC_OVERRIDE`` env var is set.
+        Parsed MatchSpec object
+
+    Raises:
+        ValueError: If matchspec is not provided
     """
     matchspec_override = os.environ.get("ECOSCOPE_WORKFLOWS_MATCHSPEC_OVERRIDE")
     matchspec_str = matchspec_override or matchspec
-    return MatchSpec(matchspec_str) if matchspec_str else None
+    if not matchspec_str:
+        raise ValueError("Query param `matchspec` is required.")
+    return MatchSpec(matchspec_str)
 
 
 async def resolve_invoker(
     invoker_type: str = Query("BlockingLocalSubprocessInvoker"),
-    matchspec: MatchSpec | None = Depends(resolve_matchspec),
-    spec_path: str | None = Query(
-        None,
-        description="Path to a spec.yaml for spec-driven (compile-on-the-fly) invokers.",
-    ),
+    matchspec: MatchSpec = Depends(resolve_matchspec),
 ) -> AbstractInvoker:
-    """Resolves the invoker name to the corresponding invoker instance.
-
-    Most invokers are matchspec-driven and identify a pre-built workflow
-    package. Spec-driven invokers (:class:`CompileFromEnvInvoker` and
-    subclasses) instead take a ``spec_path`` and compile on the fly against a
-    baked environment.
+    """Resolves the invoker name to the corresponding invoker class.
 
     Args:
-        invoker_type: Type of invoker to use.
-        matchspec: Workflow matchspec (required for matchspec-driven invokers).
-        spec_path: Path to a spec.yaml (required for spec-driven invokers).
+        invoker_type: Type of invoker to use
+        matchspec: Workflow matchspec
 
     Returns:
-        Configured and installed invoker instance.
+        Configured and installed invoker instance
 
     Raises:
-        ValueError: If the invoker type is unknown, or the required
-            identifier (matchspec or spec_path) for that invoker is missing.
+        ValueError: If unknown invoker type specified
     """
     if invoker_type not in INVOKERS:
         raise ValueError(f"Unknown invoker name: {invoker_type}")
 
-    invoker_cls = INVOKERS[invoker_type]
-    if issubclass(invoker_cls, CompileFromEnvInvoker):
-        if not spec_path:
-            raise ValueError(f"Query param `spec_path` is required for {invoker_type}.")
-        invoker: AbstractInvoker = invoker_cls(spec_path=spec_path)
-    else:
-        if matchspec is None:
-            raise ValueError("Query param `matchspec` is required.")
-        invoker = invoker_cls(matchspec=matchspec)
-
+    invoker = INVOKERS[invoker_type](matchspec=matchspec)
     is_installed = await invoker.is_installed()
     if not is_installed:
         await invoker.install()

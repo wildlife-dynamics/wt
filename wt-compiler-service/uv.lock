@@ -1216,10 +1216,9 @@ requires-dist = [
     { name = "py-rattler", specifier = ">=0.8.0" },
     { name = "ruamel-yaml", specifier = ">=0.17.0,<0.19.0" },
     { name = "stamina", specifier = ">=25.1.0,<26" },
-    { name = "wt-compiler", marker = "extra == 'compile'", editable = "../wt-compiler" },
     { name = "wt-contracts", editable = "../wt-contracts" },
 ]
-provides-extras = ["gcp", "compile"]
+provides-extras = ["gcp"]
 
 [package.metadata.requires-dev]
 dev = [

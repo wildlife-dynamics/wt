@@ -48,7 +48,6 @@ from __future__ import annotations
 from wt_invokers.abstract import AbstractInvoker
 from wt_invokers.cloud_batch import CloudBatchInvoker
 from wt_invokers.cloud_run_jobs import CloudRunJobsSandboxInvoker
-from wt_invokers.compile_from_env import CompileFromEnvInvoker
 from wt_invokers.compiled_package import CompiledPackageInvoker
 from wt_invokers.exceptions import (
     InstallationError,
@@ -72,7 +71,6 @@ __all__ = [
     "AbstractInvoker",
     "CloudBatchInvoker",
     "CloudRunJobsSandboxInvoker",
-    "CompileFromEnvInvoker",
     "CompiledPackageInvoker",
     "InstallationError",
     "InvocationTimeoutError",

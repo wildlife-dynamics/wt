@@ -7,10 +7,8 @@ environment, with the package directory on ``PYTHONPATH``. The frozen env is
 expected to supply every runtime dependency, so ``pixi`` is never invoked.
 
 It is matchspec-agnostic (the workflow is identified by an on-disk package, not
-a match spec) and is the base for :class:`~wt_invokers.compile_from_env.
-CompileFromEnvInvoker`, which adds an on-the-fly compile step in front of it.
-Callers that compile elsewhere (e.g. a hot compile server) construct this
-directly with a pre-built package.
+a match spec). Callers that compile elsewhere (e.g. the wt-compiler-service hot
+compile server) construct this directly with a pre-built package.
 """
 
 from __future__ import annotations

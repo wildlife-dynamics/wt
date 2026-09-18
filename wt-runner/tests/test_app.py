@@ -48,35 +48,10 @@ def test_resolve_matchspec_with_query_param():
     assert str(matchspec) == "numpy >=1.20"
 
 
-def test_resolve_matchspec_without_param_returns_none():
-    """Matchspec resolution returns None without a param (spec-driven invokers)."""
-    assert resolve_matchspec(matchspec=None) is None
-
-
-async def test_resolve_invoker_matchspec_required_when_missing():
-    """A matchspec-driven invoker with no matchspec raises."""
+def test_resolve_matchspec_without_param_raises():
+    """Test matchspec resolution raises without parameter."""
     with pytest.raises(ValueError, match="Query param `matchspec` is required"):
-        await resolve_invoker(
-            invoker_type="BlockingLocalSubprocessInvoker", matchspec=None, spec_path=None
-        )
-
-
-async def test_resolve_invoker_compile_from_env_requires_spec_path():
-    """The spec-driven invoker with no spec_path raises."""
-    with pytest.raises(ValueError, match="`spec_path` is required"):
-        await resolve_invoker(invoker_type="CompileFromEnvInvoker", matchspec=None, spec_path=None)
-
-
-async def test_resolve_invoker_compile_from_env_builds_with_spec_path():
-    """The spec-driven invoker is constructed from spec_path (build skipped)."""
-    from wt_invokers import CompileFromEnvInvoker  # noqa: PLC0415
-
-    with patch.object(CompileFromEnvInvoker, "is_installed", new=AsyncMock(return_value=True)):
-        invoker = await resolve_invoker(
-            invoker_type="CompileFromEnvInvoker", matchspec=None, spec_path="specs/demo.yaml"
-        )
-    assert isinstance(invoker, CompileFromEnvInvoker)
-    assert invoker.spec_path == "specs/demo.yaml"
+        resolve_matchspec(matchspec=None)
 
 
 def test_resolve_results_url_with_scheme():

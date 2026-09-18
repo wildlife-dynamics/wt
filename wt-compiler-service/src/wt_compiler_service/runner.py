@@ -4,8 +4,7 @@ This is the "run" half: given a compiled package on disk (produced by
 :mod:`wt_compiler_service.builder`), it launches the package's generated CLI as
 an isolated subprocess in the same (shared) environment via
 :class:`wt_invokers.CompiledPackageInvoker` — the same run mechanic
-``CompileFromEnvInvoker`` and ``wt-runner`` use, rather than a bespoke
-reimplementation.
+``wt-runner`` uses, rather than a bespoke reimplementation.
 
 Results support both shapes: the caller may pass a ``results_url`` to persist
 to (any obstore-supported URL the compiled CLI writes to), or omit it to use a
