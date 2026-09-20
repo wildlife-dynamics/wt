@@ -135,7 +135,7 @@ def _platform_from_str(value: str | Platform) -> Platform:
 PlatformType = Annotated[
     Platform,
     BeforeValidator(_platform_from_str),
-    PlainSerializer(lambda value: str(value)),
+    PlainSerializer(str),
 ]
 
 

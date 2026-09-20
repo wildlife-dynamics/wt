@@ -302,6 +302,9 @@ async def _create_environment(
     for attempt in range(1, MAX_INSTALL_RETRIES + 1):
         # Ensure clean env_path and cache_dir for each attempt
         # Both must be cleaned to avoid stale state from partial installs
+        # ASYNC240 is suppressed below: these are local, near-instant directory ops on a
+        # CLI compile path, and the shutil.rmtree beside them blocks regardless;
+        # dispatching only the pathlib calls to a thread would not unblock anything.
         if env_path.exists():
             shutil.rmtree(env_path, ignore_errors=True)
         env_path.mkdir(parents=True, exist_ok=True)
@@ -346,7 +349,7 @@ async def _create_environment(
     raise EnvironmentCreationError(
         env_path=env_path,
         requirements=requirements,
-        original_error=last_error if last_error else RuntimeError("Unknown error"),
+        original_error=last_error or RuntimeError("Unknown error"),
         phase="install",
     ) from last_error
 
