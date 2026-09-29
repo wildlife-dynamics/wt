@@ -862,7 +862,7 @@ requires-dist = [
     { name = "questionary", specifier = ">=2.0.0,<3.0.0" },
     { name = "ruamel-yaml", specifier = ">=0.17.0,<0.19.0" },
     { name = "ruff", specifier = "==0.16.6" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = "==0.16.6" },
     { name = "tomli-w", specifier = ">=1.0.0" },
     { name = "types-jsonschema", marker = "extra == 'dev'" },
     { name = "wt-contracts", editable = "../wt-contracts" },
@@ -877,7 +877,7 @@ dev = [
     { name = "pytest", specifier = ">=7.0.0" },
     { name = "pytest-asyncio", specifier = ">=0.23.0" },
     { name = "pytest-cov", specifier = ">=4.0.0" },
-    { name = "ruff", specifier = ">=0.1.0" },
+    { name = "ruff", specifier = "==0.16.6" },
     { name = "types-jsonschema" },
 ]
 
