@@ -86,14 +86,17 @@ local_questions = [
     {"dest": "local_path", "argparse": {"help": "Local output path", "type": str}, "wizard": {}},
 ]
 
+
 class MyProvider(DefaultWizardProvider):
     def get_questions(self):
         common = super().get_questions()
-        common.append({
-            "dest": "variant",
-            "argparse": {"help": "Platform variant", "type": str, "choices": ["gcp", "local"]},
-            "wizard": {},
-        })
+        common.append(
+            {
+                "dest": "variant",
+                "argparse": {"help": "Platform variant", "type": str, "choices": ["gcp", "local"]},
+                "wizard": {},
+            }
+        )
         return (
             common
             + with_condition(gcp_questions, lambda a: a.get("variant") == "gcp")
@@ -167,14 +170,17 @@ and can be selected directly with `--provider my-provider`.
 # src/my_wt_provider/provider.py
 from wt_compiler.wizard import DefaultWizardProvider
 
+
 class MyProvider(DefaultWizardProvider):
     def get_questions(self):
         questions = super().get_questions()
-        questions.append({
-            "dest": "my_extra_field",
-            "argparse": {"help": "Extra field", "type": str},
-            "wizard": {},
-        })
+        questions.append(
+            {
+                "dest": "my_extra_field",
+                "argparse": {"help": "Extra field", "type": str},
+                "wizard": {},
+            }
+        )
         return questions
 ```
 

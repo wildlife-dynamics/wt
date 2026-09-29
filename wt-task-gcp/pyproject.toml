@@ -34,6 +34,8 @@ version_file = "src/wt_task_gcp/_version.py"
 git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--match", "wt-task-gcp/v*"]
 
 [tool.ruff.lint]
+# Ruff's legacy defaults; extend-select below is the source of truth.
+select = ["E4", "E7", "E9", "F"]
 extend-select = [
     # already-explicit families (kept; F dropped — it's a default)
     "E",       # pycodestyle errors (extends defaults E4/E7/E9 with E1/E2/E5)
