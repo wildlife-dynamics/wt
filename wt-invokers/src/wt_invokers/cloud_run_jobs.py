@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import timedelta
 
 try:
     from google.cloud.run_v2 import JobsAsyncClient, RunJobRequest
@@ -34,7 +35,7 @@ class CloudRunJobsSandboxInvoker(AbstractInvoker):
     """Proxy invoker that triggers a Cloud Run Job to execute the sandbox CLI.
 
     The per-invocation values — ``environment_tar_url``, ``results_upload_url``,
-    ``job_name``, ``project_id``, and optional ``region`` — come in as
+    ``job_name``, ``project_id``, and optional ``region`` and ``timeout`` — come in as
     ``**kwargs`` on each :meth:`run` call. Nothing is stored on the instance
     between invocations.
 
@@ -113,6 +114,7 @@ class CloudRunJobsSandboxInvoker(AbstractInvoker):
         job_name: str,
         project_id: str,
         region: str = "us-central1",
+        timeout: float | None = None,  # noqa: ASYNC109  # remote execution deadline sent to Cloud Run, not a local await deadline
     ) -> None:
         """Trigger a new execution of the pre-deployed Cloud Run Job.
 
@@ -145,6 +147,8 @@ class CloudRunJobsSandboxInvoker(AbstractInvoker):
             job_name: Short name of the pre-deployed Cloud Run Job.
             project_id: GCP project ID.
             region: GCP region (default ``us-central1``).
+            timeout: Optional per-execution timeout in seconds; overrides the job
+                template's task timeout. ``None`` keeps the template default.
 
         Raises:
             ValueError: If ``environment_tar_digest`` is malformed, or if
@@ -217,6 +221,8 @@ class CloudRunJobsSandboxInvoker(AbstractInvoker):
         container_override.args = container_args
         container_override.env = [EnvVar(name=k, value=v) for k, v in env_vars.items()]
         override.container_overrides = [container_override]
+        if timeout:
+            override.timeout = timedelta(seconds=int(timeout))
 
         request = RunJobRequest(
             name=fq_job_name,

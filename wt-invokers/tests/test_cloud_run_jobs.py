@@ -7,6 +7,7 @@ without the real SDK.
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -211,6 +212,7 @@ class FakeContainerOverride:
 class FakeOverrides:
     def __init__(self) -> None:
         self.container_overrides: list[Any] = []
+        self.timeout: Any = None
 
 
 def _make_fakes(captured: dict[str, Any]) -> tuple[Any, type]:
@@ -294,6 +296,65 @@ async def test_run_builds_container_args(mock_run_modules: Any) -> None:
     assert "--otel-console-exporter-dst" in args
     assert "stdout" in args
     assert "--dangerously-skip-results-archive-upload" not in args
+
+
+@pytest.mark.asyncio
+async def test_run_sets_execution_timeout_override(mock_run_modules: Any) -> None:
+    """A ``timeout`` kwarg becomes a Duration override on the execution."""
+    captured: dict[str, Any] = {}
+    fake_client, fake_request_cls = _make_fakes(captured)
+
+    with (
+        patch("wt_invokers.cloud_run_jobs.JobsAsyncClient", return_value=fake_client),
+        patch("wt_invokers.cloud_run_jobs.RunJobRequest", fake_request_cls),
+        patch("wt_invokers.cloud_run_jobs.EnvVar", MagicMock),
+    ):
+        inv = CloudRunJobsSandboxInvoker(matchspec=MatchSpec("my-wf>=1.0.0"))
+        await inv.run(
+            workflow_run_id="run-42",
+            config_text="k: v",
+            results_url="file:///results",
+            execution_mode="sequential",
+            mock_io=False,
+            environment_tar_url="https://e/env.tar",
+            environment_tar_digest=_VALID_DIGEST,
+            results_upload_url="https://e/out",
+            job_name="j",
+            project_id="p",
+            timeout=570.0,
+        )
+        await inv.wait()
+
+    assert captured["overrides"].timeout == timedelta(seconds=570)
+
+
+@pytest.mark.asyncio
+async def test_run_omits_timeout_override_by_default(mock_run_modules: Any) -> None:
+    """Without a ``timeout`` kwarg the job template's own default stands."""
+    captured: dict[str, Any] = {}
+    fake_client, fake_request_cls = _make_fakes(captured)
+
+    with (
+        patch("wt_invokers.cloud_run_jobs.JobsAsyncClient", return_value=fake_client),
+        patch("wt_invokers.cloud_run_jobs.RunJobRequest", fake_request_cls),
+        patch("wt_invokers.cloud_run_jobs.EnvVar", MagicMock),
+    ):
+        inv = CloudRunJobsSandboxInvoker(matchspec=MatchSpec("my-wf>=1.0.0"))
+        await inv.run(
+            workflow_run_id="run-42",
+            config_text="k: v",
+            results_url="file:///results",
+            execution_mode="sequential",
+            mock_io=False,
+            environment_tar_url="https://e/env.tar",
+            environment_tar_digest=_VALID_DIGEST,
+            results_upload_url="https://e/out",
+            job_name="j",
+            project_id="p",
+        )
+        await inv.wait()
+
+    assert captured["overrides"].timeout is None
 
 
 @pytest.mark.asyncio
