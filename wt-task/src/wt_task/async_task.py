@@ -18,6 +18,7 @@ except ImportError:
 from typing import TYPE_CHECKING
 
 from .base import K, P, R, V, _Task
+from .cache import record
 from .sync_task import (
     _create_kwargs_iterable,
     _create_mapvalues_kwargs_iterable,
@@ -61,6 +62,17 @@ class AsyncTask(_Task[P, R, K, V]):
 
     executor: AsyncExecutor[P, R]
 
+    def _decline_cache(self) -> None:
+        """Mark this step uncacheable for its dependents.
+
+        An async method hands back a `Future`, not a value, so there is nothing
+        a codec could store. Recording the refusal is what matters: a dependent
+        that folded in a key for a step whose result was never stored would
+        collide across genuinely different runs.
+        """
+        if self.cache is not None:
+            record(self.cache.task_instance_id, None)
+
     def __call__(self, *args: P.args, **kwargs: P.kwargs) -> Future[R]:
         """Execute the task asynchronously.
 
@@ -87,6 +99,7 @@ class AsyncTask(_Task[P, R, K, V]):
         Returns:
             Future representing the pending result
         """
+        self._decline_cache()
         if TRACING_AVAILABLE:
             tracer = trace.get_tracer(__name__)
             with tracer.start_as_current_span(
@@ -117,6 +130,7 @@ class AsyncTask(_Task[P, R, K, V]):
         defaults = _get_defaults(self.func)
         kwargs_iterable = _create_kwargs_iterable(argnames, argvalues, defaults)
 
+        self._decline_cache()
         if TRACING_AVAILABLE:
             tracer = trace.get_tracer(__name__)
             with tracer.start_as_current_span(
@@ -149,6 +163,7 @@ class AsyncTask(_Task[P, R, K, V]):
         defaults = _get_defaults(self.func)
         kwargs_iterable = _create_mapvalues_kwargs_iterable(argnames, argvalues, defaults)
 
+        self._decline_cache()
         if TRACING_AVAILABLE:
             tracer = trace.get_tracer(__name__)
             with tracer.start_as_current_span(

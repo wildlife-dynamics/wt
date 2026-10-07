@@ -9,8 +9,8 @@ from __future__ import annotations
 import functools
 import sys
 import warnings
-from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Generic, Literal, ParamSpec, TypeVar, overload
+from dataclasses import dataclass, field, replace
+from typing import TYPE_CHECKING, Any, Generic, Literal, ParamSpec, TypeVar, overload
 
 if sys.version_info >= (3, 11):
     from typing import Self
@@ -21,10 +21,12 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from .async_task import AsyncTask
+    from .cache import CacheSpec
     from .sync_task import SyncTask
 
 from pydantic import validate_call
 
+from .cache import cached_call
 from .exceptions import handle_errors as handle_errors_fn
 from .executors import AsyncExecutor, SyncExecutor
 from .executors.python import PythonExecutor
@@ -35,6 +37,7 @@ P = ParamSpec("P")
 R = TypeVar("R")
 K = TypeVar("K")
 V = TypeVar("V")
+T = TypeVar("T")  # result of an arbitrary cached execution method
 
 
 @dataclass(frozen=True)
@@ -56,12 +59,17 @@ class _Task(Generic[P, R, K, V]):
         tags: List of tags for categorization
         description: Optional description of the task
         task_instance_id: Optional unique identifier for this task instance
+        cache: Optional cache identity for this step, set by the compiler when
+            the workflow is compiled with caching enabled
     """
 
     func: Callable[P, R]
     tags: list[str]
     description: str | None
     task_instance_id: str | None
+    # kw_only so that a default here does not force one onto `AsyncTask.executor`,
+    # which has no sensible default.
+    cache: CacheSpec | None = field(default=None, kw_only=True)
 
     def set_task_instance_id(self, task_instance_id: str, /) -> Self:
         """Return a new Task with the task_instance_id set.
@@ -242,6 +250,50 @@ class _Task(Generic[P, R, K, V]):
             func=skipif_fn(self.func, conditions=conditions, unpack_depth=unpack_depth),
         )
 
+    def cached(self, spec: CacheSpec) -> Self:
+        """Return a new Task that resolves its result through the step cache.
+
+        Unlike the other builders this sets a field rather than wrapping `func`:
+        `map` and `mapvalues` call `func` once per item, so a wrapper would key
+        per item, and every item of one mapped step shares a single upstream
+        identity. Caching at the method level keeps one entry per step.
+
+        Args:
+            spec: Compile-time cache identity for this task instance
+
+        Returns:
+            New task carrying the cache spec
+
+        Examples:
+            >>> from wt_task import task
+            >>> from wt_task.cache import CacheSpec
+            >>> @task
+            ... def add(a: int, b: int) -> int:
+            ...     return a + b
+            >>> spec = CacheSpec(
+            ...     task_instance_id="sum", anchor="mypkg.tasks",
+            ...     function="add", recipe="abc123",
+            ... )
+            >>> add.cached(spec).cache.task_instance_id
+            'sum'
+            >>> add.cached(spec).call(1, 2)  # inert with WT_CACHE unset
+            3
+        """
+        return replace(self, cache=spec)
+
+    def _through_cache(self, run: Callable[[], T], span: Any = None) -> T:  # noqa: ANN401  # an OTel span, or None when tracing is unavailable
+        """Resolve `run()` through the cache when one is configured.
+
+        Shared by every execution method so that `call`, `map` and `mapvalues`
+        agree on what one cache entry covers: the whole step.
+        """
+        if self.cache is None:
+            return run()
+        result, hit = cached_call(self.cache, run)
+        if span is not None:
+            span.set_attribute("cache.hit", hit)
+        return result
+
     @overload
     def set_executor(
         self,
@@ -302,6 +354,7 @@ class _Task(Generic[P, R, K, V]):
                     tags=self.tags,
                     description=self.description,
                     task_instance_id=self.task_instance_id,
+                    cache=self.cache,
                     executor=PythonExecutor(),
                 )
             case AsyncExecutor():
@@ -310,6 +363,7 @@ class _Task(Generic[P, R, K, V]):
                     tags=self.tags,
                     description=self.description,
                     task_instance_id=self.task_instance_id,
+                    cache=self.cache,
                     executor=name_or_executor,
                 )
             case SyncExecutor():
@@ -318,6 +372,7 @@ class _Task(Generic[P, R, K, V]):
                     tags=self.tags,
                     description=self.description,
                     task_instance_id=self.task_instance_id,
+                    cache=self.cache,
                     executor=name_or_executor,
                 )
             case _:

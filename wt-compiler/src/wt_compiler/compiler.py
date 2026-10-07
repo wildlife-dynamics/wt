@@ -358,6 +358,7 @@ class DagCompiler(BaseModel):
     jinja_templates_dir: pathlib.Path = TEMPLATES
     pkg_name_prefix: str = "wt"
     results_env_var: str = "WT_RESULTS"
+    cache: bool = False
 
     def get_dag_config(self, dag_type: DagTypes, mock_io: bool) -> dict[str, Any]:  # noqa: ARG002  # subclasses dispatch on dag_type
         """Get configuration dict for rendering a DAG.
@@ -369,10 +370,35 @@ class DagCompiler(BaseModel):
         Returns:
             Configuration dictionary for template rendering
         """
-        return self.model_dump(
+        config = self.model_dump(
             exclude={"jinja_templates_dir"},
             context={"mock_io": mock_io},
         )
+        if self.cache:
+            config["cache_specs"] = self._cache_specs()
+        return config
+
+    def _cache_specs(self) -> dict[str, dict[str, Any]]:
+        """Per-task-instance cache identity, for the DAG templates.
+
+        Passed beside the dumped spec rather than as computed fields on the spec
+        models: `Spec.sha256` hashes the serialized spec, so a new serialized
+        field would move every existing workflow's fingerprint.
+        """
+        return {
+            t.id: {
+                "anchor": t.known_task.anchor,
+                # The real function name, not `safe_reference` — two instances of
+                # one function must share a task identity.
+                "function": t.known_task.function_name,
+                "recipe": t.known_task.recipe_hash,
+                "static": t.cache_static,
+                "deps": t.cache_deps,
+                "env": t.cache_env,
+                "source": t.known_task.is_source,
+            }
+            for t in self.spec.flat_workflow
+        }
 
     def _resolved_feature(
         self,

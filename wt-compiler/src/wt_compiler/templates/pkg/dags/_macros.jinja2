@@ -7,6 +7,22 @@ task({{ t.known_task.importable_reference.function }})
 {% endif %}
 .set_task_instance_id("{{ t.id }}")
 .handle_errors()
+{% if cache and not t.known_task.importable_reference.is_mocked %}
+{% set cs = cache_specs[t.id] %}
+.cached(
+    CacheSpec(
+        task_instance_id="{{ t.id }}",
+        anchor="{{ cs.anchor }}",
+        function="{{ cs.function }}",
+        recipe="{{ cs.recipe }}",
+        static="{{ cs.static }}",
+        deps={{ cs.deps }},
+        env={ {% for name in cs.env %}"{{ name }}": os.environ.get("{{ name }}", ""),{% endfor %} },
+        params={{ params }},
+        source={{ cs.source }},
+    )
+)
+{% endif %}
 .with_tracing()
 {% if t.skipif %}
 .skipif(

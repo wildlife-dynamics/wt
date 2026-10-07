@@ -846,6 +846,7 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff" },
     { name = "types-jsonschema" },
+    { name = "wt-task" },
 ]
 
 [package.metadata]
@@ -880,6 +881,7 @@ dev = [
     { name = "pytest-cov", specifier = ">=4.0.0" },
     { name = "ruff", specifier = ">=0.1.0" },
     { name = "types-jsonschema" },
+    { name = "wt-task", editable = "../wt-task" },
 ]
 
 [[package]]
@@ -903,4 +905,33 @@ dev = [
     { name = "pytest-cov", specifier = ">=4.0.0" },
     { name = "ruff", specifier = ">=0.1.0" },
     { name = "types-jsonschema" },
+]
+
+[[package]]
+name = "wt-task"
+source = { editable = "../wt-task" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "wt-contracts" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "obstore", marker = "extra == 'cache'", specifier = ">=0.6.0" },
+    { name = "opentelemetry-api", marker = "extra == 'gcp'", specifier = ">=1.20.0" },
+    { name = "opentelemetry-exporter-gcp-trace", marker = "extra == 'gcp'", specifier = ">=1.6.0" },
+    { name = "opentelemetry-sdk", marker = "extra == 'gcp'", specifier = ">=1.20.0" },
+    { name = "pydantic", specifier = ">=2.0.0,<3.0.0" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'", specifier = ">=4.0.0" },
+    { name = "wt-contracts", editable = "../wt-contracts" },
+]
+provides-extras = ["cache", "gcp"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.0.0" },
+    { name = "pytest", specifier = ">=7.0.0" },
+    { name = "pytest-asyncio", specifier = ">=0.21.0" },
+    { name = "pytest-cov", specifier = ">=4.0.0" },
+    { name = "ruff", specifier = ">=0.1.0" },
 ]

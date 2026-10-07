@@ -29,6 +29,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+cache = [
+    "obstore>=0.6.0",
+]
 gcp = [
     "opentelemetry-api>=1.20.0",
     "opentelemetry-sdk>=1.20.0",
@@ -86,6 +89,13 @@ warn_no_return = true
 module = [
     "opentelemetry",
     "opentelemetry.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "obstore",
+    "obstore.*",
 ]
 ignore_missing_imports = true
 
