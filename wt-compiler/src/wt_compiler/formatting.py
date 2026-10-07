@@ -28,14 +28,10 @@ _TARGET_VERSION = "py310"
 _neutral_cwd = tempfile.TemporaryDirectory(prefix="wt-compiler-ruff-")
 _NEUTRAL_CWD = _neutral_cwd.name
 
-# Rule set applied to generated code. ``--select`` pins ruff's pre-0.16 built-in
-# defaults: 0.16 widened them to include pyupgrade, which rewrites annotations the
-# templates spell out (``Optional[X]`` -> ``X | None``, ``typing.Coroutine`` ->
-# ``collections.abc``). Pinning keeps generated code tracking the templates rather
-# than the installed ruff. ``I`` sorts imports; ``B006`` flags mutable default
-# arguments.
-_SELECT = "E4,E7,E9,F"
-_EXTEND_SELECT = "B006,I"
+# Added on top of ruff's defaults, which generated code rides as-is. Those are wide as
+# of 0.16 (~400 rules), so the exact ``ruff==0.16.6`` pin in pyproject.toml -- not this
+# string -- is what holds generated output still; of the three, only ``I`` is additive.
+_EXTEND_SELECT = "B006,I,UP"
 
 
 def ruff_formatted(returns_str_func: Callable[..., str]) -> Callable[..., str]:
@@ -102,8 +98,6 @@ def ruff_formatted(returns_str_func: Callable[..., str]) -> Callable[..., str]:
                 _LINE_LENGTH,
                 "--target-version",
                 _TARGET_VERSION,
-                "--select",
-                _SELECT,
                 "--extend-select",
                 _EXTEND_SELECT,
                 "--exit-zero",
