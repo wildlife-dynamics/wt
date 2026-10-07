@@ -7,28 +7,16 @@ import tempfile
 from collections.abc import Callable
 from typing import Any
 
-# Generated-code formatting is pinned so output is byte-for-byte reproducible
-# regardless of where the compiler runs. Two ambient influences are neutralized:
+# Generated code must format identically wherever the compiler runs, which takes
+# two guards. ``--isolated`` plus the explicit values below stop ruff resolving
+# config from the CWD; the reverse-integration suite's line length was silently
+# rewrapping every generated file. ``--isolated`` doesn't stop isort inferring
+# first-party modules from the filesystem, so ruff also runs from an empty
+# directory (``_NEUTRAL_CWD``): a nearby ``conftest.py`` otherwise splits the
+# generated ``from conftest import ...`` into its own import group, which is what
+# drifted that same harness.
 #
-# 1. Config discovery. Every ruff invocation passes ``--isolated`` (ignore any
-#    ``pyproject.toml``/``ruff.toml`` found by walking up from the CWD) plus an
-#    explicit line length, target version, and rule set. Without this, ruff
-#    resolves config from the CWD, so the same spec compiled from different
-#    directories produced different formatting (e.g. the reverse-integration
-#    suite, whose config sets a different line length, silently rewrapped every
-#    generated file).
-#
-# 2. isort first-party detection. ``--isolated`` ignores config *files* but ruff
-#    still infers first-party modules from the filesystem around the CWD. If the
-#    CWD (or its ``src/``) contains, say, a ``conftest.py``, ruff classifies the
-#    generated ``from conftest import ...`` as first-party and splits it into its
-#    own import group. The reverse-integration harness has exactly such a
-#    ``src/conftest.py``, which drifted its recompiled output from the release
-#    pipeline's. Running ruff from an empty neutral directory (``_NEUTRAL_CWD``)
-#    removes any such filesystem signal.
-#
-# The values below match the generated package's declared environment
-# (``requires-python = ">=3.10"``) and ruff's default line length.
+# py310 matches the generated package's ``requires-python``; 88 is ruff's default.
 _LINE_LENGTH = "88"
 _TARGET_VERSION = "py310"
 
