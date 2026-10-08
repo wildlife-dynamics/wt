@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.3.1 — 2026-10-08
+
+- Release to pick up the new `wt-invokers-gcp>=0.6.0` floor in `wt-runner-gcp`; no changes to the Python package contents
+
 ## v0.3.0 — 2026-05-28
 
 - Add `GET /params` endpoint that returns the workflow's `params.json` by proxying the compiled CLI's new `get params` metadata attribute ([#178](https://github.com/wildlife-dynamics/wt/pull/178))
