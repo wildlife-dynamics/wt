@@ -9,7 +9,7 @@ import builtins
 import copy
 import hashlib
 import keyword
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Self, TypedDict, cast
 
@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 ImportableReference = Annotated[str, AfterValidator(validate_importable_reference)]
 
 
-class TaskTag(str, Enum):
+class TaskTag(StrEnum):
     """Tags for categorizing tasks."""
 
     io = "io"
@@ -276,8 +276,10 @@ class SerializedVariableValuesDict(TypedDict):
     asstr: str
     asdict: dict[
         str,
-        "SerializedInlineValue | SerializedVars"
-        " | SerializedVariableValuesDict | SerializedVariableValuesList",
+        (
+            "SerializedInlineValue | SerializedVars"
+            " | SerializedVariableValuesDict | SerializedVariableValuesList"
+        ),
     ]
     has_variable_values: bool
 
