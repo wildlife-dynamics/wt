@@ -6,9 +6,11 @@ emitted code and the runtime agree — not that each half works in isolation.
 """
 
 import sys
+import warnings
 from pathlib import Path
 
 import pytest
+from wt_task.cache import CacheMismatchWarning
 
 # Private, but the fixture has to invalidate what the runtime memoizes per process.
 from wt_task.cache._key import _packages_distributions, distribution_version
@@ -60,6 +62,27 @@ def transform(data: dict, factor: int) -> dict:
     return {"rows": [r * factor for r in data["rows"]]}
 
 
+def relabel(data: dict, tag: str) -> dict:
+    """A mid-DAG step whose key moves with `tag` but whose output never does."""
+    _log("relabel", tag)
+    return {"rows": data["rows"]}
+
+
+def stamp(payload: int) -> dict:
+    """Tagged `no-cache`: never served, but always returns the same thing."""
+    _log("stamp", payload)
+    return {"rows": [1, 2, 3]}
+
+
+def wobble() -> dict:
+    """Nondeterministic for fixed inputs — what verify mode exists to find."""
+    counter = LOG.parent / "wobble.count"
+    n = int(counter.read_text()) + 1 if counter.exists() else 1
+    counter.write_text(str(n))
+    _log("wobble", n)
+    return {"rows": [n]}
+
+
 def summarise(data: dict, label: str) -> dict:
     _log("summarise", label)
     return {"label": label, "total": sum(data["rows"])}
@@ -83,6 +106,9 @@ def _build_spec(
     for name, tags in (
         ("read_source", [wt_spec.TaskTag.io]),
         ("read_stable", [wt_spec.TaskTag.io]),
+        ("stamp", [wt_spec.TaskTag.no_cache]),
+        ("relabel", []),
+        ("wobble", []),
         ("transform", []),
         ("summarise", []),
     ):
@@ -126,6 +152,35 @@ def _build_spec(
     )
 
 
+def _build_relabel_spec(tag="first"):
+    """A four-step DAG whose middle step ignores one of its own arguments."""
+    _build_spec()  # registers the known tasks
+    return wt_spec.Spec.model_validate(
+        {
+            "id": "e2e_relabel",
+            "requirements": [{"name": "python", "version": ">=3.10"}],
+            "workflow": [
+                {"id": "source", "task": "read_source", "partial": {"payload": 1}},
+                {
+                    "id": "tagged",
+                    "task": "relabel",
+                    "partial": {"data": "${{ workflow.source.return }}", "tag": tag},
+                },
+                {
+                    "id": "shaped",
+                    "task": "transform",
+                    "partial": {"data": "${{ workflow.tagged.return }}", "factor": 2},
+                },
+                {
+                    "id": "report",
+                    "task": "summarise",
+                    "partial": {"data": "${{ workflow.shaped.return }}", "label": "Report"},
+                },
+            ],
+        }
+    )
+
+
 @pytest.fixture
 def workflow(tmp_path, monkeypatch):
     """Build, install and return a runnable generated workflow package."""
@@ -133,6 +188,7 @@ def workflow(tmp_path, monkeypatch):
     monkeypatch.setenv("SOURCE_PAYLOAD", "1")
     monkeypatch.delenv("WT_CACHE_EPOCH", raising=False)
     monkeypatch.delenv("WT_CACHE_SCOPE", raising=False)
+    monkeypatch.delenv("WT_CACHE_VERIFY", raising=False)
     monkeypatch.syspath_prepend(str(tmp_path))
 
     (tmp_path / "e2e_tasks.py").write_text(TASKS_MODULE)
@@ -237,14 +293,17 @@ def test_runtime_params_invalidate_the_step_that_receives_them(workflow, tasks):
     tasks.reset()
     run(main, source={"payload": 2})
 
-    assert [c["task"] for c in tasks.calls()] == ["read_source", "transform", "summarise"]
+    # `summarise` is absent because content promotion cuts off there: the new
+    # payload changes `read_source`'s output, but `transform` reads only `rows`
+    # and so reproduces exactly what it produced last time.
+    assert [c["task"] for c in tasks.calls()] == ["read_source", "transform"]
 
 
-# --- source behaviour -------------------------------------------------------
+# --- early cutoff, for any step ---------------------------------------------
 
 
-def test_source_rereading_unchanged_data_cuts_off_recomputation(workflow, tasks, monkeypatch):
-    """Early cutoff: the source re-runs, but its unchanged output stops there."""
+def test_a_source_rereading_unchanged_data_cuts_off_recomputation(workflow, tasks, monkeypatch):
+    """The source re-runs, but its unchanged output stops there."""
     main, _ = workflow(_build_spec(source_task="read_stable"))
     run(main)
     tasks.reset()
@@ -256,6 +315,77 @@ def test_source_rereading_unchanged_data_cuts_off_recomputation(workflow, tasks,
     run(main2)
 
     assert [c["task"] for c in tasks.calls()] == ["read_stable"]
+
+
+def test_a_mid_dag_pure_step_rerunning_also_cuts_off_recomputation(workflow, tasks):
+    """What content promotion buys over the earlier source-only rule."""
+    main, _ = workflow(_build_relabel_spec())
+    run(main)
+    tasks.reset()
+
+    # Only `relabel`'s own literal argument moves, and it ignores that argument.
+    main2, _ = workflow(_build_relabel_spec(tag="other"), name="generated2")
+    run(main2)
+
+    assert [c["task"] for c in tasks.calls()] == ["relabel"]
+
+
+# --- opting out -------------------------------------------------------------
+
+
+def test_an_opted_out_step_runs_every_time_without_poisoning_its_subtree(workflow, tasks):
+    main, _ = workflow(_build_spec(source_task="stamp"))
+    run(main)
+    tasks.reset()
+    run(main)
+
+    # Opting out is a claim about this task, not about everything below it.
+    assert [c["task"] for c in tasks.calls()] == ["stamp"]
+
+
+# --- verify mode ------------------------------------------------------------
+
+
+def _verify_run(main, **params):
+    """Run under `WT_CACHE_VERIFY` and return the mismatch messages."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        run(main, **params)
+    return [str(w.message) for w in caught if issubclass(w.category, CacheMismatchWarning)]
+
+
+def test_verify_mode_names_the_task_instance_that_did_not_reproduce(workflow, tasks, monkeypatch):
+    # Two runs: one to populate the store, then one to compare against it.
+    main, _ = workflow(_build_spec(source_payload=None, source_task="wobble"))
+    run(main)
+
+    monkeypatch.setenv("WT_CACHE_VERIFY", "1")
+    mismatches = _verify_run(main)
+
+    assert len(mismatches) == 1
+    assert "'source'" in mismatches[0]
+    # The steps below it have no stored entry under their new key, so there is
+    # nothing to compare and nothing to report.
+    assert "'shaped'" not in mismatches[0]
+
+
+def test_verify_mode_reports_nothing_for_a_deterministic_dag(workflow, tasks, monkeypatch):
+    main, _ = workflow(_build_spec())
+    run(main)
+    tasks.reset()
+
+    monkeypatch.setenv("WT_CACHE_VERIFY", "1")
+    assert _verify_run(main) == []
+    assert len(tasks.calls()) == 3  # executed anyway, which is the point
+
+
+def test_verify_mode_skips_an_opted_out_step(workflow, tasks, monkeypatch):
+    # It has no stored entry, having already been declared untrustworthy.
+    main, _ = workflow(_build_spec(source_task="stamp"))
+    run(main)
+
+    monkeypatch.setenv("WT_CACHE_VERIFY", "1")
+    assert _verify_run(main) == []
 
 
 # --- inert without a store --------------------------------------------------

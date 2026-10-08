@@ -46,6 +46,7 @@ class TaskTag(str, Enum):
     """Tags for categorizing tasks."""
 
     io = "io"
+    no_cache = "no-cache"
 
 
 class KnownTask(BaseModel):
@@ -107,14 +108,18 @@ class KnownTask(BaseModel):
         ).hexdigest()[:16]
 
     @property
-    def is_source(self) -> bool:
-        """Whether this task reads the outside world.
+    def is_cacheable(self) -> bool:
+        """Whether a stored result may be served for this task.
 
-        A source contributes the digest of its *output* to its dependents' cache
-        keys rather than its own identity, so re-reading unchanged data still
-        lets everything below it hit.
+        The `no-cache` tag is the author's claim that their function returns
+        something a stored copy cannot stand in for. It says nothing about the
+        steps below it: an opted-out task still digests and promotes its output,
+        so its dependents keep hitting.
+
+        Deliberately not a `computed_field`, for the same reason as its
+        neighbours: `Spec.sha256` dumps the model.
         """
-        return TaskTag.io in self.tags
+        return TaskTag.no_cache not in self.tags
 
     def parameters_jsonschema(self, omit_args: list[str] | None = None) -> dict[str, Any]:
         """Get JSON schema for task parameters.

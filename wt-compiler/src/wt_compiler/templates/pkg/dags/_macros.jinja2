@@ -19,7 +19,7 @@ task({{ t.known_task.importable_reference.function }})
         deps={{ cs.deps }},
         env={ {% for name in cs.env %}"{{ name }}": os.environ.get("{{ name }}", ""),{% endfor %} },
         params={{ params }},
-        source={{ cs.source }},
+        servable={{ cs.servable }},
     )
 )
 {% endif %}

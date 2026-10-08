@@ -1,9 +1,17 @@
 """Tests for step caching: the builder, the key, and hit/miss behaviour."""
 
+import warnings
+
 import pytest
 
 from wt_task import task
-from wt_task.cache import CacheSpec, record, run_scope
+from wt_task.cache import (
+    CacheCorruptionError,
+    CacheMismatchWarning,
+    CacheSpec,
+    record,
+    run_scope,
+)
 from wt_task.cache._key import distribution_version, step_identity
 from wt_task.executors.python import PythonExecutor
 from wt_task.skip import SKIP_SENTINEL
@@ -221,32 +229,24 @@ def test_downstream_misses_when_upstream_identity_moves(cache_dir):
     assert len(calls) == 2
 
 
-def test_pure_step_contributes_its_own_identity(cache_dir):
+def test_every_step_contributes_its_output_digest(cache_dir):
+    # Not its own identity: the key below a step must answer "will this produce
+    # the same output?", and only the digest does.
     add, _ = counting_task()
     with run_scope() as ids:
         s = spec("producer")
         add.cached(s).call(1, 2)
-        assert ids["producer"] == step_identity(s)
+        assert ids["producer"] != step_identity(s)
+        assert ids["producer"].startswith("json/v1/")
 
 
-def test_source_contributes_its_output_digest_not_its_identity(cache_dir):
-    # This is what gives early cutoff: a source that re-reads unchanged data
-    # leaves every key below it untouched.
-    add, _ = counting_task()
-    with run_scope() as ids:
-        s = spec("source", source=True)
-        add.cached(s).call(1, 2)
-        assert ids["source"] != step_identity(s)
-        assert ids["source"].startswith("json/v1/")
-
-
-def test_source_returning_unchanged_data_cuts_off_recomputation(cache_dir):
-    source_calls = []
+def test_a_step_rerunning_with_unchanged_output_cuts_off_recomputation(cache_dir):
+    producer_calls = []
     consumer_calls = []
 
     @task
-    def read_source(run: int) -> int:
-        source_calls.append(run)
+    def produce(run: int) -> int:
+        producer_calls.append(run)
         return 42  # same data every run, despite a changing argument
 
     @task
@@ -254,22 +254,22 @@ def test_source_returning_unchanged_data_cuts_off_recomputation(cache_dir):
         consumer_calls.append(n)
         return n * 2
 
-    consumer = transform.cached(spec("consumer", deps={"n": ["source"]}))
+    consumer = transform.cached(spec("consumer", deps={"n": ["producer"]}))
     for run in (1, 2):
         with run_scope():
-            # A changing param forces the source itself to re-execute.
-            read_source.cached(spec("source", source=True, params={"run": run})).call(run)
+            # A changing param forces the producer itself to re-execute.
+            produce.cached(spec("producer", params={"run": run})).call(run)
             consumer.call(42)
 
-    assert source_calls == [1, 2]  # source re-read both runs
+    assert producer_calls == [1, 2]  # producer re-ran both runs
     assert consumer_calls == [42]  # but the step below it still hit
 
 
-def test_source_returning_changed_data_invalidates_downstream(cache_dir):
+def test_a_step_returning_changed_data_invalidates_downstream(cache_dir):
     consumer_calls = []
 
     @task
-    def read_source(run: int) -> int:
+    def produce(run: int) -> int:
         return run  # different data each run
 
     @task
@@ -277,13 +277,157 @@ def test_source_returning_changed_data_invalidates_downstream(cache_dir):
         consumer_calls.append(n)
         return n * 2
 
-    consumer = transform.cached(spec("consumer", deps={"n": ["source"]}))
+    consumer = transform.cached(spec("consumer", deps={"n": ["producer"]}))
     for run in (1, 2):
         with run_scope():
-            read_source.cached(spec("source", source=True, params={"run": run})).call(run)
+            produce.cached(spec("producer", params={"run": run})).call(run)
             consumer.call(run)
 
     assert consumer_calls == [1, 2]
+
+
+def test_two_steps_computing_the_same_value_share_a_downstream_key(cache_dir):
+    # Content promotion makes keys below a step depend on what it produced, not
+    # on which recipe produced it.
+    @task
+    def seven() -> int:
+        return 7
+
+    @task
+    def also_seven() -> int:
+        return 3 + 4
+
+    add, calls = counting_task()
+    consumer = add.cached(spec("consumer", deps={"n": ["producer"]}))
+    for producer in (seven, also_seven):
+        with run_scope():
+            producer.cached(spec("producer", function=producer.func.__name__)).call()
+            consumer.call(1, 2)
+    assert len(calls) == 1
+
+
+# --- opting out of being served -------------------------------------------
+
+
+def test_an_unservable_step_always_executes(cache_dir):
+    add, calls = counting_task()
+    cached = add.cached(spec(servable=False))
+    assert [cached.call(1, 2), cached.call(1, 2)] == [3, 3]
+    assert len(calls) == 2
+
+
+def test_an_unservable_step_stores_nothing(cache_dir):
+    # Verify mode relies on this: a step already declared untrustworthy has no
+    # baseline to compare against, so there is nothing to learn from it.
+    add, _ = counting_task()
+    add.cached(spec(servable=False)).call(1, 2)
+    assert [p for p in cache_dir.rglob("*") if p.is_file()] == []
+
+
+def test_an_unservable_step_does_not_poison_its_dependents(cache_dir):
+    producer_calls = []
+    consumer_calls = []
+
+    @task
+    def produce() -> int:
+        producer_calls.append(1)
+        return 42
+
+    @task
+    def transform(n: int) -> int:
+        consumer_calls.append(n)
+        return n * 2
+
+    consumer = transform.cached(spec("consumer", deps={"n": ["producer"]}))
+    for _ in range(2):
+        with run_scope():
+            produce.cached(spec("producer", servable=False)).call()
+            consumer.call(42)
+
+    assert producer_calls == [1, 1]  # never served
+    assert consumer_calls == [42]  # but everything below it still hit
+
+
+def test_an_unservable_step_promotes_its_output_digest(cache_dir):
+    add, _ = counting_task()
+    with run_scope() as ids:
+        add.cached(spec("producer", servable=False)).call(1, 2)
+        assert ids["producer"].startswith("json/v1/")
+
+
+# --- verify mode -----------------------------------------------------------
+
+
+@pytest.fixture
+def verifying(monkeypatch):
+    monkeypatch.setenv("WT_CACHE_VERIFY", "1")
+
+
+def test_verify_mode_reports_a_nondeterministic_step_by_name(cache_dir, monkeypatch):
+    results = iter([1, 2])
+
+    @task
+    def unstable() -> int:
+        return next(results)
+
+    cached = unstable.cached(spec("wobbly"))
+    cached.call()  # the baseline run
+
+    monkeypatch.setenv("WT_CACHE_VERIFY", "1")
+    with pytest.warns(CacheMismatchWarning, match="'wobbly'"):
+        assert cached.call() == 2  # the fresh value, not the stored one
+
+
+def test_verify_mode_is_quiet_for_a_deterministic_step(cache_dir, monkeypatch):
+    add, calls = counting_task()
+    cached = add.cached(spec())
+    cached.call(1, 2)
+
+    monkeypatch.setenv("WT_CACHE_VERIFY", "1")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        assert cached.call(1, 2) == 3
+    assert [w for w in caught if issubclass(w.category, CacheMismatchWarning)] == []
+    assert len(calls) == 2  # executed anyway, which is the point of verify mode
+
+
+def test_verify_mode_does_not_overwrite_the_baseline(cache_dir, monkeypatch):
+    # The baseline has to stay fixed, or a second verify run would compare a
+    # nondeterministic step against its own last output and report nothing.
+    results = iter([1, 2, 3])
+
+    @task
+    def unstable() -> int:
+        return next(results)
+
+    cached = unstable.cached(spec("wobbly"))
+    cached.call()
+    stored = {p: p.read_bytes() for p in cache_dir.rglob("*") if p.is_file()}
+
+    monkeypatch.setenv("WT_CACHE_VERIFY", "1")
+    for _ in range(2):
+        with pytest.warns(CacheMismatchWarning):
+            cached.call()
+    assert {p: p.read_bytes() for p in cache_dir.rglob("*") if p.is_file()} == stored
+
+
+def test_verify_mode_skips_a_step_that_was_never_stored(cache_dir, verifying):
+    add, _ = counting_task()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        add.cached(spec()).call(1, 2)
+    assert [w for w in caught if issubclass(w.category, CacheMismatchWarning)] == []
+
+
+def test_verify_mode_is_inert_without_a_store(monkeypatch):
+    monkeypatch.delenv("WT_CACHE", raising=False)
+    monkeypatch.setenv("WT_CACHE_VERIFY", "1")
+    add, calls = counting_task()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        assert add.cached(spec()).call(1, 2) == 3
+    assert caught == []
+    assert len(calls) == 1
 
 
 # --- values that must survive the round trip -------------------------------
@@ -363,6 +507,20 @@ def test_mapvalues_caches_the_whole_step(cache_dir):
 
 
 # --- failure handling ------------------------------------------------------
+
+
+def test_a_corrupt_payload_fails_loudly(cache_dir):
+    add, _ = counting_task()
+    cached = add.cached(spec())
+    cached.call(1, 2)
+
+    payload = next(p for p in (cache_dir / "cas").rglob("*") if p.is_file())
+    payload.write_bytes(b"not json at all")
+
+    # Never a silent wrong value, and never a quiet recompute: the entry names an
+    # installed codec and a payload that is present, so the store is lying.
+    with pytest.raises(CacheCorruptionError):
+        cached.call(1, 2)
 
 
 def test_a_raising_task_stores_nothing(cache_dir):

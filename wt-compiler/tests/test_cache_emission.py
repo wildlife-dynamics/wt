@@ -5,10 +5,12 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from wt_contracts.registry import RegistryOutput
 
 from wt_compiler import spec as wt_spec
 from wt_compiler.cli import main
 from wt_compiler.compiler import DagCompiler
+from wt_compiler.discovery import _registry_output_to_known_tasks
 
 
 @pytest.fixture
@@ -66,7 +68,7 @@ def test_new_properties_stay_out_of_the_serialized_spec(demo_spec):
     # every existing workflow's fingerprint.
     dumped = demo_spec.model_dump()["workflow"][0]
     assert not {"cache_deps", "cache_env", "cache_static"} & set(dumped)
-    assert not {"recipe_hash", "is_source"} & set(dumped["known_task"])
+    assert not {"recipe_hash", "is_cacheable"} & set(dumped["known_task"])
 
 
 # --- what gets emitted -----------------------------------------------------
@@ -100,10 +102,9 @@ def test_env_bound_args_are_read_at_runtime(cached_dag):
     assert '"WT_RESULTS": os.environ.get("WT_RESULTS", "")' in cached_dag
 
 
-def test_io_tagged_task_is_marked_a_source(cached_dag):
-    events_block = cached_dag.split("figure = (")[0]
-    assert "source=True" in events_block
-    assert cached_dag.count("source=False") == 2
+def test_every_step_is_servable_unless_its_author_opted_out(cached_dag):
+    assert cached_dag.count("servable=True") == 3
+    assert "servable=False" not in cached_dag
 
 
 def test_runtime_params_reach_the_key(cached_dag):
@@ -121,6 +122,68 @@ def test_mocked_io_dag_is_not_cached(demo_spec):
 def test_async_dag_also_emits_cache_specs(demo_spec):
     dag = DagCompiler(spec=demo_spec, cache=True).render_dag("async")
     assert ".cached(" in dag
+
+
+# --- opting out ------------------------------------------------------------
+
+
+@pytest.fixture
+def optout_dag():
+    for name, tags in (("now", [wt_spec.TaskTag.no_cache]), ("chart", [])):
+        wt_spec.known_tasks[name] = {
+            "demo.tasks": wt_spec.KnownTask(
+                importable_reference=f"demo.tasks.{name}",
+                tags=tags,
+                json_schema={"properties": {}},
+            )
+        }
+    spec = wt_spec.Spec.model_validate(
+        {
+            "id": "optout",
+            "requirements": [{"name": "python", "version": ">=3.10"}],
+            "workflow": [
+                {"id": "stamp", "task": "now"},
+                {
+                    "id": "figure",
+                    "task": "chart",
+                    "partial": {"data": "${{ workflow.stamp.return }}"},
+                },
+            ],
+        }
+    )
+    return DagCompiler(spec=spec, cache=True).render_dag("sequential")
+
+
+def test_an_opted_out_task_is_still_wrapped(optout_dag):
+    # Omitting `.cached(...)` would leave the step unrecorded in run state,
+    # which reads as uncacheable and poisons everything below it — the opposite
+    # of what the author asked for.
+    assert optout_dag.count(".cached(") == 2
+    assert optout_dag.split("figure = (")[0].count("servable=False") == 1
+
+
+def test_only_the_opted_out_task_is_unservable(optout_dag):
+    assert optout_dag.count("servable=False") == 1
+    assert optout_dag.count("servable=True") == 1
+
+
+def test_an_unknown_tag_string_is_silently_dropped():
+    # Pinned because it is the sharp edge the verify mode exists to catch: a
+    # misspelled `no-cahce` caches anyway, with no error and no warning.
+    entries = {
+        "pkg.tasks.typo": {
+            "metadata": {"title": "T", "description": "t", "tags": ["no-cahce"]},
+            "module_path": "pkg.tasks._typo",
+            "public_module_path": "pkg.tasks",
+            "function_name": "typo",
+            "import_statement": "from pkg.tasks import typo as typo",
+            "json_schema": {"properties": {}},
+        }
+    }
+    out = RegistryOutput.model_validate({"entries": entries, "version": "1.0.0"})
+    known = _registry_output_to_known_tasks(out)["typo"]["pkg.tasks"]
+    assert known.tags == []
+    assert known.is_cacheable
 
 
 # --- the identity pieces ---------------------------------------------------
@@ -149,9 +212,12 @@ def test_recipe_hash_distinguishes_different_functions():
     )
 
 
-def test_is_source_follows_the_io_tag():
-    assert wt_spec.KnownTask(importable_reference="m.f", tags=[wt_spec.TaskTag.io]).is_source
-    assert not wt_spec.KnownTask(importable_reference="m.f").is_source
+def test_is_cacheable_follows_the_no_cache_tag():
+    tagged = wt_spec.KnownTask(importable_reference="m.f", tags=[wt_spec.TaskTag.no_cache])
+    assert not tagged.is_cacheable
+    assert wt_spec.KnownTask(importable_reference="m.f").is_cacheable
+    # The cache reads exactly one tag — its own. `io` means "mock me in tests".
+    assert wt_spec.KnownTask(importable_reference="m.f", tags=[wt_spec.TaskTag.io]).is_cacheable
 
 
 def test_cache_static_moves_with_a_literal_argument(demo_spec):

@@ -1,9 +1,10 @@
-"""Derivation hashing: a step's identity, and the per-run state it reads.
+"""A step's cache key, and the per-run state it reads.
 
-A step is keyed by what *produced* it — its code, its literal and runtime
-arguments, and the identities of the steps feeding it — rather than by hashing
-the input values themselves. That is what makes a warm run cheap: it never has
-to decode and re-hash an intermediate it is not going to use.
+Every argument a step receives is content-exact in its key: literals through
+`static`, environment reads through `env`, form values through `params`, and
+upstream outputs through `deps`, as the digests their producers recorded. A
+warm run stays cheap because those digests are read from run state rather than
+recomputed from values the step is not going to decode.
 """
 
 from __future__ import annotations
@@ -25,8 +26,8 @@ if TYPE_CHECKING:
 EPOCH_ENV_VAR = "WT_CACHE_EPOCH"
 SCOPE_ENV_VAR = "WT_CACHE_SCOPE"
 
-# task-instance id -> the identity downstream steps should fold in, or None when
-# that step could not be cached. Absent and None mean the same thing to a reader.
+# task-instance id -> the output digest downstream steps should fold in, or None
+# when that step could not be cached. Absent and None mean the same thing to a reader.
 _RUN_IDS: ContextVar[dict[str, str | None]] = ContextVar("_RUN_IDS")
 
 

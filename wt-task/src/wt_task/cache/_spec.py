@@ -15,8 +15,8 @@ class CacheSpec:
     are only knowable at run time.
 
     Attributes:
-        task_instance_id: This step's id in the spec, under which its identity is
-            recorded for downstream steps.
+        task_instance_id: This step's id in the spec, under which the digest of
+            its output is recorded for downstream steps.
         anchor: Importable module the task function lives in.
         function: Task function name.
         recipe: Compile-time hash of (anchor, function, json_schema). Moves when
@@ -27,10 +27,10 @@ class CacheSpec:
             `widgets: [${{ workflow.a.return }}, ${{ workflow.b.return }}]` does.
         env: Argument name to the environment-variable value bound to it.
         params: Runtime parameters for this step, as the DAG passes them.
-        source: Whether this step reads the outside world. A source contributes
-            the digest of its *output* to downstream keys rather than its own
-            identity, so that re-reading unchanged data still cuts off
-            recomputation below it, and re-reading changed data does not.
+        servable: Whether a stored result may be served for this step. False for
+            a task its author tagged `no-cache`: it then always executes, but
+            still digests and promotes its output, so the claim stays about this
+            task rather than silently disabling everything below it.
     """
 
     task_instance_id: str
@@ -41,4 +41,4 @@ class CacheSpec:
     deps: dict[str, list[str]] = field(default_factory=dict)
     env: dict[str, str] = field(default_factory=dict)
     params: dict[str, Any] = field(default_factory=dict)
-    source: bool = False
+    servable: bool = True

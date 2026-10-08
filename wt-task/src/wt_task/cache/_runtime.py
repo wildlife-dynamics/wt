@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import warnings
 from typing import TYPE_CHECKING, TypeVar
 
@@ -14,6 +15,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Any
 
+    from ._codec import Codec
     from ._spec import CacheSpec
     from ._store import Store
 
@@ -21,6 +23,8 @@ R = TypeVar("R")
 
 KEYS_PREFIX = "keys"
 CAS_PREFIX = "cas"
+
+VERIFY_ENV_VAR = "WT_CACHE_VERIFY"
 
 
 class CacheCorruptionError(RuntimeError):
@@ -33,14 +37,27 @@ class CacheCorruptionError(RuntimeError):
     """
 
 
+class CacheMismatchWarning(UserWarning):
+    """Warned under `WT_CACHE_VERIFY` when a step reproduced a different output.
+
+    Its own category so that a verify run can collect the whole report with
+    `warnings.catch_warnings(record=True)` rather than scraping stderr.
+    """
+
+
+def _verifying() -> bool:
+    """Whether this run is checking stored outputs instead of serving them.
+
+    Read per call rather than at import, matching the other `WT_CACHE_*` knobs,
+    so a test or a notebook can turn it on without reimporting.
+    """
+    return os.environ.get(VERIFY_ENV_VAR, "") not in ("", "0")
+
+
 def _load(store: Store, identity: str) -> tuple[CacheEntry, Any] | None:
     """Return the entry and decoded value, or None for any kind of miss."""
-    raw = store.get(f"{KEYS_PREFIX}/{identity}")
-    if raw is None:
-        return None
-    try:
-        entry = CacheEntry.model_validate_json(raw)
-    except ValueError:  # pydantic's ValidationError subclasses ValueError
+    entry = _read_entry(store, identity)
+    if entry is None:
         return None
 
     codec = get_registry().for_id(entry.codec_id)
@@ -62,13 +79,34 @@ def _load(store: Store, identity: str) -> tuple[CacheEntry, Any] | None:
         ) from e
 
 
-def _save(store: Store, identity: str, value: Any) -> str | None:  # noqa: ANN401  # stores any task return
-    """Store `value` and return its content id, or None if it was not stored."""
-    codec = get_registry().for_value(value)
-    if codec is None:
+def _read_entry(store: Store, identity: str) -> CacheEntry | None:
+    """Return the stored entry for `identity`, or None if there is none to read."""
+    raw = store.get(f"{KEYS_PREFIX}/{identity}")
+    if raw is None:
+        return None
+    try:
+        return CacheEntry.model_validate_json(raw)
+    except ValueError:  # pydantic's ValidationError subclasses ValueError
         return None
 
-    content_id = f"{codec.codec_id}/{codec.digest(value)}"
+
+def _content_id(codec: Codec, value: Any) -> str:  # noqa: ANN401  # digests any task return
+    """Content-address `value`, namespaced by codec so two cannot collide.
+
+    Separate from `_save` because an unservable step still needs the digest —
+    that is what it promotes to its dependents — but stores nothing.
+    """
+    return f"{codec.codec_id}/{codec.digest(value)}"
+
+
+def _save(
+    store: Store,
+    identity: str,
+    codec: Codec,
+    content_id: str,
+    value: Any,  # noqa: ANN401  # stores any task return
+) -> bool:
+    """Store `value` under `identity`, returning whether the store accepted it."""
     try:
         store.put(f"{CAS_PREFIX}/{content_id}", codec.encode(value))
         entry = CacheEntry(
@@ -77,26 +115,36 @@ def _save(store: Store, identity: str, value: Any) -> str | None:  # noqa: ANN40
         store.put(f"{KEYS_PREFIX}/{identity}", entry.model_dump_json().encode("utf-8"))
     except Exception as e:  # noqa: BLE001  # a store that cannot write must not fail the run
         warnings.warn(f"Could not write cache entry {identity}: {e!r}", stacklevel=2)
-        return None
-    return content_id
+        return False
+    return True
 
 
-def _downstream(spec: CacheSpec, identity: str, content_id: str | None) -> str | None:
-    """What dependents of this step should fold into their own keys.
+def _verify(store: Store, spec: CacheSpec, identity: str, content_id: str) -> None:
+    """Warn if a stored output for this key differs from the one just computed.
 
-    A source contributes its output's content id rather than its own identity:
-    re-reading a source that returns unchanged data then leaves every key below
-    it untouched, and re-reading changed data moves all of them.
+    A mismatch is proof that identical declared inputs produced different
+    output — the empirical way to find which tasks need the `no-cache` tag,
+    including the ones whose author misspelled it.
     """
-    if content_id is None:
-        return None
-    return content_id if spec.source else identity
+    entry = _read_entry(store, identity)
+    if entry is None or entry.content_id == content_id:
+        return
+    warnings.warn(
+        f"Cache verification failed for task instance {spec.task_instance_id!r} "
+        f"({spec.anchor}.{spec.function}): stored output {entry.content_id} but "
+        f"recomputed {content_id} for cache key {identity}. The same declared "
+        f"inputs produced different output.",
+        CacheMismatchWarning,
+        stacklevel=2,
+    )
 
 
 def cached_call(spec: CacheSpec, run: Callable[[], R]) -> tuple[R, bool]:
     """Run `run()` through the cache, returning its result and whether it hit.
 
-    Every failure path falls back to running normally and marks this step
+    Every step promotes the digest of its output to its dependents' keys, so a
+    step that re-executes but returns unchanged data stops the recomputation
+    there. Every failure path falls back to running normally and marks this step
     uncacheable for its dependents: an unset store, an unpinnable distribution,
     an uncacheable upstream, a value no codec claims, or a store that will not
     accept a write.
@@ -107,12 +155,28 @@ def cached_call(spec: CacheSpec, run: Callable[[], R]) -> tuple[R, bool]:
         record(spec.task_instance_id, None)
         return run(), False
 
-    loaded = _load(store, identity)
-    if loaded is not None:
-        entry, value = loaded
-        record(spec.task_instance_id, _downstream(spec, identity, entry.content_id))
-        return value, True
+    verifying = _verifying()
+    if spec.servable and not verifying:
+        loaded = _load(store, identity)
+        if loaded is not None:
+            entry, value = loaded
+            record(spec.task_instance_id, entry.content_id)
+            return value, True
 
     result = run()
-    record(spec.task_instance_id, _downstream(spec, identity, _save(store, identity, result)))
+    codec = get_registry().for_value(result)
+    if codec is None:
+        record(spec.task_instance_id, None)
+        return result, False
+
+    digest = _content_id(codec, result)
+    promoted: str | None = digest
+    if spec.servable:
+        if verifying:
+            # A verify run must not write, so the baseline stays fixed and the
+            # check can be repeated.
+            _verify(store, spec, identity, digest)
+        elif not _save(store, identity, codec, digest, result):
+            promoted = None
+    record(spec.task_instance_id, promoted)
     return result, False

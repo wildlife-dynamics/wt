@@ -395,7 +395,7 @@ class DagCompiler(BaseModel):
                 "static": t.cache_static,
                 "deps": t.cache_deps,
                 "env": t.cache_env,
-                "source": t.known_task.is_source,
+                "servable": t.known_task.is_cacheable,
             }
             for t in self.spec.flat_workflow
         }
