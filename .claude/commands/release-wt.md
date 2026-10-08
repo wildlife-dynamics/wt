@@ -63,7 +63,42 @@ When wt-task or wt-runner are being released, their version lower bounds declare
 
 4. If no updates needed, report that and move on
 
-## Step 6 — Generate release notes and update CHANGELOGs
+## Step 6 — Synchronize GCP metapackage lower bounds
+
+Each GCP metapackage pins its parent with a `>=X.Y.Z,<1.0.0` floor in **two**
+places in `<parent>-gcp/pyproject.toml` — the `[project] dependencies` list and
+`[tool.pixi.package.run-dependencies]`. Keep both in lockstep; the pixi block is
+what the conda package actually ships.
+
+Parent → metapackage mapping:
+
+| Parent | Metapackage |
+|--------|-------------|
+| `wt-task` | `wt-task-gcp` |
+| `wt-invokers` | `wt-invokers-gcp` |
+| `wt-runner` | `wt-runner-gcp` |
+
+1. For each parent package in the release set, raise its floor in the matching
+   metapackage to the new parent version, in both places. Preserve the existing
+   `<1.0.0` upper bound. No separate version decision is needed for the
+   metapackage itself — it is tagged in lockstep at the parent's version
+   (Step 8).
+
+2. `wt-runner-gcp` additionally depends on `wt-invokers-gcp`. If **wt-invokers**
+   is being released, raise that floor to the new wt-invokers version too (both
+   places). Because a metapackage is only tagged alongside its parent, this edit
+   does not ship unless wt-runner is released — so if wt-runner is not already in
+   the release set, add it with a **patch bump** (reason: "Pick up new
+   wt-invokers-gcp floor in wt-runner-gcp"), which then also triggers rule 1 for
+   wt-runner-gcp's own `wt-runner` floor.
+
+3. Only ever **raise** a floor. If the current floor is already greater than or
+   equal to the new version, leave it alone and say so.
+
+4. Present the old → new floors and any release added by rule 2, and ask for
+   confirmation before proceeding.
+
+## Step 7 — Generate release notes and update CHANGELOGs
 
 For each package being released:
 
@@ -83,12 +118,12 @@ For each package being released:
    ```
 4. Update `[tool.pixi.package] version` in each released package's `pyproject.toml` to match the new version. For GCP metapackages released in lockstep, update their `pyproject.toml` too.
 5. After preparing all CHANGELOG and pyproject.toml updates, ask the user for final confirmation before committing
-6. Commit **all** CHANGELOG, pyproject.toml, **any default-env-injections.toml lower-bound, and any matching test_default_env_injections.py pin** updates in a single commit (message: `Update CHANGELOGs and pixi versions for release`)
+6. Commit **all** CHANGELOG, pyproject.toml, **any default-env-injections.toml lower-bound, any matching test_default_env_injections.py pin, and any GCP metapackage floor** updates in a single commit (message: `Update CHANGELOGs and pixi versions for release`)
 7. Push the release branch and create a PR to `main` via `gh pr create`. Include today's date in the PR title (e.g., `Update CHANGELOGs for release YYYY-MM-DD`) to avoid duplicate PR names across releases.
 8. Ask the user to merge the PR (branch protection requires a PR to update `main`)
 9. After the user confirms the PR is merged, checkout `main` and pull to get the merge commit — tags must point to commits on `main`
 
-## Step 7 — Tag and push
+## Step 8 — Tag and push
 
 1. For each confirmed release, read the release notes from the committed `<package>/CHANGELOG.md` (the single source of truth) into a temp file and pass it to the tag script via `-f`:
    ```bash
