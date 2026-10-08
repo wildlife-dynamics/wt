@@ -12,7 +12,7 @@ classifiers = [
     "License :: OSI Approved :: BSD License",
 ]
 dependencies = [
-    "wt-invokers>=0.1.0,<1.0.0",
+    "wt-invokers>=0.6.0,<1.0.0",
     "google-cloud-batch>=0.19.0",
     "google-cloud-run>=0.10.0",
     "google-auth>=2.0.0",
@@ -94,7 +94,7 @@ convention = "google"
 
 [tool.pixi.package]
 name = "wt-invokers-gcp"
-version = "0.5.2"
+version = "0.6.0"
 
 [tool.pixi.package.build]
 backend = { name = "pixi-build-python", version = "*", channels = ["conda-forge", "https://prefix.dev/pixi-build-backends"] }
@@ -110,7 +110,7 @@ pip = "*"
 
 [tool.pixi.package.run-dependencies]
 python = ">=3.12,<3.16"
-wt-invokers = ">=0.1.0,<1.0.0"
+wt-invokers = ">=0.6.0,<1.0.0"
 google-cloud-batch = ">=0.19.0"
 google-cloud-run = ">=0.10.0"
 google-auth = ">=2.0.0"

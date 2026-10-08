@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.10.2 — 2026-10-08
+
+- Make generated-code formatting deterministic regardless of where the compiler runs: ruff is invoked with `--isolated`, an explicit line length (88) and target version (`py310`), from an empty working directory, so it no longer picks up the caller's ruff config or treats nearby modules (e.g. `conftest.py`) as first-party. The `UP` rules are now applied to generated code alongside `B006,I` ([#256](https://github.com/wildlife-dynamics/wt/pull/256))
+- Pin the `ruff` dependency to exactly `==0.16.6` (previously `>=0.1.0`) to keep codegen reproducible ([#256](https://github.com/wildlife-dynamics/wt/pull/256))
+- Bump `wt-runner` floor to `>=0.3.1` in `default-env-injections.toml` to match this release's downstream versions
+
 ## v0.10.1 — 2026-09-08
 
 - Change the base image in the generated `Dockerfile` from `bitnami/minideb:bullseye` to `debian:bookworm-slim` (Debian 12) for the `fetch` and `install` stages ([#252](https://github.com/wildlife-dynamics/wt/pull/252))

@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.0 — 2026-10-08
+
+- Add an optional `timeout` argument (seconds) to `CloudRunJobsSandboxInvoker.run()` that overrides the Cloud Run Job template's task timeout for that execution; `None` keeps the template default ([#257](https://github.com/wildlife-dynamics/wt/pull/257))
+- Remove duplicate entries from `wt_invokers.__all__` ([#257](https://github.com/wildlife-dynamics/wt/pull/257))
+
 ## v0.5.2 — 2026-09-07
 
 - Bump the sandbox image's pixi base from `0.63.0` to `0.78.0`, so the published `ghcr.io/wildlife-dynamics/wt-invokers:sandbox-0.5.2` image can solve environments for workflows compiled by wt-compiler >= 0.10.0, whose `pixi.toml` uses rich platforms (pixi >= 0.71) ([#247](https://github.com/wildlife-dynamics/wt/pull/247))
