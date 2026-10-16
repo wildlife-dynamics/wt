@@ -350,7 +350,9 @@ class VersionYaml(BaseModel):
             >>> v = VersionYaml(MAJ=1, MIN=2, PATCH=3)
             >>> # v.dump(Path("VERSION.yaml"))  # doctest: +SKIP
         """
-        with dst.open("wb") as f:
+        # Text handle, not binary: ruamel's C emitter feeds `str` to the
+        # stream regardless of `encoding`, so a "wb" handle raises TypeError.
+        with dst.open("w") as f:
             yaml.dump(self.model_dump(), f)
 
 
