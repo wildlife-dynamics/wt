@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 import pydot
 import pytest
 import rattler
+import ruamel.yaml
 
 from wt_compiler.artifacts import (
     Dags,
@@ -16,6 +17,7 @@ from wt_compiler.artifacts import (
     PixiToml,
     PixiWorkspace,
     Tests,
+    VersionYaml,
     WorkflowArtifacts,
 )
 from wt_compiler.requirements import PlatformWithLinuxRequirement
@@ -177,6 +179,22 @@ class TestPixiToml:
         loaded = PixiToml.from_text(toml_str)
         assert "foo" in loaded.pypi_dependencies
         assert loaded.pypi_dependencies["foo"]["git"] == "https://github.com/org/foo.git"
+
+
+class TestVersionYaml:
+    """Tests for VersionYaml model."""
+
+    def test_dump_writes_version_yaml(self, tmp_path):
+        """dump() writes a loadable VERSION.yaml."""
+        dst = tmp_path / "VERSION.yaml"
+        VersionYaml(MAJ=20, MIN=0).dump(dst)
+
+        assert dst.read_text() == "{MAJ: 20, MIN: 0, PATCH: 0}\n"
+        assert ruamel.yaml.YAML(typ="safe").load(dst) == {
+            "MAJ": 20,
+            "MIN": 0,
+            "PATCH": 0,
+        }
 
 
 class TestWorkflowArtifacts:
