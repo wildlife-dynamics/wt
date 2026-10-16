@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.10.3 — 2026-10-16
+
+- Fix `TypeError` when writing `VERSION.yaml` with newer ruamel-yaml releases: `VersionYaml.dump` now opens the file in text mode, because ruamel's C emitter writes `str` even when an encoding is set ([#261](https://github.com/wildlife-dynamics/wt/pull/261))
+
 ## v0.10.2 — 2026-10-08
 
 - Make generated-code formatting deterministic regardless of where the compiler runs: ruff is invoked with `--isolated`, an explicit line length (88) and target version (`py310`), from an empty working directory, so it no longer picks up the caller's ruff config or treats nearby modules (e.g. `conftest.py`) as first-party. The `UP` rules are now applied to generated code alongside `B006,I` ([#256](https://github.com/wildlife-dynamics/wt/pull/256))
