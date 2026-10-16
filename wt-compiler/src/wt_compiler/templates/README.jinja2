@@ -10,3 +10,13 @@
 # {{ release_name }}
 
 ![](graph.png)
+{% if cache %}
+
+## Caching
+
+Compiled with `--with-caching`. The cache is located by `WT_CACHE`; with it
+unset every step simply runs. Only the sequential DAG caches — an async method
+hands back a future, which has no stored form — so a run in async mode reports
+every step as uncacheable. `result.json` carries a `cache` report saying what
+each step's cache did and why.
+{% endif %}

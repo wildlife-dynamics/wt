@@ -1,36 +1,43 @@
-"""Codec registry: how a task's return value becomes bytes, and back.
+"""Leaf codecs: how one declared value becomes bytes, and back.
 
-A value with no registered codec is simply not cached. There is deliberately no
-pickle fallback: pickle couples every stored entry to the exact version of the
-code that wrote it and turns the cache into a deserialization surface. Refusing
-is always safe — the step runs normally.
+Which codec applies is not decided here — the task's return type declares it
+(`wt_contracts.codecs`) and `_tree` resolves it. This module only holds the
+builtin leaves and the shape a task library's own codecs must have.
+
+There is deliberately no pickle fallback: pickle couples every stored entry to
+the exact version of the code that wrote it and turns the cache into a
+deserialization surface. Refusing is always safe — the step runs normally.
 """
 
 from __future__ import annotations
 
-import functools
 import hashlib
-import importlib.metadata
 import json
-import warnings
+import pathlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
+
+from pydantic_core import Url
 
 from wt_task.skip import SKIP_SENTINEL, SkipSentinel
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    import enum
+    from collections.abc import Callable
 
-ENTRY_POINT_GROUP = "wt_task.codecs"
 
+class Undigestible(Exception):  # noqa: N818  # named for what a codec does, not for a failure
+    """Raised by a codec that cannot handle the value it was handed.
 
-class CodecConflictError(RuntimeError):
-    """Raised when two codecs claim the same id, or the same type at equal priority."""
+    The step then runs normally and records itself uncacheable, so a codec can
+    decline a value (an unhashable cell, a subclass it does not cover) without
+    the caller having to probe it first.
+    """
 
 
 @dataclass(frozen=True)
 class Codec:
-    """Encodes one family of runtime values to bytes, and digests them for identity.
+    """Encodes one family of runtime values to bytes, and digests them.
 
     `digest` is separate from `encode` on purpose: it must be stable across
     encodings, because an unstable digest silently invalidates every downstream
@@ -38,20 +45,18 @@ class Codec:
     frame codec digests a canonical form rather than the bytes it writes.
 
     Attributes:
-        codec_id: Stable identifier recorded in the cache entry and used to find
-            this codec again at decode time. Changing it invalidates old entries.
+        codec_id: Stable identifier recorded in the payload header. Changing it
+            makes old entries miss rather than decode wrongly.
         media_type: Media type of the encoded payload.
-        types: Runtime types this codec claims, narrowed by MRO. A claim on a
-            base type covers its subclasses unless something claims them more
-            specifically.
-        matches: Optional content check, for when the type alone is too coarse.
-            A keyed iterable is a plain `list`, so a codec for it has to look at
-            the contents; returning False hands the value to the next candidate
-            rather than refusing it outright.
-        priority: Orders candidates claiming the same type, highest first. Two
-            codecs claiming one type at the same priority is an error rather
-            than a coin toss, because the winner would otherwise depend on
-            plugin import order and change how values were encoded.
+        types: Runtime types this codec accepts. Used only to pick an arm of a
+            declared union; at a non-union position the declaration already
+            settled it.
+        encode: Value to bytes.
+        decode: Bytes back to a value.
+        digest: Stable content digest. May raise `Undigestible`.
+        exact: Match on `type(value) is types[0]` rather than `isinstance`. Set
+            by class-parameterized codecs, which must not accept a subclass
+            their encoder would silently narrow.
     """
 
     codec_id: str
@@ -60,12 +65,15 @@ class Codec:
     encode: Callable[[Any], bytes]
     decode: Callable[[bytes], Any]
     digest: Callable[[Any], str]
-    matches: Callable[[Any], bool] | None = None
-    priority: int = 0
+    exact: bool = False
 
 
 def json_digest(value: Any) -> str:  # noqa: ANN401  # digests arbitrary JSON-able values
-    """Return a stable sha256 over a JSON-able value.
+    """Return a stable sha256 over a JSON-able value, stringifying what it must.
+
+    The lenient `default=str` is for cache *keys*, whose inputs are compiler
+    literals and params rather than task results. Payload digests use the
+    strict `JSON` codec instead.
 
     Examples:
         >>> json_digest({"b": 1, "a": 2}) == json_digest({"a": 2, "b": 1})
@@ -76,182 +84,92 @@ def json_digest(value: Any) -> str:  # noqa: ANN401  # digests arbitrary JSON-ab
     ).hexdigest()
 
 
-def _json_encode(value: Any) -> bytes:  # noqa: ANN401  # encodes arbitrary JSON-able values
-    return json.dumps(value, sort_keys=True, default=str).encode("utf-8")
+def _strict_json(value: Any) -> bytes:  # noqa: ANN401  # encodes arbitrary JSON-able values
+    """Serialize `value` as JSON, declining anything JSON cannot hold losslessly."""
+    try:
+        return json.dumps(value, sort_keys=True, allow_nan=False).encode("utf-8")
+    except (TypeError, ValueError) as e:
+        raise Undigestible(f"not JSON-native: {e}") from e
 
 
-def _json_decode(data: bytes) -> Any:  # noqa: ANN401  # decoded JSON is dynamic
-    return json.loads(data)
-
-
-def _bytes_digest(value: bytes) -> str:
-    return hashlib.sha256(value).hexdigest()
-
-
-JSON_CODEC = Codec(
+JSON = Codec(
     codec_id="json/v1",
     media_type="application/json",
     types=(str, int, float, bool, list, dict, type(None)),
-    encode=_json_encode,
-    decode=_json_decode,
-    digest=json_digest,
-    priority=-100,
+    encode=_strict_json,
+    decode=json.loads,
+    digest=lambda v: hashlib.sha256(_strict_json(v)).hexdigest(),
 )
+"""JSON-native values. Reached only through an explicit `CodecRef`, as the
+declaration that a loosely-typed return really does hold plain JSON."""
 
-BYTES_CODEC = Codec(
+BYTES = Codec(
     codec_id="bytes/v1",
     media_type="application/octet-stream",
     types=(bytes,),
     encode=lambda v: v,
     decode=lambda d: d,
-    digest=_bytes_digest,
-    priority=-100,
+    digest=lambda v: hashlib.sha256(v).hexdigest(),
+)
+
+PATH = Codec(
+    codec_id="path/v1",
+    media_type="text/plain",
+    types=(pathlib.PurePath,),
+    encode=lambda v: str(v).encode("utf-8"),
+    decode=lambda d: pathlib.Path(d.decode("utf-8")),
+    digest=lambda v: hashlib.sha256(str(v).encode("utf-8")).hexdigest(),
+)
+"""Paths travel as the path, not as the bytes they point at. A task returning
+one is claiming the location is the result; `no-cache` is the way to say
+otherwise."""
+
+URL = Codec(
+    codec_id="url/v1",
+    media_type="text/plain",
+    types=(Url,),
+    encode=lambda v: str(v).encode("utf-8"),
+    decode=lambda d: Url(d.decode("utf-8")),
+    digest=lambda v: hashlib.sha256(str(v).encode("utf-8")).hexdigest(),
 )
 
 _SKIP_MARKER = b'{"wt_task":"skip"}'
 
-
-def _skip_encode(value: SkipSentinel) -> bytes:  # noqa: ARG001  # the sentinel carries no state
-    return _SKIP_MARKER
-
-
-def _skip_decode(data: bytes) -> SkipSentinel:  # noqa: ARG001  # the marker carries no state
-    return SKIP_SENTINEL
-
-
-# A skipped step is cached like any other result. Without this the sentinel would
-# have no codec, the step would record itself uncacheable, and every step below a
-# skip would lose its cache.
-SKIP_CODEC = Codec(
+SKIP = Codec(
     codec_id="skip/v1",
     media_type="application/json",
     types=(SkipSentinel,),
-    encode=_skip_encode,
-    decode=_skip_decode,
+    encode=lambda _v: _SKIP_MARKER,
+    decode=lambda _d: SKIP_SENTINEL,
     digest=lambda _v: hashlib.sha256(_SKIP_MARKER).hexdigest(),
 )
-
-BUILTIN_CODECS: tuple[Codec, ...] = (JSON_CODEC, BYTES_CODEC, SKIP_CODEC)
-
-
-@dataclass(frozen=True)
-class CodecRegistry:
-    """Resolves a runtime value, or a recorded codec id, to its codec."""
-
-    by_id: dict[str, Codec]
-    _dispatch: Callable[[Any], Codec | None]
-
-    def for_value(self, value: Any) -> Codec | None:  # noqa: ANN401  # dispatches on any runtime value
-        """Return the codec claiming `value`'s type, or None if it is uncacheable."""
-        return self._dispatch(value)
-
-    def for_id(self, codec_id: str) -> Codec | None:
-        """Return the codec that wrote an entry, or None if it is no longer installed."""
-        return self.by_id.get(codec_id)
+"""A skipped step is cached like any other result. Without this the sentinel
+would have no codec and every step below a skip would lose its cache."""
 
 
-def _candidates(claimed: type, codecs: list[Codec]) -> list[Codec]:
-    """Codecs eligible for `claimed`, most specific first, then highest priority.
+def enum_codec(cls: type[enum.Enum]) -> Codec:
+    """Build the codec for one enum class: the member's value, round-tripped.
 
-    Includes codecs claiming an ancestor, so a value whose own type declines on
-    content still falls through to a more general codec instead of becoming
-    uncacheable.
-    """
-    ranked: list[tuple[int, int, Codec]] = []
-    for codec in codecs:
-        distances = [claimed.__mro__.index(t) for t in codec.types if t in claimed.__mro__]
-        if distances:
-            ranked.append((min(distances), -codec.priority, codec))
-    # The sort key is unique: MRO distance is unique per claimed type, and two
-    # codecs claiming one type at equal priority is rejected below.
-    ranked.sort(key=lambda item: (item[0], item[1]))
-    return [codec for _, _, codec in ranked]
+    Args:
+        cls: The enum class, as named by the declared structure.
 
-
-def build_registry(codecs: Iterable[Codec]) -> CodecRegistry:
-    """Build a registry, rejecting duplicate ids and ambiguous type claims.
-
-    Raises:
-        CodecConflictError: On a duplicate `codec_id`, or on two codecs claiming
-            the same type at the same priority.
+    Returns:
+        A codec accepting exactly `cls`.
 
     Examples:
-        >>> reg = build_registry(BUILTIN_CODECS)
-        >>> reg.for_value({"a": 1}).codec_id
-        'json/v1'
-        >>> reg.for_value(b"x").codec_id
-        'bytes/v1'
-        >>> reg.for_value(object()) is None
-        True
+        >>> import enum
+        >>> class Unit(enum.Enum):
+        ...     km = "km"
+        >>> codec = enum_codec(Unit)
+        >>> codec.decode(codec.encode(Unit.km))
+        <Unit.km: 'km'>
     """
-    codecs = list(codecs)
-    by_id: dict[str, Codec] = {}
-    seen: dict[tuple[type, int], Codec] = {}
-    for codec in codecs:
-        if codec.codec_id in by_id:
-            raise CodecConflictError(
-                f"Duplicate codec_id {codec.codec_id!r}: already registered by "
-                f"{by_id[codec.codec_id]}. Codec ids must be unique across all "
-                f"{ENTRY_POINT_GROUP} entry points."
-            )
-        by_id[codec.codec_id] = codec
-        for typ in codec.types:
-            incumbent = seen.get((typ, codec.priority))
-            if incumbent is not None:
-                raise CodecConflictError(
-                    f"Codecs {incumbent.codec_id!r} and {codec.codec_id!r} both claim "
-                    f"{typ.__name__} at priority {codec.priority}. Give one a higher "
-                    f"priority to disambiguate."
-                )
-            seen[(typ, codec.priority)] = codec
-
-    claimed_types = {typ for codec in codecs for typ in codec.types}
-
-    @functools.singledispatch
-    def dispatch(value: Any) -> Codec | None:  # noqa: ANN401, ARG001  # fallback for unclaimed types
-        return None
-
-    for claimed in claimed_types:
-        candidates = _candidates(claimed, codecs)
-        dispatch.register(claimed, functools.partial(_first_match, candidates=candidates))
-
-    return CodecRegistry(by_id=by_id, _dispatch=dispatch)
-
-
-def _first_match(value: Any, candidates: list[Codec]) -> Codec | None:  # noqa: ANN401  # inspects any runtime value
-    """Return the first candidate that claims `value`, or None if all decline."""
-    for codec in candidates:
-        if codec.matches is None or codec.matches(value):
-            return codec
-    return None
-
-
-def _load_plugin(ep: importlib.metadata.EntryPoint) -> list[Codec]:
-    """Load one entry point's codecs, disabling it on failure rather than raising.
-
-    Caching is an optimization, never a correctness requirement, so a broken
-    plugin costs its codecs' cache coverage and nothing else.
-    """
-    try:
-        return list(ep.load()())
-    except Exception as e:  # noqa: BLE001  # a broken plugin must not break the run
-        warnings.warn(
-            f"Codec entry point {ep.name!r} failed to load ({e!r}); "
-            f"values it would have handled will not be cached.",
-            stacklevel=2,
-        )
-        return []
-
-
-@functools.lru_cache(maxsize=1)
-def get_registry() -> CodecRegistry:
-    """Return the process-wide registry, discovering plugins on first use.
-
-    Task libraries extend this inward by declaring a `wt_task.codecs` entry
-    point whose value is a zero-argument callable returning an iterable of
-    `Codec`.
-    """
-    codecs: list[Codec] = list(BUILTIN_CODECS)
-    for ep in importlib.metadata.entry_points(group=ENTRY_POINT_GROUP):
-        codecs.extend(_load_plugin(ep))
-    return build_registry(codecs)
+    return Codec(
+        codec_id=f"enum/v1/{cls.__module__}.{cls.__qualname__}",
+        media_type="application/json",
+        types=(cls,),
+        encode=lambda v: _strict_json(v.value),
+        decode=lambda d: cls(json.loads(d)),
+        digest=lambda v: hashlib.sha256(_strict_json(v.value)).hexdigest(),
+        exact=True,
+    )

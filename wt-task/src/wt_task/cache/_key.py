@@ -14,7 +14,8 @@ import functools
 import importlib.metadata
 import os
 from contextvars import ContextVar
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Literal
 
 from ._codec import json_digest
 
@@ -26,13 +27,34 @@ if TYPE_CHECKING:
 EPOCH_ENV_VAR = "WT_CACHE_EPOCH"
 SCOPE_ENV_VAR = "WT_CACHE_SCOPE"
 
-# task-instance id -> the output digest downstream steps should fold in, or None
-# when that step could not be cached. Absent and None mean the same thing to a reader.
-_RUN_IDS: ContextVar[dict[str, str | None]] = ContextVar("_RUN_IDS")
+Outcome = Literal["hit", "miss", "unservable", "refused", "uncacheable", "inert"]
+
+
+@dataclass(frozen=True)
+class CacheRecord:
+    """What one step contributed to the run, and why.
+
+    Attributes:
+        digest: The content digest downstream steps fold into their keys, or
+            None when this step could not be cached.
+        outcome: What the cache did for this step.
+        reason: Why, for the outcomes that are not self-explanatory.
+    """
+
+    digest: str | None
+    outcome: Outcome
+    reason: str | None = None
+
+
+_RUN_IDS: ContextVar[dict[str, CacheRecord]] = ContextVar("_RUN_IDS")
+
+# The generated CLI builds its result envelope after the DAG's scope has closed,
+# so the last table outlives it. One run per process, so one slot is enough.
+_LAST_RUN: dict[str, CacheRecord] = {}
 
 
 @contextlib.contextmanager
-def run_scope() -> Iterator[dict[str, str | None]]:
+def run_scope() -> Iterator[dict[str, CacheRecord]]:
     """Scope a fresh identity table to one DAG execution.
 
     Entered once at DAG entry. Identities must not leak between runs: the same
@@ -40,18 +62,26 @@ def run_scope() -> Iterator[dict[str, str | None]]:
 
     Examples:
         >>> with run_scope() as ids:
-        ...     record("a", "sha256:deadbeef")
-        ...     ids["a"]
+        ...     record("a", "sha256:deadbeef", "miss")
+        ...     ids["a"].digest
         'sha256:deadbeef'
     """
-    token = _RUN_IDS.set({})
+    table: dict[str, CacheRecord] = {}
+    token = _RUN_IDS.set(table)
     try:
-        yield _RUN_IDS.get()
+        yield table
     finally:
         _RUN_IDS.reset(token)
+        _LAST_RUN.clear()
+        _LAST_RUN.update(table)
 
 
-def record(task_instance_id: str, identity: str | None) -> None:
+def record(
+    task_instance_id: str,
+    identity: str | None,
+    outcome: Outcome,
+    reason: str | None = None,
+) -> None:
     """Record what `task_instance_id` contributes to its dependents' keys.
 
     A no-op outside a `run_scope`, so a task called directly in a test or a REPL
@@ -59,14 +89,35 @@ def record(task_instance_id: str, identity: str | None) -> None:
     """
     ids = _RUN_IDS.get(None)
     if ids is not None:
-        ids[task_instance_id] = identity
+        ids[task_instance_id] = CacheRecord(identity, outcome, reason)
+
+
+def run_report() -> dict[str, dict[str, str | None]]:
+    """Per-step cache outcomes for this run, as JSON-able rows.
+
+    The compile-time report is a claim about declared types; this is what
+    actually happened — which steps were served, which refused, and why.
+
+    Examples:
+        >>> with run_scope():
+        ...     record("a", None, "refused", "no union arm")
+        ...     run_report()
+        {'a': {'digest': None, 'outcome': 'refused', 'reason': 'no union arm'}}
+    """
+    ids = _RUN_IDS.get(None)
+    table = ids if ids is not None else _LAST_RUN
+    return {
+        step: {"digest": row.digest, "outcome": row.outcome, "reason": row.reason}
+        for step, row in table.items()
+    }
 
 
 def _upstream(task_instance_id: str) -> str | None:
     ids = _RUN_IDS.get(None)
     if ids is None:
         return None
-    return ids.get(task_instance_id)
+    row = ids.get(task_instance_id)
+    return row.digest if row is not None else None
 
 
 @functools.lru_cache(maxsize=1)
@@ -108,6 +159,40 @@ def task_identity(spec: CacheSpec) -> str | None:
     return f"{spec.anchor}.{spec.function}@{version}#{spec.recipe}#{epoch}"
 
 
+def step_identity_with_reason(spec: CacheSpec) -> tuple[str | None, str | None]:
+    """Compute this step's cache key, or None and the reason it has none."""
+    task = task_identity(spec)
+    if task is None:
+        return None, f"no distribution version for {spec.anchor!r}"
+
+    inputs: dict[str, list[str]] = {}
+    for argname, dep_ids in spec.deps.items():
+        resolved = []
+        for dep_id in dep_ids:
+            identity = _upstream(dep_id)
+            if identity is None:
+                return None, f"upstream {dep_id!r} uncacheable"
+            resolved.append(identity)
+        inputs[argname] = resolved
+
+    key = {
+        "task": task,
+        "static": spec.static,
+        "env": dict(spec.env),
+        "params": dict(spec.params),
+        "inputs": inputs,
+    }
+    if spec.scoped:
+        # Only steps that read the world. Credentials reach tasks as env vars
+        # keyed by connection name, so byte-identical params can address
+        # different tenants; a derived step cannot be reached without already
+        # holding the same input digests, so scoping it would only mean that a
+        # fresh token costs a whole cold run instead of one source refetch.
+        key["scope"] = os.environ.get(SCOPE_ENV_VAR, "")
+
+    return "sha256:" + json_digest(key), None
+
+
 def step_identity(spec: CacheSpec) -> str | None:
     """Compute this step's cache key, or None if it cannot be cached.
 
@@ -115,27 +200,4 @@ def step_identity(spec: CacheSpec) -> str | None:
     itself uncacheable — uncacheability propagates down the DAG, because a key
     that omits an unknown input would collide across genuinely different runs.
     """
-    task = task_identity(spec)
-    if task is None:
-        return None
-
-    inputs: dict[str, list[str]] = {}
-    for argname, dep_ids in spec.deps.items():
-        resolved = [_upstream(dep_id) for dep_id in dep_ids]
-        if any(identity is None for identity in resolved):
-            return None
-        inputs[argname] = [identity for identity in resolved if identity is not None]
-
-    return "sha256:" + json_digest(
-        {
-            "task": task,
-            "static": spec.static,
-            "env": dict(spec.env),
-            "params": dict(spec.params),
-            "inputs": inputs,
-            # Credentials reach tasks as environment variables keyed by connection
-            # *name*, so byte-identical params can address different tenants. The
-            # deployer sets this; wt-task cannot know the right granularity.
-            "scope": os.environ.get(SCOPE_ENV_VAR, ""),
-        }
-    )
+    return step_identity_with_reason(spec)[0]

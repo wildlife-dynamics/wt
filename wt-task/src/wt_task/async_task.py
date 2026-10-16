@@ -71,7 +71,12 @@ class AsyncTask(_Task[P, R, K, V]):
         collide across genuinely different runs.
         """
         if self.cache is not None:
-            record(self.cache.task_instance_id, None)
+            record(
+                self.cache.task_instance_id,
+                None,
+                "uncacheable",
+                "async methods return a future, which has no stored form",
+            )
 
     def __call__(self, *args: P.args, **kwargs: P.kwargs) -> Future[R]:
         """Execute the task asynchronously.

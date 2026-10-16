@@ -10,6 +10,7 @@ import warnings
 from pathlib import Path
 
 import pytest
+from wt_contracts import declared_structure
 from wt_task.cache import CacheMismatchWarning
 
 # Private, but the fixture has to invalidate what the runtime memoizes per process.
@@ -24,10 +25,41 @@ TASKS_MODULE = '''
 Plain functions: the generated DAG imports each by name and wraps it with
 `task(...)`, so `@register` plays no part at run time.
 """
+import hashlib
 import json
 from pathlib import Path
+from typing import Annotated, Any
+
+from pydantic import BaseModel
+from wt_contracts import Cacheable, CodecRef
+from wt_task.cache import JSON, Codec
 
 LOG = Path(__file__).parent / "calls.jsonl"
+
+# An `Annotated` alias, the way a task library declares a codec for a type it
+# owns. `ROWS` is resolved by import path, against this installed distribution.
+ROWS = JSON
+Rows = Annotated[dict[str, Any], CodecRef("e2e_tasks:ROWS")]
+
+
+def summary_codec(cls):
+    """The class-parameterized form: the structure names the class, not the codec."""
+    return Codec(
+        codec_id="e2e.summary/v1",
+        media_type="application/json",
+        types=(cls,),
+        encode=lambda v: v.model_dump_json().encode(),
+        decode=cls.model_validate_json,
+        digest=lambda v: hashlib.sha256(v.model_dump_json().encode()).hexdigest(),
+        exact=True,
+    )
+
+
+class Summary(BaseModel, Cacheable):
+    __wt_codec__ = "e2e_tasks:summary_codec"
+
+    label: str
+    total: int
 
 
 def _log(name, value):
@@ -46,35 +78,35 @@ def reset():
     LOG.unlink(missing_ok=True)
 
 
-def read_source(payload: int) -> dict:
+def read_source(payload: int) -> Rows:
     _log("read_source", payload)
     return {"rows": [1, 2, 3], "payload": payload}
 
 
-def read_stable(payload: int) -> dict:
+def read_stable(payload: int) -> Rows:
     """Re-reads on every key change but always returns the same data."""
     _log("read_stable", payload)
     return {"rows": [1, 2, 3]}
 
 
-def transform(data: dict, factor: int) -> dict:
+def transform(data: dict, factor: int) -> Rows:
     _log("transform", factor)
     return {"rows": [r * factor for r in data["rows"]]}
 
 
-def relabel(data: dict, tag: str) -> dict:
+def relabel(data: dict, tag: str) -> Rows:
     """A mid-DAG step whose key moves with `tag` but whose output never does."""
     _log("relabel", tag)
     return {"rows": data["rows"]}
 
 
-def stamp(payload: int) -> dict:
+def stamp(payload: int) -> Rows:
     """Tagged `no-cache`: never served, but always returns the same thing."""
     _log("stamp", payload)
     return {"rows": [1, 2, 3]}
 
 
-def wobble() -> dict:
+def wobble() -> Rows:
     """Nondeterministic for fixed inputs — what verify mode exists to find."""
     counter = LOG.parent / "wobble.count"
     n = int(counter.read_text()) + 1 if counter.exists() else 1
@@ -83,9 +115,9 @@ def wobble() -> dict:
     return {"rows": [n]}
 
 
-def summarise(data: dict, label: str) -> dict:
+def summarise(data: dict, label: str) -> Summary:
     _log("summarise", label)
-    return {"label": label, "total": sum(data["rows"])}
+    return Summary(label=label, total=sum(data["rows"]))
 '''
 
 METADATA_MODULE = '''
@@ -103,6 +135,8 @@ def _build_spec(
     label="Report",
     source_task="read_source",
 ):
+    import e2e_tasks  # noqa: PLC0415  # only importable once the fixture extends sys.path
+
     for name, tags in (
         ("read_source", [wt_spec.TaskTag.io]),
         ("read_stable", [wt_spec.TaskTag.io]),
@@ -117,6 +151,9 @@ def _build_spec(
                 importable_reference=f"e2e_tasks.{name}",
                 tags=tags,
                 json_schema={"properties": {}},
+                # What wt-registry would have put on the wire. Resolved from the
+                # real functions so the refs the DAG carries really do import.
+                cache_structure=declared_structure(getattr(e2e_tasks, name)),
             )
         }
     return wt_spec.Spec.model_validate(
@@ -410,15 +447,27 @@ def test_an_uncached_build_is_unaffected_by_the_cache_url(workflow, tasks):
 # --- invalidation knobs -----------------------------------------------------
 
 
-@pytest.mark.parametrize("var", ["WT_CACHE_EPOCH", "WT_CACHE_SCOPE"])
-def test_epoch_and_scope_invalidate_everything(workflow, tasks, monkeypatch, var):
+def test_the_epoch_invalidates_everything(workflow, tasks, monkeypatch):
     main, _ = workflow(_build_spec())
     run(main)
     tasks.reset()
 
-    monkeypatch.setenv(var, "changed")
+    monkeypatch.setenv("WT_CACHE_EPOCH", "changed")
     run(main)
     assert len(tasks.calls()) == 3
+
+
+def test_a_new_scope_costs_one_source_refetch_not_a_cold_run(workflow, tasks, monkeypatch):
+    # The scope reaches io-tagged steps only. A per-request token must not turn
+    # every run into a cold one: the source refetches, finds the same content,
+    # and everything below it hits through early cutoff.
+    main, _ = workflow(_build_spec())
+    run(main)
+    tasks.reset()
+
+    monkeypatch.setenv("WT_CACHE_SCOPE", "another-tenant")
+    run(main)
+    assert [c["task"] for c in tasks.calls()] == ["read_source"]
 
 
 def test_payloads_are_shared_by_content(workflow, tasks, tmp_path):

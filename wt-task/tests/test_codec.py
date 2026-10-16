@@ -1,166 +1,174 @@
-"""Tests for the cache codec registry."""
+"""Tests for the builtin leaf codecs and for resolving declared structures."""
+
+import enum
+import pathlib
 
 import pytest
+from pydantic_core import Url
 
-from wt_task.cache import Codec, CodecConflictError
-from wt_task.cache._codec import BUILTIN_CODECS, build_registry, json_digest
+from wt_task.cache import BYTES, JSON, PATH, SKIP, URL, Codec, Undigestible, enum_codec
+from wt_task.cache._codec import json_digest
+from wt_task.cache._tree import resolve_structure
 from wt_task.skip import SKIP_SENTINEL
 
 
-def _codec(codec_id, types, priority=0, matches=None):
-    return Codec(
-        codec_id=codec_id,
-        media_type="application/x-test",
-        types=types,
-        encode=lambda v: repr(v).encode(),
-        decode=lambda d: d.decode(),
-        digest=lambda v: repr(v),
-        matches=matches,
-        priority=priority,
-    )
+class Unit(enum.Enum):
+    km = "km"
+    mi = "mi"
 
 
-@pytest.fixture
-def registry():
-    return build_registry(BUILTIN_CODECS)
+def ref(path, type_=None):
+    return {"k": "ref", "ref": path, "type": type_}
+
+
+@pytest.fixture(autouse=True)
+def strict(monkeypatch):
+    # Resolution failures degrade on a deployed service; in tests they must shout.
+    monkeypatch.setenv("WT_CACHE_STRICT", "1")
+
+
+# --- builtin leaves --------------------------------------------------------
 
 
 @pytest.mark.parametrize(
-    ("value", "expected"),
+    ("codec", "value"),
     [
-        ({"a": 1}, "json/v1"),
-        ([1, 2], "json/v1"),
-        ("s", "json/v1"),
-        (1, "json/v1"),
-        (True, "json/v1"),
-        (1.5, "json/v1"),
-        (None, "json/v1"),
-        (b"bytes", "bytes/v1"),
-        (SKIP_SENTINEL, "skip/v1"),
+        (BYTES, b"\x00\x01binary"),
+        (PATH, pathlib.Path("/var/data/x.parquet")),
+        (URL, Url("https://example.com/a")),
+        (JSON, {"a": [1, None, True]}),
+        (enum_codec(Unit), Unit.km),
     ],
 )
-def test_builtin_codecs_claim_their_types(registry, value, expected):
-    assert registry.for_value(value).codec_id == expected
+def test_builtin_leaves_round_trip(codec, value):
+    assert codec.decode(codec.encode(value)) == value
 
 
-def test_unclaimed_type_is_refused_not_guessed(registry):
-    # The whole no-pickle policy rests on this: an unknown type yields no codec,
-    # and the caller runs the step instead of inventing an encoding.
-    assert registry.for_value(object()) is None
+def test_the_skip_sentinel_round_trips_to_the_same_object():
+    assert SKIP.decode(SKIP.encode(SKIP_SENTINEL)) is SKIP_SENTINEL
 
 
-def test_for_id_round_trips_and_misses_cleanly(registry):
-    assert registry.for_id("json/v1").media_type == "application/json"
-    assert registry.for_id("not-installed") is None
+def test_digests_are_stable_and_content_sensitive():
+    assert BYTES.digest(b"a") == BYTES.digest(b"a")
+    assert BYTES.digest(b"a") != BYTES.digest(b"b")
+    assert JSON.digest({"a": 1, "b": 2}) == JSON.digest({"b": 2, "a": 1})
 
 
-def test_duplicate_codec_id_is_rejected():
-    with pytest.raises(CodecConflictError, match="Duplicate codec_id"):
-        build_registry([*BUILTIN_CODECS, _codec("json/v1", ())])
+def test_the_json_codec_declines_what_json_cannot_hold():
+    # The point of dropping `default=str`: a value that is not JSON refuses to
+    # be cached rather than being silently stringified.
+    with pytest.raises(Undigestible):
+        JSON.digest({"when": object()})
 
 
-def test_two_codecs_claiming_one_type_at_equal_priority_is_rejected():
-    with pytest.raises(CodecConflictError, match="both claim"):
-        build_registry([_codec("a", (str,)), _codec("b", (str,))])
-
-
-def test_higher_priority_wins_over_a_builtin():
-    reg = build_registry([*BUILTIN_CODECS, _codec("custom", (str,), priority=10)])
-    assert reg.for_value("s").codec_id == "custom"
-    # Unrelated types are untouched by the override.
-    assert reg.for_value(1).codec_id == "json/v1"
-
-
-def test_subclasses_dispatch_to_the_base_codec():
-    class MyList(list):
-        pass
-
-    assert build_registry(BUILTIN_CODECS).for_value(MyList([1])).codec_id == "json/v1"
-
-
-def test_skip_sentinel_round_trips_identically(registry):
-    codec = registry.for_value(SKIP_SENTINEL)
-    assert codec.decode(codec.encode(SKIP_SENTINEL)) is SKIP_SENTINEL
+def test_an_enum_codec_is_exact_and_names_its_class():
+    codec = enum_codec(Unit)
+    assert codec.exact is True
+    assert codec.types == (Unit,)
+    assert Unit.__qualname__ in codec.codec_id
 
 
 def test_json_digest_is_key_order_independent():
     assert json_digest({"b": 1, "a": 2}) == json_digest({"a": 2, "b": 1})
-
-
-def test_json_digest_separates_different_content():
     assert json_digest({"a": 1}) != json_digest({"a": 2})
 
 
-# --- content predicates ----------------------------------------------------
+# --- resolving a declared structure ---------------------------------------
 
 
-def _keyed_iterable(value):
-    return bool(value) and all(isinstance(i, tuple) and len(i) == 2 for i in value)
+def test_resolve_structure_handles_every_node_kind():
+    structure = {
+        "k": "dataclass",
+        "type": "wt_task.cache._entry:CacheEntry",
+        "fields": {},
+    }
+    assert resolve_structure(structure) is not None
+
+    for node in (
+        {"k": "json"},
+        {"k": "dynamic"},
+        ref("wt_task.cache:BYTES"),
+        ref("wt_task.cache:enum_codec", "test_codec:Unit"),
+        {"k": "list", "of": {"k": "json"}},
+        {"k": "list", "tuple": True, "of": {"k": "json"}},
+        {"k": "tuple", "of": [{"k": "json"}, ref("wt_task.cache:PATH")]},
+        {"k": "dict", "key": {"k": "json"}, "of": {"k": "json"}},
+        {"k": "union", "of": [{"k": "json"}, ref("wt_task.cache:SKIP")]},
+    ):
+        assert resolve_structure(node).codec_id == "tree/v2"
 
 
-@pytest.fixture
-def registry_with_predicate():
-    # The shape ecoscope needs: a keyed iterable is a plain `list`, so the type
-    # alone cannot distinguish it from any other list.
-    keyed = _codec("keyed/v1", (list,), matches=_keyed_iterable)
-    return build_registry([*BUILTIN_CODECS, keyed])
+def test_resolve_structure_is_inert_for_an_undeclared_return():
+    assert resolve_structure(None) is None
 
 
-def test_predicate_claims_the_shape_it_recognises(registry_with_predicate):
-    assert registry_with_predicate.for_value([("a", 1), ("b", 2)]).codec_id == "keyed/v1"
+def test_a_class_parameterized_ref_is_called_with_the_named_class():
+    tree = resolve_structure(ref("wt_task.cache:enum_codec", "test_codec:Unit"))
+    assert tree.decode(tree.encode(Unit.mi)) is Unit.mi
 
 
-@pytest.mark.parametrize("value", [[1, 2, 3], [], ["a"], [(1, 2, 3)]])
-def test_declining_predicate_falls_through_to_the_general_codec(registry_with_predicate, value):
-    assert registry_with_predicate.for_value(value).codec_id == "json/v1"
+@pytest.mark.parametrize(
+    "structure",
+    [
+        ref("no_such_module_xyz:THING"),
+        ref("wt_task.cache:NO_SUCH_CODEC"),
+        ref("wt_task.cache:enum_codec", "wt_task.cache:NoSuchClass"),
+    ],
+)
+def test_an_unresolvable_ref_raises_under_strict_mode(structure):
+    with pytest.raises(ImportError):
+        resolve_structure(structure)
 
 
-def test_other_types_are_unaffected_by_the_predicate(registry_with_predicate):
-    assert registry_with_predicate.for_value({"a": 1}).codec_id == "json/v1"
-    assert registry_with_predicate.for_value(b"x").codec_id == "bytes/v1"
+def test_an_unknown_node_kind_is_rejected():
+    with pytest.raises(ValueError, match="Unknown cache structure node"):
+        resolve_structure({"k": "mystery"})
 
 
-def test_predicate_falls_through_across_the_mro():
-    # A subclass codec that declines hands the value to a codec claiming a base
-    # type, rather than making the value uncacheable.
-    class Frame(list):
+def test_an_unresolvable_ref_degrades_to_uncacheable_when_not_strict(monkeypatch):
+    # In the executor the environment that compiled a spec and the one running
+    # it can skew, and caching must never fail a run.
+    monkeypatch.delenv("WT_CACHE_STRICT", raising=False)
+    with pytest.warns(UserWarning, match="could not be resolved"):
+        assert resolve_structure(ref("no_such_module_xyz:THING")) is None
+
+
+# --- exactness -------------------------------------------------------------
+
+
+class Base:
+    pass
+
+
+class Derived(Base):
+    pass
+
+
+def base_codec(cls):
+    return Codec(
+        codec_id="base/v1",
+        media_type="text/plain",
+        types=(cls,),
+        encode=lambda _v: b"",
+        decode=lambda _d: cls(),
+        digest=lambda _v: "constant",
+        exact=True,
+    )
+
+
+def test_an_exact_arm_rejects_a_subclass():
+    # A field annotated with a base class and returned as a subclass is
+    # reported cacheable and refused here; the fix is a narrower annotation.
+    tree = resolve_structure(ref("test_codec:base_codec", "test_codec:Base"))
+    assert tree.digest(Base())
+    with pytest.raises(Undigestible):
+        tree.digest(Derived())
+
+
+def test_a_non_exact_codec_accepts_a_subclass():
+    class MyPath(pathlib.PurePosixPath):
         pass
 
-    reg = build_registry([*BUILTIN_CODECS, _codec("frame", (Frame,), matches=lambda v: "geo" in v)])
-    assert reg.for_value(Frame(["geo"])).codec_id == "frame"
-    assert reg.for_value(Frame(["other"])).codec_id == "json/v1"
-
-
-def test_value_is_uncacheable_when_every_candidate_declines():
-    class Frame(list):
-        pass
-
-    declines = _codec("frame", (Frame,), matches=lambda v: False)
-    assert build_registry([declines]).for_value(Frame()) is None
-
-
-def test_a_predicate_does_not_excuse_an_ambiguous_claim():
-    # Two codecs on one type at one priority stays an error even with
-    # predicates: which ran first would otherwise depend on import order.
-    with pytest.raises(CodecConflictError, match="both claim"):
-        build_registry(
-            [
-                _codec("a", (str,), matches=lambda v: True),
-                _codec("b", (str,), matches=lambda v: False),
-            ]
-        )
-
-
-def test_higher_priority_predicate_is_consulted_first():
-    order = []
-
-    def make(cid, result, priority):
-        def matches(_v):
-            order.append(cid)
-            return result
-
-        return _codec(cid, (str,), priority=priority, matches=matches)
-
-    reg = build_registry([make("low", True, 0), make("high", False, 10)])
-    assert reg.for_value("s").codec_id == "low"
-    assert order == ["high", "low"]
+    assert PATH.exact is False
+    tree = resolve_structure(ref("wt_task.cache:PATH"))
+    assert tree.digest(MyPath("/a/b"))

@@ -9,3 +9,4 @@ class ResponseModel(BaseModel):
     result: Any = None
     error: str | None = None
     trace: str | None = None
+    cache: dict[str, Any] | None = None

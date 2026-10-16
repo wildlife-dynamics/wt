@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import pathlib
+from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -337,6 +338,21 @@ class Fingerprint(BaseModel):
         return stream.getvalue()
 
 
+class CacheReportRow(NamedTuple):
+    """One step's compile-time cache verdict.
+
+    Attributes:
+        task_instance_id: The step's id in the spec.
+        status: `cacheable`, `unservable` (runs but is never served), or
+            `uncacheable` (nothing below it can be served either).
+        reason: Why, for anything but `cacheable`.
+    """
+
+    task_instance_id: str
+    status: str
+    reason: str | None
+
+
 class DagCompiler(BaseModel):
     """Main compiler class for converting workflow specs to DAG artifacts.
 
@@ -396,9 +412,85 @@ class DagCompiler(BaseModel):
                 "deps": t.cache_deps,
                 "env": t.cache_env,
                 "servable": t.known_task.is_cacheable,
+                "structure": t.known_task.cache_structure,
+                "method": t.method,
+                # Only a step that reads the world can see different data per
+                # principal; a derived step is a pure function of its input
+                # digests, so scoping it would turn a fresh token into a cold
+                # run instead of one source refetch.
+                "scoped": TaskTag.io in t.known_task.tags,
             }
             for t in self.spec.flat_workflow
         }
+
+    def cache_report(self) -> list[CacheReportRow]:
+        """Which steps this spec can cache, and why the rest cannot.
+
+        A claim about declared return types, computed before anything runs.
+        What a *value* did at run time — a union with no matching arm, a codec
+        that declined — is `wt_task.cache.run_report()` instead.
+
+        Returns:
+            One row per step, in workflow order.
+        """
+        rows: list[CacheReportRow] = []
+        blocked: set[str] = set()
+        for t in self.spec.flat_workflow:
+            known = t.known_task
+            upstream = next(
+                (d for d in self.spec.task_instance_dependencies[t.id] if d in blocked), None
+            )
+            if known.cache_structure_error is not None:
+                status, reason = "uncacheable", known.cache_structure_error
+            elif known.cache_structure is None:
+                status, reason = "uncacheable", "return type has no codec"
+            elif upstream is not None:
+                status, reason = "uncacheable", f"upstream {upstream} uncacheable"
+            elif not known.is_cacheable:
+                status, reason = "unservable", "no-cache tag"
+            else:
+                status, reason = "cacheable", None
+            if status == "uncacheable":
+                # Only uncacheability propagates: an unservable step still
+                # digests and promotes its output, so its dependents keep
+                # hitting.
+                blocked.add(t.id)
+            rows.append(CacheReportRow(task_instance_id=t.id, status=status, reason=reason))
+        return rows
+
+    def _check_cache_declarations(self) -> None:
+        """Fail the compile if a task in this spec declares a codec it cannot honour.
+
+        Only under `--with-caching`: a bad declaration in one task of a library
+        must not break every non-caching compile against that library, so
+        wt-registry carries it as data and this is where it becomes an error.
+
+        Raises:
+            ValueError: Naming the task and the field that breaks the round trip.
+        """
+        broken = {
+            t.known_task.importable_reference: t.known_task.cache_structure_error
+            for t in self.spec.flat_workflow
+            if t.known_task.cache_structure_error is not None
+        }
+        if broken:
+            detail = "; ".join(f"{ref}: {err}" for ref, err in sorted(broken.items()))
+            raise ValueError(f"Cannot compile with caching: {detail}")
+
+    def log_cache_report(self) -> None:
+        """Log one line per step the cache cannot serve, plus a summary count."""
+        rows = self.cache_report()
+        for row in rows:
+            if row.status != "cacheable":
+                logger.warning("cache: %s is %s (%s)", row.task_instance_id, row.status, row.reason)
+        counts = Counter(row.status for row in rows)
+        logger.info(
+            "cache: %d of %d steps cacheable, %d unservable, %d uncacheable",
+            counts["cacheable"],
+            len(rows),
+            counts["unservable"],
+            counts["uncacheable"],
+        )
 
     def _resolved_feature(
         self,
@@ -983,6 +1075,10 @@ class DagCompiler(BaseModel):
             >>> # compiler = DagCompiler(spec=spec)  # doctest: +SKIP
             >>> # artifacts = compiler.compile("path/to/spec.yaml")  # doctest: +SKIP
         """
+        if self.cache:
+            self._check_cache_declarations()
+            self.log_cache_report()
+
         if on_progress is not None:
             on_progress("Generating schemas...")
         # Generate parameter schemas (both flat and hierarchical)
@@ -1027,7 +1123,7 @@ class DagCompiler(BaseModel):
                     release_name=self.release_name,
                     results_env_var=self.results_env_var,
                 ),
-                "dispatch.py": self.ruffrender("pkg/dispatch.jinja2"),
+                "dispatch.py": self.ruffrender("pkg/dispatch.jinja2", cache=self.cache),
                 "metadata.py": self.ruffrender("pkg/metadata.jinja2"),
                 "response.py": self.ruffrender("pkg/response.jinja2"),
                 "__init__.py": "",
@@ -1114,6 +1210,7 @@ class DagCompiler(BaseModel):
             fingerprint=fingerprint.to_yaml(),
             spec_id=self.spec.id,
             release_name=self.release_name,
+            cache=self.cache,
         )
         artifacts.readme_md = readme_md
 

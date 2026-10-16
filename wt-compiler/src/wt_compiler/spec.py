@@ -62,6 +62,12 @@ class KnownTask(BaseModel):
     registry_ref: int = 0
     json_schema: dict[str, Any] = Field(default_factory=dict)
     description: str | None = None
+    # `exclude=True` is load-bearing: `Spec.sha256` dumps the model, so a
+    # serialized field here would move every existing workflow's fingerprint.
+    # Nothing re-parses a dumped `KnownTask` — the builder rebuilds it from the
+    # global `known_tasks` table.
+    cache_structure: dict[str, Any] | None = Field(default=None, exclude=True)
+    cache_structure_error: str | None = Field(default=None, exclude=True)
 
     @property
     def anchor(self) -> str:

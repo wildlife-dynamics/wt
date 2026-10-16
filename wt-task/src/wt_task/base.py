@@ -21,12 +21,12 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from .async_task import AsyncTask
-    from .cache import CacheSpec
+    from .cache import CacheSpec, Tree
     from .sync_task import SyncTask
 
 from pydantic import validate_call
 
-from .cache import cached_call
+from .cache import cached_call, resolve_structure
 from .exceptions import handle_errors as handle_errors_fn
 from .executors import AsyncExecutor, SyncExecutor
 from .executors.python import PythonExecutor
@@ -61,6 +61,7 @@ class _Task(Generic[P, R, K, V]):
         task_instance_id: Optional unique identifier for this task instance
         cache: Optional cache identity for this step, set by the compiler when
             the workflow is compiled with caching enabled
+        tree: The codec for this step's result, resolved once from `cache`
     """
 
     func: Callable[P, R]
@@ -70,6 +71,9 @@ class _Task(Generic[P, R, K, V]):
     # kw_only so that a default here does not force one onto `AsyncTask.executor`,
     # which has no sensible default.
     cache: CacheSpec | None = field(default=None, kw_only=True)
+    # Resolved once in `.cached()` rather than per call: `_Task` is frozen, so
+    # there is nowhere to memoize it, and the imports it does are not free.
+    tree: Tree | None = field(default=None, kw_only=True, repr=False, compare=False)
 
     def set_task_instance_id(self, task_instance_id: str, /) -> Self:
         """Return a new Task with the task_instance_id set.
@@ -279,7 +283,7 @@ class _Task(Generic[P, R, K, V]):
             >>> add.cached(spec).call(1, 2)  # inert with WT_CACHE unset
             3
         """
-        return replace(self, cache=spec)
+        return replace(self, cache=spec, tree=resolve_structure(spec.wrapped_structure))
 
     def _through_cache(self, run: Callable[[], T], span: Any = None) -> T:  # noqa: ANN401  # an OTel span, or None when tracing is unavailable
         """Resolve `run()` through the cache when one is configured.
@@ -289,7 +293,7 @@ class _Task(Generic[P, R, K, V]):
         """
         if self.cache is None:
             return run()
-        result, hit = cached_call(self.cache, run)
+        result, hit = cached_call(self.cache, run, self.tree)
         if span is not None:
             span.set_attribute("cache.hit", hit)
         return result
@@ -355,6 +359,7 @@ class _Task(Generic[P, R, K, V]):
                     description=self.description,
                     task_instance_id=self.task_instance_id,
                     cache=self.cache,
+                    tree=self.tree,
                     executor=PythonExecutor(),
                 )
             case AsyncExecutor():
@@ -364,6 +369,7 @@ class _Task(Generic[P, R, K, V]):
                     description=self.description,
                     task_instance_id=self.task_instance_id,
                     cache=self.cache,
+                    tree=self.tree,
                     executor=name_or_executor,
                 )
             case SyncExecutor():
@@ -373,6 +379,7 @@ class _Task(Generic[P, R, K, V]):
                     description=self.description,
                     task_instance_id=self.task_instance_id,
                     cache=self.cache,
+                    tree=self.tree,
                     executor=name_or_executor,
                 )
             case _:

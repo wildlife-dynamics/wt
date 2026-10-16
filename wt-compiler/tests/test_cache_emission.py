@@ -47,6 +47,17 @@ def demo_spec():
     )
 
 
+JSON_STRUCTURE = {"k": "ref", "ref": "wt_task.cache:JSON", "type": None}
+
+
+@pytest.fixture
+def declared_spec(demo_spec):
+    """The same spec with every task's return type declaring a codec."""
+    for name in ("get_events", "chart", "persist"):
+        wt_spec.known_tasks[name]["demo.tasks"].cache_structure = dict(JSON_STRUCTURE)
+    return demo_spec
+
+
 # --- the flag is genuinely opt-in ------------------------------------------
 
 
@@ -68,7 +79,19 @@ def test_new_properties_stay_out_of_the_serialized_spec(demo_spec):
     # every existing workflow's fingerprint.
     dumped = demo_spec.model_dump()["workflow"][0]
     assert not {"cache_deps", "cache_env", "cache_static"} & set(dumped)
-    assert not {"recipe_hash", "is_cacheable"} & set(dumped["known_task"])
+    assert not {
+        "recipe_hash",
+        "is_cacheable",
+        "cache_structure",
+        "cache_structure_error",
+    } & set(dumped["known_task"])
+
+
+def test_the_spec_fingerprint_is_unchanged_by_a_declared_structure(demo_spec):
+    before = demo_spec.sha256
+    wt_spec.known_tasks["chart"]["demo.tasks"].cache_structure = {"k": "json"}
+    wt_spec.known_tasks["chart"]["demo.tasks"].cache_structure_error = "nope"
+    assert demo_spec.sha256 == before
 
 
 # --- what gets emitted -----------------------------------------------------
@@ -280,3 +303,118 @@ def test_cli_flag_reaches_the_compiler(tmp_path: Path, argv_extra, expected):
         main()
 
     assert compile_workflow.call_args.kwargs["cache"] is expected
+
+
+# --- the declared structure reaches the DAG --------------------------------
+
+
+def test_the_declared_structure_and_method_are_emitted(declared_spec):
+    dag = DagCompiler(spec=declared_spec, cache=True).render_dag("sequential")
+    assert dag.count('"ref": "wt_task.cache:JSON"') == 3
+    assert dag.count('method="call"') == 3
+
+
+def test_an_undeclared_return_type_emits_a_null_structure(demo_spec):
+    dag = DagCompiler(spec=demo_spec, cache=True).render_dag("sequential")
+    assert dag.count("structure=None") == 3
+
+
+def test_a_mapped_step_emits_its_method(declared_spec):
+    spec = wt_spec.Spec.model_validate(
+        {
+            "id": "mapped",
+            "requirements": [{"name": "python", "version": ">=3.10"}],
+            "workflow": [
+                {"id": "events", "task": "get_events", "partial": {"kind": "immobility"}},
+                {
+                    "id": "figures",
+                    "task": "chart",
+                    "map": {
+                        "argnames": "data",
+                        "argvalues": "${{ workflow.events.return }}",
+                    },
+                },
+            ],
+        }
+    )
+    dag = DagCompiler(spec=spec, cache=True).render_dag("sequential")
+    assert 'method="map"' in dag
+    assert 'method="call"' in dag
+
+
+def test_only_io_tagged_steps_are_scoped(declared_spec):
+    # A derived step is a pure function of its input digests, so folding a
+    # per-request scope into its key would make a fresh token a cold run.
+    dag = DagCompiler(spec=declared_spec, cache=True).render_dag("sequential")
+    assert dag.count("scoped=True") == 1
+    assert dag.count("scoped=False") == 2
+
+
+# --- the compile-time report -----------------------------------------------
+
+
+def test_every_step_is_cacheable_when_every_return_type_declares_one(declared_spec):
+    rows = DagCompiler(spec=declared_spec, cache=True).cache_report()
+    assert [r.status for r in rows] == ["cacheable"] * 3
+
+
+def test_an_undeclared_return_type_propagates_down_the_report(declared_spec):
+    wt_spec.known_tasks["chart"]["demo.tasks"].cache_structure = None
+    rows = {
+        r.task_instance_id: r for r in DagCompiler(spec=declared_spec, cache=True).cache_report()
+    }
+
+    assert rows["events"].status == "cacheable"
+    assert rows["figure"].status == "uncacheable"
+    assert rows["figure"].reason == "return type has no codec"
+    assert rows["saved"].status == "uncacheable"
+    assert rows["saved"].reason == "upstream figure uncacheable"
+
+
+def test_a_no_cache_task_is_unservable_and_does_not_block_its_dependents(declared_spec):
+    wt_spec.known_tasks["get_events"]["demo.tasks"].tags = [wt_spec.TaskTag.no_cache]
+    rows = {
+        r.task_instance_id: r for r in DagCompiler(spec=declared_spec, cache=True).cache_report()
+    }
+    assert (rows["events"].status, rows["events"].reason) == ("unservable", "no-cache tag")
+    assert rows["figure"].status == "cacheable"
+
+
+def test_a_bad_declaration_is_reported_and_blocks_a_caching_compile(declared_spec):
+    wt_spec.known_tasks["chart"]["demo.tasks"].cache_structure = None
+    wt_spec.known_tasks["chart"]["demo.tasks"].cache_structure_error = "excludes field help_text"
+
+    compiler = DagCompiler(spec=declared_spec, cache=True)
+    rows = {r.task_instance_id: r for r in compiler.cache_report()}
+    assert rows["figure"].reason == "excludes field help_text"
+
+    with pytest.raises(ValueError, match="help_text"):
+        compiler._check_cache_declarations()
+    # Without the flag it is data, not an error: one bad declaration in a task
+    # library must not break every non-caching compile against it.
+    assert ".cached(" not in DagCompiler(spec=declared_spec, cache=False).render_dag("sequential")
+
+
+def test_the_report_is_logged_under_the_flag(declared_spec, caplog):
+    wt_spec.known_tasks["chart"]["demo.tasks"].cache_structure = None
+    with caplog.at_level("INFO"):
+        DagCompiler(spec=declared_spec, cache=True).log_cache_report()
+    assert "figure is uncacheable" in caplog.text
+    assert "1 of 3 steps cacheable" in caplog.text
+
+
+# --- the per-run report in the result envelope -----------------------------
+
+
+def test_the_envelope_carries_the_run_report_under_the_flag(demo_spec):
+    compiler = DagCompiler(spec=demo_spec, cache=True)
+    assert "cache: dict[str, Any] | None = None" in compiler.ruffrender("pkg/response.jinja2")
+    dispatch = compiler.ruffrender("pkg/dispatch.jinja2", cache=True)
+    assert "run_report()" in dispatch
+
+
+def test_the_dispatcher_is_byte_identical_without_the_flag(demo_spec):
+    compiler = DagCompiler(spec=demo_spec, cache=False)
+    dispatch = compiler.ruffrender("pkg/dispatch.jinja2", cache=False)
+    assert "run_report" not in dispatch
+    assert "ResponseModel(result=result)" in dispatch

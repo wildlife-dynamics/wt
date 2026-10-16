@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
+
+_SKIP = {"k": "ref", "ref": "wt_task.cache:SKIP", "type": None}
+_DYNAMIC = {"k": "dynamic"}
 
 
 @dataclass(frozen=True)
@@ -31,6 +34,15 @@ class CacheSpec:
             a task its author tagged `no-cache`: it then always executes, but
             still digests and promotes its output, so the claim stays about this
             task rather than silently disabling everything below it.
+        structure: The return type's declared cache structure, as resolved by
+            `wt_contracts.declared_structure`. None means the type declares no
+            codec, and the step is not cacheable.
+        method: Which execution method this step uses, which decides what the
+            declared structure is wrapped in.
+        scoped: Whether `WT_CACHE_SCOPE` belongs in this step's key. True only
+            for io-tagged tasks: a step that reads the world can see different
+            data per principal, while a derived step is a pure function of
+            input digests nobody can hold without holding the same content.
     """
 
     task_instance_id: str
@@ -42,3 +54,30 @@ class CacheSpec:
     env: dict[str, str] = field(default_factory=dict)
     params: dict[str, Any] = field(default_factory=dict)
     servable: bool = True
+    structure: dict[str, Any] | None = None
+    method: Literal["call", "map", "mapvalues"] = "call"
+    scoped: bool = False
+
+    @property
+    def wrapped_structure(self) -> dict[str, Any] | None:
+        """The structure of what this *step* returns, not what the task declares.
+
+        `skipif` can turn any step's return into the sentinel whatever the
+        annotation says, and `map`/`mapvalues` wrap it in the container the
+        executor builds. The mapvalues key is whatever `argvalues` carried, so
+        it is walked at run time rather than declared.
+
+        Examples:
+            >>> CacheSpec("s", "pkg", "f", "r", structure={"k": "json"}).wrapped_structure["k"]
+            'union'
+            >>> CacheSpec("s", "pkg", "f", "r", method="map").wrapped_structure is None
+            True
+        """
+        if self.structure is None:
+            return None
+        servable = {"k": "union", "of": [self.structure, _SKIP]}
+        if self.method == "map":
+            return {"k": "list", "of": servable}
+        if self.method == "mapvalues":
+            return {"k": "list", "of": {"k": "tuple", "of": [_DYNAMIC, servable]}}
+        return servable

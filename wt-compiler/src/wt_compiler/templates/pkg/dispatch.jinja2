@@ -24,7 +24,15 @@ def dispatch(
 
     try:
         result = dispatcher(params=params, validate_params_schema=validate_params_schema)
+        {%- if cache %}
+        # Read after the DAG's run scope has closed, which is where the report
+        # of what each step's cache actually did ends up.
+        from wt_task.cache import run_report
+
+        response = ResponseModel(result=result, cache=run_report())
+        {%- else %}
         response = ResponseModel(result=result)
+        {%- endif %}
         response.model_dump_json()  # eagerly validate JSON-serializability
     except Exception as e:
         trace = traceback.format_exc()
