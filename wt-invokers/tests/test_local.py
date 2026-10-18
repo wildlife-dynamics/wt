@@ -144,7 +144,7 @@ async def test_run_results_url_to_path_is_unchanged_on_posix(
     invoker = LocalSubprocessInvoker(matchspec=MatchSpec("test-workflow>=1.0.0"))
 
     with (
-        patch("wt_invokers.local.Path") as mock_path,
+        patch("wt_invokers._subprocess.Path") as mock_path,
         patch.object(subprocess, "Popen", return_value=MagicMock()),
     ):
         await invoker.run(

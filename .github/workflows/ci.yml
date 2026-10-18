@@ -102,6 +102,42 @@ jobs:
         working-directory: ${{ matrix.package }}
         run: uv run pytest
 
+  # ecoscope-platform pins pydantic <2.9, and images that bake in the task
+  # stack import wt_compiler alongside it. spec.py must therefore stay clear of
+  # constructs pydantic 2.8 cannot build a schema for -- notably PEP 695 `type`
+  # aliases used as model fields. Importing Spec is enough to catch it: the
+  # schema is built at class-definition time.
+  pydantic-floor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install wt-compiler, then pin pydantic to the supported floor
+        working-directory: wt-compiler
+        run: |
+          uv sync --dev
+          uv pip install 'pydantic==2.8.*'
+
+      - name: Import the compiler and build a Spec schema under pydantic 2.8
+        working-directory: wt-compiler
+        run: |
+          uv run --no-sync python -c "
+          import pydantic
+          assert pydantic.VERSION.startswith('2.8.'), pydantic.VERSION
+          from wt_compiler.spec import Spec
+          Spec.model_validate({'id': 'guard', 'requirements': [], 'workflow': []})
+          print('wt_compiler builds Spec schemas under pydantic', pydantic.VERSION)
+          "
+
   dep-sync:
     runs-on: ubuntu-latest
     steps:

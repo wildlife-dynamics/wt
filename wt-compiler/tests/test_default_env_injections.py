@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 from rattler import MatchSpec
 
-from wt_compiler.compiler import DEFAULT_INJECTIONS_PATH, _load_default_injections
+from wt_compiler.compiler import DEFAULT_INJECTIONS_PATH, load_default_injections
 from wt_compiler.requirements import (
     CONDA_FORGE_CHANNEL,
     MICROSOFT_CHANNEL,
@@ -52,7 +52,7 @@ def test_default_injections_file_exists():
 @pytest.mark.parametrize("feature", sorted(EXPECTED_SPECS))
 def test_default_injections_match_legacy_inline_specs(feature):
     """Every dep currently inline equals the loaded match-spec, byte-for-byte."""
-    fragment = _load_default_injections()
+    fragment = load_default_injections()
     actual = {
         str(spec.name.normalized): spec
         for spec in fragment.get_feature(feature).conda
@@ -80,6 +80,6 @@ def test_default_injections_match_legacy_inline_specs(feature):
 
 def test_default_injections_have_no_pypi_entries():
     """Bundled defaults are conda-only; pypi entries belong only in user overrides."""
-    fragment = _load_default_injections()
+    fragment = load_default_injections()
     for feature in EXPECTED_SPECS:
         assert fragment.get_feature(feature).pypi == []

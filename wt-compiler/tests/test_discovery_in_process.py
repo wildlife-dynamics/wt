@@ -1,6 +1,7 @@
-"""Tests for current-environment (solve-free) task discovery."""
+"""Tests for in-process (solve-free) task discovery."""
 
-import json
+import sys
+import types
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,15 +12,14 @@ from wt_compiler.compiler import compile_workflow_from_env
 from wt_compiler.discovery import (
     DiscoveryResult,
     _registry_output_to_known_tasks,
-    discover_tasks_from_current_env,
-    populate_known_tasks_from_current_env,
+    discover_tasks_in_process,
+    populate_known_tasks_in_process,
 )
-from wt_compiler.exceptions import RegistryExecutionError, RegistryNotFoundInEnvError
 from wt_compiler.spec import known_tasks
 
 
 def _registry_json(entries=None):
-    """Build a minimal wt-registry --format json payload."""
+    """Build a minimal wt-registry output payload."""
     return {
         "entries": entries
         if entries is not None
@@ -41,8 +41,28 @@ def _registry_json(entries=None):
     }
 
 
+@pytest.fixture
+def fake_wt_registry(monkeypatch):
+    """Install a stub wt_registry package exposing the symbols discovery imports.
+
+    discover_tasks_in_process imports wt_registry lazily inside the function,
+    so the stub only has to exist in sys.modules at call time.
+    """
+    cli = types.ModuleType("wt_registry.cli")
+    cli.auto_discover = MagicMock(return_value=["mypackage.tasks"])
+    cli.serialize_entries = MagicMock(return_value=RegistryOutput.model_validate(_registry_json()))
+    registry_mod = types.ModuleType("wt_registry.registry")
+    registry_mod.get_registry = MagicMock(return_value={"sentinel": object()})
+    pkg = types.ModuleType("wt_registry")
+
+    monkeypatch.setitem(sys.modules, "wt_registry", pkg)
+    monkeypatch.setitem(sys.modules, "wt_registry.cli", cli)
+    monkeypatch.setitem(sys.modules, "wt_registry.registry", registry_mod)
+    return cli, registry_mod
+
+
 class TestRegistryOutputToKnownTasks:
-    """Tests for the shared RegistryOutput -> known_tasks conversion helper."""
+    """Tests for the RegistryOutput -> known_tasks conversion shared by all paths."""
 
     def test_empty_output(self):
         out = RegistryOutput(entries={}, version="1.0.0")
@@ -80,74 +100,46 @@ class TestRegistryOutputToKnownTasks:
         assert {t.registry_ref for t in tasks["run"].values()} == {0, 1}
 
 
-class TestDiscoverTasksFromCurrentEnv:
-    """Tests for discover_tasks_from_current_env."""
+class TestDiscoverTasksInProcess:
+    """Tests for discover_tasks_in_process."""
 
-    @patch("wt_compiler.discovery.subprocess.run")
-    def test_parses_registry_output(self, mock_run, tmp_path):
-        fake_exe = tmp_path / "wt-registry"
-        fake_exe.touch()
-        mock_run.return_value = MagicMock(
-            stdout=json.dumps(_registry_json()), stderr="", returncode=0
-        )
+    def test_reads_resident_registry(self, fake_wt_registry):
+        cli, registry_mod = fake_wt_registry
 
-        result = discover_tasks_from_current_env(registry_exe=fake_exe)
+        result = discover_tasks_in_process()
 
         assert isinstance(result, DiscoveryResult)
         assert result.records == []  # no solve happened
         assert result.tasks["calculate"]["mypackage.tasks"].description == "Calculate something"
-        # No solve/install path should be invoked -- only the registry subprocess.
-        mock_run.assert_called_once()
+        cli.auto_discover.assert_called_once()
+        registry_mod.get_registry.assert_called_once()
 
-    @patch("wt_compiler.discovery.subprocess.run")
-    def test_resolves_exe_from_path(self, mock_run, tmp_path):
-        fake_exe = tmp_path / "wt-registry"
-        fake_exe.touch()
-        mock_run.return_value = MagicMock(
-            stdout=json.dumps(_registry_json()), stderr="", returncode=0
-        )
-        with patch("wt_compiler.discovery.shutil.which", return_value=str(fake_exe)) as which:
-            discover_tasks_from_current_env()
-        which.assert_called_once_with("wt-registry")
+    def test_imports_extra_packages(self, fake_wt_registry):
+        cli, _ = fake_wt_registry
+        with patch("wt_compiler.discovery.importlib.import_module") as import_module:
+            discover_tasks_in_process(packages=["extra.tasks"])
+        import_module.assert_called_once_with("extra.tasks")
+        # auto-discovered modules and the explicit one are both offered to the serializer
+        assert cli.serialize_entries.call_args.kwargs["packages"] == [
+            "mypackage.tasks",
+            "extra.tasks",
+        ]
 
-    @patch("wt_compiler.discovery.subprocess.run")
-    def test_forwards_package_flags(self, mock_run, tmp_path):
-        fake_exe = tmp_path / "wt-registry"
-        fake_exe.touch()
-        mock_run.return_value = MagicMock(
-            stdout=json.dumps(_registry_json()), stderr="", returncode=0
-        )
-        discover_tasks_from_current_env(
-            packages=["pkg.tasks", "other.tasks"], registry_exe=fake_exe
-        )
-        cli_args = mock_run.call_args[0][0]
-        assert cli_args[:3] == [str(fake_exe), "--format", "json"]
-        assert "--package" in cli_args
-        assert "pkg.tasks" in cli_args
-        assert "other.tasks" in cli_args
+    def test_explicit_package_already_auto_discovered_is_not_duplicated(self, fake_wt_registry):
+        cli, _ = fake_wt_registry
+        with patch("wt_compiler.discovery.importlib.import_module"):
+            discover_tasks_in_process(packages=["mypackage.tasks"])
+        assert cli.serialize_entries.call_args.kwargs["packages"] == ["mypackage.tasks"]
 
-    def test_missing_on_path_raises(self):
-        with (
-            patch("wt_compiler.discovery.shutil.which", return_value=None),
-            pytest.raises(RegistryNotFoundInEnvError),
-        ):
-            discover_tasks_from_current_env()
-
-    def test_explicit_missing_exe_raises(self, tmp_path):
-        with pytest.raises(RegistryNotFoundInEnvError):
-            discover_tasks_from_current_env(registry_exe=tmp_path / "nope")
-
-    @patch("wt_compiler.discovery.subprocess.run")
-    def test_nonzero_exit_raises(self, mock_run, tmp_path):
-        fake_exe = tmp_path / "wt-registry"
-        fake_exe.touch()
-        mock_run.return_value = MagicMock(stdout="", stderr="boom", returncode=1)
-        with pytest.raises(RegistryExecutionError):
-            discover_tasks_from_current_env(registry_exe=fake_exe)
+    def test_missing_wt_registry_raises_import_error(self, monkeypatch):
+        monkeypatch.setitem(sys.modules, "wt_registry", None)
+        monkeypatch.setitem(sys.modules, "wt_registry.cli", None)
+        with pytest.raises(ImportError):
+            discover_tasks_in_process()
 
 
-class TestPopulateKnownTasksFromCurrentEnv:
-    """Tests for populate_known_tasks_from_current_env."""
+class TestPopulateKnownTasksInProcess:
+    """Tests for populate_known_tasks_in_process."""
 
     def test_clears_and_updates_global(self):
         known_tasks.clear()
@@ -156,11 +148,9 @@ class TestPopulateKnownTasksFromCurrentEnv:
             tasks=_registry_output_to_known_tasks(RegistryOutput.model_validate(_registry_json())),
             records=[],
         )
-        with patch(
-            "wt_compiler.discovery.discover_tasks_from_current_env", return_value=fake
-        ) as disc:
-            result = populate_known_tasks_from_current_env(packages=["pkg.tasks"])
-        disc.assert_called_once()
+        with patch("wt_compiler.discovery.discover_tasks_in_process", return_value=fake) as disc:
+            result = populate_known_tasks_in_process(packages=["pkg.tasks"])
+        disc.assert_called_once_with(packages=["pkg.tasks"])
         assert "stale" not in known_tasks
         assert "calculate" in known_tasks
         assert result is fake
@@ -184,7 +174,7 @@ workflow: []
 
         with (
             patch(
-                "wt_compiler.compiler.populate_known_tasks_from_current_env",
+                "wt_compiler.compiler.populate_known_tasks_in_process",
                 return_value=DiscoveryResult(tasks={}, records=[]),
             ) as pop,
             patch("wt_compiler.discovery.solve") as solve,
@@ -200,7 +190,7 @@ workflow: []
         spec_yaml.write_text("id: test_workflow\nrequirements: []\nworkflow: []\n")
 
         with patch(
-            "wt_compiler.compiler.populate_known_tasks_from_current_env",
+            "wt_compiler.compiler.populate_known_tasks_in_process",
             return_value=DiscoveryResult(tasks={}, records=[]),
         ) as pop:
             compile_workflow_from_env(spec_yaml, progress=False, discover_packages=["pkg.tasks"])

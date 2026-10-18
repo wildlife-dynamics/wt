@@ -26,7 +26,6 @@ from wt_compiler.exceptions import (
     PyPIInstallError,
     RegistryExecutionError,
     RegistryNotFoundError,
-    RegistryNotFoundInEnvError,
 )
 from wt_compiler.requirements import CHANNELS
 from wt_compiler.spec import KnownTask, PyPIRequirement, TaskTag, known_tasks
@@ -426,160 +425,38 @@ async def populate_known_tasks(
     return result
 
 
-def discover_tasks_from_current_env(
-    packages: list[str] | None = None,
-    registry_exe: str | Path | None = None,
-    on_progress: Callable[[str], None] | None = None,
-) -> DiscoveryResult:
-    """Discover tasks by running wt-registry in the *current* environment.
-
-    Unlike :func:`discover_tasks_from_requirements`, this performs **no**
-    dependency solve and creates **no** ephemeral environment. It assumes
-    the task libraries (and ``wt-registry``) are already installed in the
-    running interpreter's environment — the situation inside an invoker
-    image that bakes in ``ecoscope.platform`` and the ``wt`` stack. It
-    simply shells out to the already-installed ``wt-registry --format
-    json`` and converts the output.
-
-    Because there is no solve, the returned :class:`DiscoveryResult` has an
-    empty ``records`` list; callers that need pinned versions for a README
-    fingerprint should source them elsewhere (e.g. an existing
-    ``pixi.lock``).
-
-    Args:
-        packages: Optional dotted module paths to import for task
-            registration, forwarded as ``--package`` flags. Auto-discovery
-            via entry points always runs regardless; this only adds
-            explicit imports.
-        registry_exe: Path to the ``wt-registry`` executable. Defaults to
-            the first ``wt-registry`` found on ``PATH``.
-        on_progress: Optional callback invoked with a status message.
-
-    Returns:
-        DiscoveryResult with discovered tasks and an empty ``records`` list.
-
-    Raises:
-        RegistryNotFoundInEnvError: If no ``wt-registry`` executable is
-            found in the current environment.
-        RegistryExecutionError: If ``wt-registry`` returns a non-zero exit
-            code.
-
-    Examples:
-        >>> # In an environment with wt-registry and task libraries installed:
-        >>> # result = discover_tasks_from_current_env()  # doctest: +SKIP
-        >>> # len(result.tasks) > 0  # doctest: +SKIP
-        True
-    """
-    if registry_exe is None:
-        found = shutil.which("wt-registry")
-        if found is None:
-            raise RegistryNotFoundInEnvError()
-        registry_exe = found
-    registry_exe = Path(registry_exe)
-    if not registry_exe.exists():
-        raise RegistryNotFoundInEnvError(executable_path=registry_exe)
-
-    cli_args = [str(registry_exe), "--format", "json"]
-    for package in packages or []:
-        cli_args.extend(["--package", package])
-
-    if on_progress is not None:
-        on_progress("Discovering tasks in current environment...")
-    result = subprocess.run(  # noqa: S603  # cmd built from a resolved tool path
-        cli_args,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-    if result.returncode != 0:
-        raise RegistryExecutionError(
-            executable_path=registry_exe,
-            returncode=result.returncode,
-            stdout=result.stdout,
-            stderr=result.stderr,
-            requirements=[],
-        )
-
-    registry_output = RegistryOutput.model_validate_json(result.stdout)
-    discovered_tasks = _registry_output_to_known_tasks(registry_output)
-    return DiscoveryResult(tasks=discovered_tasks, records=[])
-
-
-def populate_known_tasks_from_current_env(
-    packages: list[str] | None = None,
-    registry_exe: str | Path | None = None,
-    on_progress: Callable[[str], None] | None = None,
-) -> DiscoveryResult:
-    """Discover tasks in the current environment and populate ``known_tasks``.
-
-    Synchronous sibling of :func:`populate_known_tasks` that sources tasks
-    from the current environment (no solve) via
-    :func:`discover_tasks_from_current_env`, then replaces the global
-    ``known_tasks`` dict in ``spec.py``.
-
-    Args:
-        packages: Optional dotted module paths forwarded as ``--package``
-            flags to wt-registry.
-        registry_exe: Optional path to the ``wt-registry`` executable.
-        on_progress: Optional callback invoked with a status message.
-
-    Returns:
-        DiscoveryResult with discovered tasks and an empty ``records`` list.
-
-    Examples:
-        >>> # from wt_compiler.spec import known_tasks  # doctest: +SKIP
-        >>> # populate_known_tasks_from_current_env()  # doctest: +SKIP
-        >>> # len(known_tasks) > 0  # doctest: +SKIP
-        True
-    """
-    result = discover_tasks_from_current_env(
-        packages=packages,
-        registry_exe=registry_exe,
-        on_progress=on_progress,
-    )
-    known_tasks.clear()
-    known_tasks.update(result.tasks)
-    return result
-
-
 def discover_tasks_in_process(
     packages: list[str] | None = None,
 ) -> DiscoveryResult:
     """Discover tasks by importing the registry *in the current process*.
 
-    This is the "hot registry" discovery path. Unlike
-    :func:`discover_tasks_from_current_env` (which shells out to the
-    ``wt-registry`` CLI, cold-importing the task stack on every call), this
-    imports ``wt-registry`` and the registered task libraries directly into
-    the running interpreter via ``auto_discover()`` and reads the in-memory
-    registry. The heavy import happens once; subsequent calls are cheap.
+    Performs no dependency solve and creates no ephemeral environment: the
+    task libraries are imported into the running interpreter via
+    ``auto_discover()`` and the in-memory registry is read directly. The
+    heavy import happens once, so a long-lived process (an on-the-fly
+    compile server) pays the ``ecoscope.platform`` cost at startup and
+    serves subsequent compilations for free.
 
-    It is meant for a long-lived service (e.g. an on-the-fly compile server)
-    that pays the ``ecoscope.platform`` import cost once at startup and then
-    serves many spec→DAG compilations against the resident registry.
-
-    Because it works with the in-memory :class:`RegistryOutput` object and
-    never round-trips through ``model_dump_json()``, it also sidesteps JSON
+    Working with the in-memory :class:`RegistryOutput` also sidesteps JSON
     serialization gaps in individual task schemas (e.g. non-serializable
-    parameter defaults) that would fail the subprocess CLI.
+    parameter defaults), which would fail a CLI round-trip.
 
     Args:
         packages: Optional dotted module paths to import for task
             registration, in addition to entry-point auto-discovery.
 
     Returns:
-        DiscoveryResult with discovered tasks and an empty ``records`` list.
+        DiscoveryResult with the discovered tasks and an empty ``records``
+        list -- there is no solve, so there are no pinned versions to report.
 
     Raises:
         ImportError: If ``wt-registry`` is not installed in the current
             environment.
 
     Examples:
-        >>> # In an environment with wt-registry and task libraries installed:
-        >>> # result = discover_tasks_in_process()  # doctest: +SKIP
-        >>> # len(result.tasks) > 0  # doctest: +SKIP
-        True
+        In an environment with wt-registry and the task libraries installed::
+
+            result = discover_tasks_in_process()
     """
     # wt-registry (and the task libraries) are optional at import time; only
     # a process that intends in-process discovery needs them installed.
@@ -598,7 +475,9 @@ def discover_tasks_in_process(
         if package not in all_packages:
             all_packages.append(package)
 
-    registry = get_registry()
+    # get_registry() hands back an immutable view; serialize_entries only reads it
+    # but is typed `dict`, so materialize rather than cast.
+    registry = dict(get_registry())
     registry_output = serialize_entries(registry, packages=all_packages or None)
     tasks = _registry_output_to_known_tasks(registry_output)
     return DiscoveryResult(tasks=tasks, records=[])
@@ -609,10 +488,8 @@ def populate_known_tasks_in_process(
 ) -> DiscoveryResult:
     """Discover tasks in-process and populate the global ``known_tasks`` dict.
 
-    Synchronous "hot registry" sibling of
-    :func:`populate_known_tasks_from_current_env` that sources tasks from the
-    resident interpreter (no subprocess, no re-import after the first call)
-    via :func:`discover_tasks_in_process`, then replaces the global
+    Solve-free sibling of :func:`populate_known_tasks`: discovers via
+    :func:`discover_tasks_in_process`, then replaces the global
     ``known_tasks`` dict in ``spec.py``.
 
     Args:
@@ -620,13 +497,12 @@ def populate_known_tasks_in_process(
             registration, in addition to entry-point auto-discovery.
 
     Returns:
-        DiscoveryResult with discovered tasks and an empty ``records`` list.
+        DiscoveryResult with the discovered tasks and an empty ``records`` list.
 
     Examples:
-        >>> # from wt_compiler.spec import known_tasks  # doctest: +SKIP
-        >>> # populate_known_tasks_in_process()  # doctest: +SKIP
-        >>> # len(known_tasks) > 0  # doctest: +SKIP
-        True
+        Populate the registry before validating a Spec::
+
+            populate_known_tasks_in_process()
     """
     result = discover_tasks_in_process(packages=packages)
     known_tasks.clear()

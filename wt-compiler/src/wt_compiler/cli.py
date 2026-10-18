@@ -371,11 +371,11 @@ def main() -> None:
         "--from-env",
         action="store_true",
         help=(
-            "Discover tasks from the current environment via the installed wt-registry "
-            "instead of solving an ephemeral environment. Skips the dependency solve "
-            "entirely; intended for invoker images that bake in the wt stack and task "
-            "libraries. Combine with --clobber --update to rebuild the DAG while carrying "
-            "over an existing pixi.lock."
+            "Discover tasks from the registry installed in the current environment "
+            "instead of solving an ephemeral one. Skips the dependency solve entirely; "
+            "intended for images that bake in the wt stack and task libraries. Combine "
+            "with --clobber --update to rebuild the DAG while carrying over an existing "
+            "pixi.lock."
         ),
     )
     compile_parser.add_argument(
@@ -385,18 +385,8 @@ def main() -> None:
         default=None,
         metavar="MODULE",
         help=(
-            "With --from-env, an extra dotted module path to import for task registration "
-            "(passed through to wt-registry --package). May be given multiple times."
-        ),
-    )
-    compile_parser.add_argument(
-        "--registry-exe",
-        type=Path,
-        default=None,
-        metavar="PATH",
-        help=(
-            "With --from-env, path to the wt-registry executable "
-            "(default: the first wt-registry found on PATH)."
+            "With --from-env, an extra dotted module path to import for task registration, "
+            "in addition to entry-point auto-discovery. May be given multiple times."
         ),
     )
     compile_parser.add_argument(
@@ -534,9 +524,6 @@ def _compile(args: argparse.Namespace) -> None:
                 str(spec_path),
                 progress=not args.no_progress,
                 discover_packages=args.discover_packages,
-                registry_exe=(
-                    Path(args.registry_exe).resolve() if args.registry_exe is not None else None
-                ),
                 **compiler_kwargs,
             )
         else:
