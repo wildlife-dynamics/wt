@@ -359,7 +359,7 @@ class VersionYaml(BaseModel):
 SHA256 = re.compile(r"^[a-fA-F0-9]{64}$")
 
 
-def _params_sha256_from_readme(readme_md: str) -> str:
+def params_sha256_from_readme(readme_md: str) -> str:
     """Extract params_sha256 from README markdown.
 
     Args:
@@ -516,8 +516,8 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
                     )
                 prior_lockfile = lockfile.read_text()
                 prior_version_yaml = VersionYaml(**yaml.load(version_yaml.read_text()))
-                prior_params_sha256 = _params_sha256_from_readme(readme_md_file.read_text())
-                new_params_sha256 = _params_sha256_from_readme(self.readme_md)
+                prior_params_sha256 = params_sha256_from_readme(readme_md_file.read_text())
+                new_params_sha256 = params_sha256_from_readme(self.readme_md)
                 new_version = VersionYaml.bump_from(
                     prior_version=prior_version_yaml,
                     prior_params_sha256=prior_params_sha256,

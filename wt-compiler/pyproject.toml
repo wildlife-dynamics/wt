@@ -40,6 +40,13 @@ dependencies = [
 wt-compiler = "wt_compiler.cli:main"
 
 [project.optional-dependencies]
+# In-process ("hot registry") discovery imports wt-registry and the task
+# libraries into this interpreter. Only a caller that uses that path needs
+# them, so it is an extra rather than a hard dependency -- a plain compile
+# still discovers through an ephemeral solved environment.
+hot = [
+    "wt-registry>=0.1.0,<1.0.0",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
@@ -99,6 +106,15 @@ python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
+
+# wt-registry is the optional `hot` extra, imported lazily only by the
+# in-process ("hot registry") discovery path, so it is absent when mypy runs here.
+[[tool.mypy.overrides]]
+module = [
+    "wt_registry",
+    "wt_registry.*",
+]
+ignore_missing_imports = true
 
 [tool.ruff]
 line-length = 100

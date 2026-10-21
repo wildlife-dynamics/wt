@@ -5,7 +5,8 @@ produces a self-contained workflow package containing executable Python DAG
 code, JSON parameter schemas, CLI entry point, pixi configuration, Dockerfile,
 tests, and a dependency graph visualization.
 
-The compiler operates without importing task code — see
+By default the compiler operates without importing task code. The opt-in
+`--from-env` mode reads tasks from the current environment instead — see
 [Task Discovery](#task-discovery) below.
 
 **Modules:** `compiler` · `spec` · `discovery` · `artifacts` · `cli` ·
@@ -60,7 +61,18 @@ compile_workflow(spec, **kwargs) -> WorkflowArtifacts
 
 # Recommended entry point — handles the complete pipeline
 compile_workflow_from_yaml(spec_path, **kwargs) -> WorkflowArtifacts
+
+# Solve-free entry point — discovers tasks from the current environment
+compile_workflow_from_env(spec_path, discover_packages=None, **kwargs) -> WorkflowArtifacts
 ```
+
+A caller that owns its own build loop (for example a long-lived compile
+service) can compose a solve-free compile from public pieces: populate the
+registry once with `populate_known_tasks_in_process()`, then call
+`compile_workflow()` with a `merged_default_feature` built from
+`load_default_injections()` and `compute_merged_default_feature()`.
+`params_sha256_from_readme()` reads the parameter fingerprint back out of a
+compiled package's README.
 
 ---
 
@@ -149,6 +161,35 @@ tight pins, not strict byte equality — but the coupled override flow is
 meaningfully stronger than feeding two independent dep sets into
 discovery and runtime.
 
+### In-process discovery (`--from-env`)
+
+For an image that already bakes in the wt stack and the task libraries, the
+discovery solve is wasted work: the tasks are installed in the current
+environment. `--from-env` (or `compile_workflow_from_env()`) skips the solve
+entirely. It imports the task libraries into the compiler process through
+entry-point auto-discovery (plus any `--discover-package` modules) and reads
+the in-memory registry directly.
+
+This needs `wt-registry` importable, which is the `hot` extra:
+
+```bash
+pip install "wt-compiler[hot]"
+```
+
+Trade-offs against the default path:
+
+- **Versions come from the environment, not a solve.** Generated schemas
+  match whatever is installed. That's the point when the image is also the
+  runtime, but it means the compiler process carries the task libraries'
+  dependencies and import side effects.
+- **No pinned requirements in the fingerprint.** There is no solve and no
+  lockfile to consult, so the README fingerprint carries no
+  `installed_requirements`. The emitted `pixi.toml` is still generated from
+  the bundled defaults, `spec.yaml requirements:` and any `--env-overrides`.
+- **One process, one version set.** Everything discovered has to coexist in
+  the current interpreter, so this suits images built for a single platform
+  version.
+
 ### Functions
 
 | Function | Description |
@@ -156,6 +197,8 @@ discovery and runtime.
 | `discover_tasks_from_requirements()` | Primary async function for task discovery |
 | `populate_known_tasks()` | Discover tasks and update global state |
 | `discover_tasks_from_spec_requirements()` | Discover from `SpecRequirement` objects |
+| `discover_tasks_in_process()` | Discover from the registry in the current process; no solve |
+| `populate_known_tasks_in_process()` | In-process discovery, then update global state |
 
 ### Exceptions
 
@@ -165,6 +208,7 @@ discovery and runtime.
 | `RegistryExecutionError` | `wt-registry` returned non-zero exit code |
 | `EnvironmentCreationError` | py-rattler failed to solve or install |
 | `PyPIInstallError` | The bulk `uv pip install` failed; the failure is shared across every requirement in the batch |
+| `ImportError` | In-process discovery only: `wt-registry` is not installed in the current environment (install the `hot` extra) |
 
 ---
 
@@ -450,6 +494,16 @@ wt-compiler compile --spec spec.yaml --variant gcp
 # See "Injected Dependencies" above for the full layering and override file format.
 wt-compiler compile --spec spec.yaml \
     --env-overrides=wt-compiler-env-overrides.toml
+
+# Discover tasks from the current environment instead of solving one
+# (needs the `hot` extra; see "In-process discovery" above)
+wt-compiler compile --spec spec.yaml --from-env
+
+# ...importing an extra module for task registration
+wt-compiler compile --spec spec.yaml --from-env --discover-package my_tasks.extra
+
+# Rebuild the DAG in a baked image, carrying over the existing pixi.lock
+wt-compiler compile --spec spec.yaml --from-env --clobber --update
 ```
 
 ---
