@@ -380,6 +380,15 @@ def main() -> None:
         help="Platform variant suffix (e.g., 'gcp' emits wt-runner-gcp, wt-task-gcp dependencies)",
     )
     compile_parser.add_argument(
+        "--with-caching",
+        action="store_true",
+        help=(
+            "Wrap every step of the generated DAG in the step cache. At run time the "
+            "cache is located by the WT_CACHE__STORE environment variable; with it unset the "
+            "emitted code is inert and every step runs as usual."
+        ),
+    )
+    compile_parser.add_argument(
         "--results-env-var",
         type=str,
         default="WT_RESULTS",
@@ -494,6 +503,7 @@ def _compile(args: argparse.Namespace) -> None:
         if args.variant:
             compiler_kwargs["variant"] = args.variant
         compiler_kwargs["results_env_var"] = args.results_env_var
+        compiler_kwargs["cache"] = args.with_caching
         if args.env_overrides is not None:
             compiler_kwargs["env_overrides_path"] = Path(args.env_overrides).resolve()
         artifacts = asyncio.run(

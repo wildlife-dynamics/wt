@@ -10,3 +10,27 @@
 # {{ release_name }}
 
 ![](graph.png)
+{% if cache %}
+
+## Caching
+
+Compiled with `--with-caching`. The cache is located by `WT_CACHE__STORE`; with it
+unset every step simply runs. Only the sequential DAG caches — an async method
+hands back a future, which has no stored form — so a run in async mode reports
+every step as uncacheable. Each run writes `cache-report.json` beside
+`result.json` — even when the run fails — saying what each step's cache did
+and why, and where a failed run stopped.
+
+A step's code identity is the task distribution's installed version plus a
+fingerprint of its dependency closure. An editable install — a local checkout
+wired in through `wt-compiler-env-overrides.toml`, say — freezes that version
+string at install time, so editing task code afterwards moves no key, and a
+warm run keeps serving what the old code produced. That is intended rather
+than a bug: changing a task's signature still invalidates through its
+signature hash, but changing its body does not. While developing against a
+checkout, set `WT_CACHE__EPOCH` to something that moves with the code — the
+checkout's git sha, or a number you bump by hand — or clear the `WT_CACHE__STORE`
+store.
+
+Full documentation: https://github.com/wildlife-dynamics/wt/blob/main/docs/content/caching.md
+{% endif %}

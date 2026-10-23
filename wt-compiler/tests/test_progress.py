@@ -154,6 +154,7 @@ class TestCliNoProgressFlag:
             progress=False,
             pkg_name_prefix="wt",
             results_env_var="WT_RESULTS",
+            cache=False,
         )
 
     def test_progress_default_true(self, tmp_path: "pathlib.Path") -> None:
@@ -176,6 +177,7 @@ class TestCliNoProgressFlag:
             progress=True,
             pkg_name_prefix="wt",
             results_env_var="WT_RESULTS",
+            cache=False,
         )
 
 
