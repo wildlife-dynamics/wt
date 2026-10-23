@@ -5,7 +5,7 @@ Pydantic models and Python Protocols that define the type-safe interfaces used
 for inter-package communication. Every other wt package depends on
 `wt-contracts`.
 
-**Modules:** `registry` · `task` · `cli`
+**Modules:** `registry` · `task` · `cli` · `codecs`
 
 **Public API** (re-exported from `wt_contracts`):
 
@@ -17,6 +17,10 @@ from wt_contracts import (
     TaskProtocol,
     WorkflowCLIArgs,
     WorkflowCLIEnv,
+    CodecRef,
+    Cacheable,
+    CodecDeclarationError,
+    declared_structure,
 )
 ```
 

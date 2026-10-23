@@ -36,7 +36,7 @@ A **workflow** is a DAG of tasks that produces a JSON result. Side effects
 (writing files, calling APIs, updating databases) can happen along the way, but
 the final output is always a `result.json` file written to the results
 directory configured by the `WT_RESULTS` environment variable. The file
-contains three fields:
+contains:
 
 ```json
 {"result": <return value>, "error": <error string or null>, "trace": <traceback string or null>}
@@ -47,6 +47,9 @@ contains three fields:
 - **`error`** — error details if the workflow failed, otherwise `null`.
 - **`trace`** — the Python traceback string if the workflow errored, otherwise
   `null`.
+
+A workflow compiled with `--with-caching` carries a fourth field, `cache`: one
+row per step saying what the cache did and why. See [Caching](caching.md).
 
 The output format is identical regardless of how the workflow is executed —
 CLI, REST API, or Cloud Batch.

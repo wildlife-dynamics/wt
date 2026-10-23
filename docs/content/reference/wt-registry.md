@@ -109,6 +109,26 @@ Pydantic's `TypeAdapter` under the hood).
 
 ---
 
+## Caching
+
+Each entry also carries what the step cache needs to know about the function's
+return type. Both fields are computed lazily, like `json_schema`, and appear in
+the CLI's JSON output.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `cache_structure` | `dict \| None` | The return type's declared cache structure, from `wt_contracts.declared_structure`. `None` means the type declares no codec and the step is not cacheable. |
+| `cache_structure_error` | `str \| None` | Why a declaration could not be resolved, naming the offending field. |
+
+A bad declaration yields `cache_structure=None` plus an error string rather
+than raising: one unserializable return type in a task library must not break
+every non-caching compile against it. `wt-compiler --with-caching` turns the
+error into a hard failure.
+
+See [Caching](../caching.md) for what a declaration looks like.
+
+---
+
 ## CLI Reference
 
 The `wt-registry` CLI exports the global function registry to stdout. It is

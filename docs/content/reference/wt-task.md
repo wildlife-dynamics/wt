@@ -5,7 +5,7 @@ a chainable, composable execution API. Used in generated DAG code to execute
 registered functions with validation, error handling, and tracing.
 
 **Modules:** `decorator` · `base` · `sync_task` · `async_task` · `exceptions` ·
-`skip` · `executors` · `testing` · `tracing`
+`skip` · `executors` · `testing` · `tracing` · `cache`
 
 **Public API:**
 
@@ -121,6 +121,52 @@ result = (
 | `TaskInstanceError` | Wraps an exception with the task instance ID for debugging |
 | `SkipSentinel` | Returned when a task is skipped via `.skipif()` |
 | `SKIP_SENTINEL` | Singleton instance of `SkipSentinel` |
+
+---
+
+## Caching
+
+```python
+from wt_task.cache import CacheSpec, Codec, Tree, run_scope, run_report
+```
+
+`wt_task.cache` is the runtime half of the step cache. The compiler emits
+`.cached(CacheSpec(...))` into generated DAGs; nothing here is needed to write
+a task. See [Caching](../caching.md) for the behaviour.
+
+### `.cached(spec)`
+
+Returns a new task that resolves its result through the cache. Unlike the other
+builders it sets a field rather than wrapping `func`, so that `map` and
+`mapvalues` key once per step rather than once per item.
+
+It also works out, from the wrapped function, where the task lives and how its
+result encodes — so it must be applied **before** `.partial()`, which replaces
+that function with a `functools.partial`.
+
+### Public API
+
+| Name | Description |
+|------|-------------|
+| `CacheSpec` | What the compiler knows: `signature`, `fixed_inputs`, `upstream_inputs`, `env`, `servable`, `scoped` |
+| `ResolvedTask` | What `.cached()` works out from the function: anchor, name, a tree per method |
+| `Codec` | One leaf type's `encode` / `decode` / `digest`, plus the types it accepts |
+| `Tree` | The codec for a whole step, built from a declared structure |
+| `Undigestible` | Raised by a codec declining a value; the step runs and is not cached |
+| `CacheMismatch` | A stored payload no longer matches the declaration — read as a miss |
+| `CacheCorruptionError` | A payload is present and unreadable; never downgraded to a miss |
+| `CacheMismatchWarning` | Warned under `WT_CACHE__VERIFY` when a step did not reproduce |
+| `run_scope(params=..., settings=...)` | Scopes one DAG execution's identity table, parameters and settings |
+| `CacheSettings` | The run's knobs — `store`, `epoch`, `scope`, `io_ttl`, `verify`, `strict` — from `WT_CACHE__*`, a `.env` file or `[tool.wt.cache]` |
+| `load_settings()` | Builds them, degrading a value that will not parse unless `strict` |
+| `run_report()` | Per-step outcomes for the run, as JSON-able rows |
+| `cache_report(error=None)` | The whole `cache-report.json` document: status, failure, summary, redacted settings, rows |
+| `put_cache_report(store, error=None)` | Writes it to a results store as `cache-report.json`; warns rather than raises |
+| `resolve_task` / `resolve_structure` | Build a `ResolvedTask` / a `Tree` |
+| `open_store` | Opens the `WT_CACHE__STORE` store, or returns `None` |
+
+Builtin leaf codecs: `JSON`, `BYTES`, `PATH`, `URL`, `SKIP`, and
+`enum_codec(cls)`.
 
 ---
 

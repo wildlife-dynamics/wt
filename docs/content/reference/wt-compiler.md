@@ -64,6 +64,42 @@ compile_workflow_from_yaml(spec_path, **kwargs) -> WorkflowArtifacts
 
 ---
 
+## Caching
+
+`--with-caching` wraps every step of the generated sequential DAG in
+`.cached(CacheSpec(...))`. At run time the cache is located by `WT_CACHE__STORE`; with
+it unset the emitted code is inert. See [Caching](../caching.md).
+
+What is emitted per step is only what the runtime cannot work out for itself:
+
+| Field | Source |
+|-------|--------|
+| `signature` | `KnownTask.signature_hash` — module, function name, JSON schema |
+| `fixed_inputs` | `TaskInstance.cache_fixed_inputs` — literal arguments, where each upstream reference sits, and the parallel-op argnames |
+| `upstream_inputs` | `TaskInstance.cache_upstream_inputs` — argument to upstream task-instance ids |
+| `env` | `TaskInstance.cache_env` — names of environment variables bound to arguments |
+| `servable` | `False` for a `no-cache` task; omitted otherwise |
+| `scoped` | `True` for an `io`-tagged task; omitted otherwise |
+
+The return type's structure, the task's module and name, the method and the
+step's parameters are all derived at run time and deliberately absent.
+`KnownTask.cache_structure` is still carried for the report below, but is not
+emitted.
+
+Nothing here is serialized into the spec: `Spec.sha256` hashes the dumped
+model, so a serialized field would move every existing workflow's fingerprint.
+
+### `cache_report()`
+
+`DagCompiler.cache_report()` returns one `CacheReportRow` per step —
+`task_instance_id`, `status` (`cacheable` / `unservable` / `uncacheable`) and
+`reason` — computed over the spec's dependencies so that propagation is
+visible. Under `--with-caching` the compiler logs each non-cacheable step and a
+summary count, and fails outright if any task declares a codec its return type
+cannot honour.
+
+---
+
 ## Spec Models
 
 Pydantic models representing the parsed workflow specification.
