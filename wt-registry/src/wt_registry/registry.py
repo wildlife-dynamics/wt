@@ -175,8 +175,10 @@ def to_json(pretty: bool = False) -> str:
     registry_data = {}
     for fqn, entry in _GLOBAL_REGISTRY.items():
         data = entry.model_dump(mode="json")
-        # Manually add json_schema since it's a property, not a field
+        # Manually add the lazy properties, which are not fields
         data["json_schema"] = entry.json_schema
+        data["cache_structure"] = entry.cache_structure
+        data["cache_structure_error"] = entry.cache_structure_error
         registry_data[fqn] = data
     if pretty:
         return json.dumps(registry_data, indent=2)

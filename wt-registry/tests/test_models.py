@@ -1,12 +1,17 @@
 """Tests for Pydantic models."""
 
+import json
 from typing import Annotated
 
 import pytest
-from pydantic import Field
+from pydantic import BaseModel, Field
 from pydantic import ValidationError as PydanticValidationError
+from wt_contracts import Cacheable, CodecRef
 
+from wt_registry.cli import serialize_entries
+from wt_registry.exceptions import SchemaGenerationError
 from wt_registry.models import RegistryEntry, RegistryMetadata
+from wt_registry.registry import clear_registry, register_entry, to_json
 
 
 def test_registry_metadata_minimal() -> None:
@@ -270,3 +275,114 @@ def test_registry_entry_json_schema_surfaces_field_metadata() -> None:
     assert schema["properties"]["y"]["description"] == "A string"
     assert schema["properties"]["z"]["default"] == 3.14
     assert schema["properties"]["z"]["ecoscope:advanced"] is True
+
+
+# --- declared cache structure ---------------------------------------------
+
+
+FRAME = CodecRef("mylib.codecs:FRAME")
+Frame = Annotated[list, FRAME]
+
+
+class ModelCodec(Cacheable):
+    __wt_codec__ = "mylib.codecs:model_codec"
+
+
+class Point(BaseModel, ModelCodec):
+    x: int
+
+
+class Unroundtrippable(BaseModel, ModelCodec):
+    help_text: str = Field(default="", exclude=True)
+
+
+def _entry(func) -> RegistryEntry:
+    entry = RegistryEntry(
+        metadata=RegistryMetadata(title="T", description="D"),
+        module_path="test.module",
+        function_name=func.__name__,
+    )
+    entry._func_ref = func
+    return entry
+
+
+def test_cache_structure_resolves_an_annotated_alias_return() -> None:
+    def make() -> Frame:
+        return []
+
+    assert _entry(make).cache_structure == {
+        "k": "ref",
+        "ref": "mylib.codecs:FRAME",
+        "type": None,
+    }
+
+
+def test_cache_structure_resolves_a_cacheable_model_return() -> None:
+    def make() -> Point:
+        return Point(x=1)
+
+    structure = _entry(make).cache_structure
+    assert structure["ref"] == "mylib.codecs:model_codec"
+    assert structure["type"].endswith(":Point")
+
+
+def test_a_bare_model_return_is_not_cacheable() -> None:
+    class Bare(BaseModel):
+        x: int
+
+    def make() -> Bare:
+        return Bare(x=1)
+
+    assert _entry(make).cache_structure is None
+    assert _entry(make).cache_structure_error is None
+
+
+def test_a_bad_declaration_does_not_fail_serialization_and_names_the_field() -> None:
+    def make() -> Unroundtrippable:
+        return Unroundtrippable()
+
+    entry = _entry(make)
+    assert entry.cache_structure is None
+    assert "help_text" in entry.cache_structure_error
+
+
+def test_cache_structure_without_a_function_reference_raises() -> None:
+    entry = RegistryEntry(
+        metadata=RegistryMetadata(title="T", description="D"),
+        module_path="test.module",
+        function_name="missing",
+    )
+    with pytest.raises(AttributeError, match="function reference not set"):
+        _ = entry.cache_structure
+
+
+def test_to_json_carries_the_cache_structure() -> None:
+    clear_registry()
+
+    def make() -> Frame:
+        return []
+
+    register_entry(_entry(make))
+    data = json.loads(to_json())
+    entry = data["test.module.make"]
+    assert entry["cache_structure"] == {"k": "ref", "ref": "mylib.codecs:FRAME", "type": None}
+    assert entry["cache_structure_error"] is None
+    clear_registry()
+
+
+def test_serialize_entries_carries_the_cache_structure() -> None:
+    def make() -> Unroundtrippable:
+        return Unroundtrippable()
+
+    output = serialize_entries({"test.module.make": _entry(make)})
+    contract_entry = output.entries["test.module.make"]
+    assert contract_entry.cache_structure is None
+    assert "help_text" in contract_entry.cache_structure_error
+
+
+def test_an_unresolvable_return_annotation_surfaces_as_a_schema_error() -> None:
+    def make() -> "NoSuchType":  # noqa: F821  # unresolvable on purpose
+        return None
+
+    with pytest.raises(SchemaGenerationError, match="cache structure"):
+        _ = _entry(make).cache_structure
