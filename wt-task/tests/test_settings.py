@@ -178,6 +178,43 @@ def test_the_other_fields_survive_a_bad_one(monkeypatch):
     assert settings.scope == "tenant-a"
 
 
+@pytest.mark.parametrize(
+    ("field", "safe"),
+    [("verify", {"verify": True}), ("strict", {"strict": False})],
+)
+def test_a_bad_bool_degrades_rather_than_failing_the_run(monkeypatch, field, safe):
+    monkeypatch.setenv(f"{ENV_PREFIX}{field.upper()}", "maybe")
+    with pytest.warns(UserWarning, match=field):
+        settings = load_settings()
+    assert {k: getattr(settings, k) for k in safe} == safe
+
+
+@pytest.mark.parametrize(
+    ("field", "safe"),
+    [
+        ("store", {"store": ""}),
+        ("scope", {"scope": ""}),
+        # A lost epoch could be a lost invalidation, so the cache goes inert.
+        ("epoch", {"epoch": "", "store": ""}),
+    ],
+)
+def test_a_bad_string_degrades_rather_than_failing_the_run(clean, field, safe):
+    store = "" if field == "store" else "store = '/s'\n"
+    write(clean / "pyproject.toml", f"[tool.wt.cache]\n{store}{field} = 3\n")
+    with pytest.warns(UserWarning, match=field):
+        settings = load_settings()
+    assert {k: getattr(settings, k) for k in safe} == safe
+
+
+def test_a_bad_strict_does_not_hide_a_bad_neighbour(monkeypatch):
+    monkeypatch.setenv(f"{ENV_PREFIX}STRICT", "maybe")
+    monkeypatch.setenv(f"{ENV_PREFIX}IO_TTL", "soon")
+    with pytest.warns(UserWarning, match="io_ttl, strict"):
+        settings = load_settings()
+    assert settings.io_ttl == timedelta(0)
+    assert settings.strict is False
+
+
 # --- the active settings ----------------------------------------------------
 
 

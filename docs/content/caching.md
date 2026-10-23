@@ -45,17 +45,19 @@ to skip side effects; see [`no-cache`](#tags-that-matter).
 
 ## How a key is built
 
-A step's key is a digest over five things. Any one of them moving is a miss.
+A step's key is a digest over six things. Any one of them moving is a miss.
 
 | Part | Where it comes from |
 |------|---------------------|
 | **Code identity** | the task's distribution and its dependencies (below) |
-| **`fixed_inputs`** | compile-time hash of the arguments bound in `spec.yaml` |
+| **Return structure** | a digest of the step's declared return structure, so a return type that changes shape misses even when no version moved |
+| **`fixed_inputs`** | compile-time hash of the arguments and `skipif` conditions bound in `spec.yaml` |
 | **`upstream_inputs`** | the **output digests** of the steps feeding this one |
 | **`env`** | the values of the environment variables bound to arguments |
 | **`params`** | the run's parameters for this step |
 
-Plus `WT_CACHE__SCOPE`, but only for [io-tagged](#tags-that-matter) steps.
+Plus `WT_CACHE__SCOPE`, but only for [io-tagged](#tags-that-matter) steps —
+which are never served while it is unset.
 
 ### Code identity
 
@@ -246,6 +248,11 @@ steps are *not* scoped: they are pure functions of their input digests, and
 nobody can reach one without already holding the same content. A fresh token
 therefore costs one source refetch, not a whole cold run.
 
+With `WT_CACHE__SCOPE` unset, an io step is **never served or stored**: two
+tenants sharing a connection name would otherwise share its key. It still runs
+and promotes its digest, so the steps below it keep hitting on identical
+content. Set any scope — `local` will do on a workstation — to cache sources.
+
 Getting the tag wrong is the same class of error as a missing `no-cache`, and
 is found the same way — [verify mode](#verify-mode) against a second principal.
 
@@ -257,10 +264,10 @@ is found the same way — [verify mode](#verify-mode) against a second principal
 |----------|--------------|
 | `WT_CACHE__STORE` | Store location: a local path or an object-store URL. Unset means the cache is inert and every step runs. A remote URL needs `wt-task[cache]` (obstore). |
 | `WT_CACHE__EPOCH` | Manual invalidator, mixed into every key. For when a version cannot move. |
-| `WT_CACHE__SCOPE` | Folded into io-tagged steps' keys. Separates principals that share a connection name. |
+| `WT_CACHE__SCOPE` | Folded into io-tagged steps' keys. Separates principals that share a connection name. Unset, io steps always refetch. |
 | `WT_CACHE__IO_TTL` | How long an io-tagged step's stored result may be served: `forever` (default), `never` / `0` to always refetch, or a duration — `90`, `45s`, `30m`, `1h`, `7d`. Derived steps never expire. |
 | `WT_CACHE__VERIFY` | Re-run everything and compare against what is stored, without serving or writing. See below. |
-| `WT_CACHE__STRICT` | Raise on a codec declaration that will not resolve, instead of degrading to uncacheable. |
+| `WT_CACHE__STRICT` | Raise on a codec declaration that will not resolve, a setting that will not parse, or a stored payload that will not decode, instead of degrading. |
 
 ### Where settings come from
 
@@ -301,8 +308,8 @@ Recommended settings:
 
 | | `WT_CACHE__EPOCH` | `WT_CACHE__STRICT` | `WT_CACHE__SCOPE` | `WT_CACHE__IO_TTL` |
 |---|---|---|---|---|
-| **Dev** | the task checkout's git sha, or bump by hand | `1` | — | — |
-| **CI** | — | `1` | — | — |
+| **Dev** | the task checkout's git sha, or bump by hand | `1` | any value, e.g. `local`, to cache sources | — |
+| **CI** | — | `1` | any value, to cache sources | — |
 | **Prod** | the **task-library** build (image layer or lock hash) | unset | per principal, e.g. server + `sha256(token)` | a duration, for anything expected to be current |
 
 Two of those deserve the reasoning:
@@ -343,8 +350,11 @@ every step below it hits.
 A value that is not a duration warns once and is treated as `never` — a
 refetch costs time, but serving something older than you asked for is the
 failure that matters. Under `WT_CACHE__STRICT=1` it raises instead. The same
-holds for any setting that will not parse — `strict` is resolved on its own
-first, so a broken neighbour cannot hide it.
+holds for any setting that will not parse, each falling back to whatever costs
+time rather than risking a wrong serve: `verify` to on, `scope` to unset, and
+an unreadable `store` or `epoch` — which may have been the invalidation you
+needed — to an inert cache. `strict` is resolved on its own first, so a broken
+neighbour cannot hide it; if `strict` itself will not parse, it reads as off.
 
 ### Verify mode
 
@@ -422,7 +432,7 @@ the run so far, with status `running`.
 | `hit` | Served from the store; the step did not execute |
 | `miss` | Executed, and the result was stored |
 | `expired` | An io step whose entry was older than `WT_CACHE__IO_TTL`, or that is set to always refetch. Executed and overwritten; the digest is still promoted |
-| `unservable` | `no-cache`: executed, digested and promoted, not stored |
+| `unservable` | `no-cache`, or an io step with `WT_CACHE__SCOPE` unset: executed, digested and promoted, not stored |
 | `uncacheable` | No codec, unpinnable distribution, or an uncacheable upstream |
 | `refused` | A codec declined the value, or a declared ref would not import |
 | `inert` | No store configured |
@@ -479,9 +489,15 @@ format this build no longer reads is a **miss**, not an error.
 local checkout wired in through `wt-compiler-env-overrides.toml`, say — freezes
 that version string at install time, so editing task code afterwards moves no
 key and a warm run keeps serving what the old code produced. This is intended:
-changing a task's *signature* still invalidates through the signature hash, but
-changing its *body* does not. Set `WT_CACHE__EPOCH` to something that moves with
+changing a task's *signature* or the shape of its *return type* still
+invalidates, through the signature hash and the return structure, but changing
+its *body* does not. Set `WT_CACHE__EPOCH` to something that moves with
 the code, or clear the store.
+
+**Return builtins inside a dataclass.** Return validation coerces a task's
+result before the cache sees it, so a miss and a hit agree — except inside a
+stdlib dataclass, which pydantic passes through as-is. A field holding an
+`np.float64` comes back from a hit as a `float`. Convert in the task.
 
 **Tasks outside an installed distribution are never cached.** Without a version
 the cache cannot pin the code, and a code change would not move the key. It
@@ -522,6 +538,8 @@ its `reason`:
 | *`Undigestible(...)`* | A codec declined the actual value. The declared type is wider than what the task returns. |
 | *older than `<n>`s (age `<n>`s)* | Working as configured: the io step's entry outlived `WT_CACHE__IO_TTL`. Raise the TTL if that is too eager. |
 | *`WT_CACHE__IO_TTL` is zero: io steps always refetch* | Every io step refetches by design. Unset the variable, or give it a duration. |
+| *io step with `WT_CACHE__SCOPE` unset* | Working as designed: unscoped sources are never served. Set a scope. |
+| *Could not decode `content/...` (warning)* | A stored payload is present but unreadable. The step recomputed and rewrote it; `WT_CACHE__STRICT=1` raises `CacheCorruptionError` instead. |
 | *Ignoring unusable cache settings (...)* | A setting would not parse and was dropped to its safest value. Fix it, or set `WT_CACHE__STRICT=1` to make it fail loudly. |
 
 **Everything misses on a warm run.** Check `WT_CACHE__EPOCH` and

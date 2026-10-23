@@ -149,12 +149,12 @@ that function with a `functools.partial`.
 | Name | Description |
 |------|-------------|
 | `CacheSpec` | What the compiler knows: `signature`, `fixed_inputs`, `upstream_inputs`, `env`, `servable`, `scoped` |
-| `ResolvedTask` | What `.cached()` works out from the function: anchor, name, a tree per method |
+| `ResolvedTask` | What `.cached()` works out from the function: anchor, name, a tree and a structure digest per method |
 | `Codec` | One leaf type's `encode` / `decode` / `digest`, plus the types it accepts |
 | `Tree` | The codec for a whole step, built from a declared structure |
 | `Undigestible` | Raised by a codec declining a value; the step runs and is not cached |
 | `CacheMismatch` | A stored payload no longer matches the declaration — read as a miss |
-| `CacheCorruptionError` | A payload is present and unreadable; never downgraded to a miss |
+| `CacheCorruptionError` | A payload is present and unreadable; raised under `WT_CACHE__STRICT`, otherwise warned and recomputed |
 | `CacheMismatchWarning` | Warned under `WT_CACHE__VERIFY` when a step did not reproduce |
 | `run_scope(params=..., settings=...)` | Scopes one DAG execution's identity table, parameters and settings |
 | `CacheSettings` | The run's knobs — `store`, `epoch`, `scope`, `io_ttl`, `verify`, `strict` — from `WT_CACHE__*`, a `.env` file or `[tool.wt.cache]` |

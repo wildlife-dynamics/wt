@@ -35,9 +35,17 @@ PYPROJECT_TABLE = ("tool", "wt", "cache")
 _DURATION = re.compile(r"(\d+)([smhd]?)")
 _UNIT_SECONDS = {"": 1, "s": 1, "m": 60, "h": 3600, "d": 86400}
 
-# What a field falls back to when its value will not parse and strict is off:
-# always refetch, which costs time but never serves something older than asked.
-_FAIL_SAFE: dict[str, Any] = {"io_ttl": timedelta(0)}
+# What to substitute when a field will not parse and strict is off. Each choice
+# costs time rather than risking a wrong serve: an unreadable `epoch` might be
+# the invalidation someone needed, so it switches the cache off outright.
+_FAIL_SAFE: dict[str, dict[str, Any]] = {
+    "store": {"store": ""},
+    "epoch": {"epoch": "", "store": ""},
+    "scope": {"scope": ""},
+    "io_ttl": {"io_ttl": timedelta(0)},
+    "verify": {"verify": True},
+    "strict": {"strict": False},
+}
 
 
 def parse_duration(raw: str) -> timedelta | None:
@@ -162,14 +170,23 @@ def load_settings(**overrides: Any) -> CacheSettings:  # noqa: ANN401  # field v
     try:
         return CacheSettings(**overrides)
     except ValidationError as e:
-        if _StrictOnly().strict:
+        if _strict(overrides):
             raise
         broken = {str(err["loc"][0]) for err in e.errors() if err["loc"]}
         warnings.warn(
             f"Ignoring unusable cache settings ({', '.join(sorted(broken))}): {e}",
             stacklevel=2,
         )
-        return CacheSettings(**{**overrides, **{f: _FAIL_SAFE[f] for f in broken}})
+        safe = {k: v for f in broken for k, v in _FAIL_SAFE[f].items()}
+        return CacheSettings(**{**overrides, **safe})
+
+
+def _strict(overrides: dict[str, Any]) -> bool:
+    """Read `strict` alone. If it is what will not parse, there is nothing to be strict with."""
+    try:
+        return _StrictOnly(**{k: v for k, v in overrides.items() if k == "strict"}).strict
+    except ValidationError:
+        return False
 
 
 _RUN_SETTINGS: ContextVar[CacheSettings] = ContextVar("_RUN_SETTINGS")

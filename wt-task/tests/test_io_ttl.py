@@ -21,6 +21,8 @@ def cache_dir(tmp_path, monkeypatch):
     for var in ("WT_CACHE__EPOCH", "WT_CACHE__SCOPE", "WT_CACHE__VERIFY", IO_TTL_ENV_VAR):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("WT_CACHE__STRICT", "1")
+    # An io step with no scope is never served; these tests are about the TTL.
+    monkeypatch.setenv("WT_CACHE__SCOPE", "tenant-a")
 
     real = _packages_distributions()
     monkeypatch.setattr(_key, "_packages_distributions", lambda: {**real, ANCHOR: ["wt-task"]})

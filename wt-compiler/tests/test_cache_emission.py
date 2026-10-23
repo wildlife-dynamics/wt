@@ -296,6 +296,29 @@ def test_cache_fixed_inputs_is_stable_for_identical_bindings():
     assert a.cache_fixed_inputs == b.cache_fixed_inputs
 
 
+def test_cache_fixed_inputs_moves_with_the_skipif_conditions(demo_spec):
+    # The conditions decide whether the step returns the skip sentinel, so a
+    # binding without them must not be served one stored by a binding with them.
+    for name in ("is_empty", "never"):
+        wt_spec.known_tasks[name] = {
+            "demo.conditions": wt_spec.KnownTask(importable_reference=f"demo.conditions.{name}")
+        }
+
+    def fixed(skipif):
+        return wt_spec.TaskInstance(
+            id="x", task="chart", partial={"title": "A"}, skipif=skipif
+        ).cache_fixed_inputs
+
+    keys = [
+        fixed(None),
+        fixed({"conditions": ["is_empty"]}),
+        fixed({"conditions": ["never"]}),
+        fixed({"conditions": ["is_empty"], "unpack_depth": 2}),
+    ]
+    assert len(set(keys)) == len(keys)
+    assert fixed({"conditions": ["is_empty"]}) == keys[1]
+
+
 def test_cache_upstream_inputs_omits_args_with_no_upstream():
     t = wt_spec.TaskInstance(
         id="x", task="chart", partial={"data": "${{ workflow.up.return }}", "title": "A"}

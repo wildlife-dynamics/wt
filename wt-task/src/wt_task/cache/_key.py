@@ -467,7 +467,7 @@ def task_identity(spec: CacheSpec, resolved: ResolvedTask) -> str | None:
 
 
 def step_identity_with_reason(
-    spec: CacheSpec, resolved: ResolvedTask, task_instance_id: str
+    spec: CacheSpec, resolved: ResolvedTask, task_instance_id: str, method: str = "call"
 ) -> tuple[str | None, str | None]:
     """Compute this step's cache key, or None and the reason it has none."""
     task = task_identity(spec, resolved)
@@ -486,6 +486,7 @@ def step_identity_with_reason(
 
     key = {
         "task": task,
+        "structure": resolved.structures.get(method),
         "fixed_inputs": spec.fixed_inputs,
         "env": {name: os.environ.get(name, "") for name in spec.env},
         "params": step_params(task_instance_id),
@@ -502,11 +503,13 @@ def step_identity_with_reason(
     return json_digest(key), None
 
 
-def step_identity(spec: CacheSpec, resolved: ResolvedTask, task_instance_id: str) -> str | None:
+def step_identity(
+    spec: CacheSpec, resolved: ResolvedTask, task_instance_id: str, method: str = "call"
+) -> str | None:
     """Compute this step's cache key, or None if it cannot be cached.
 
     Returns None when the code cannot be pinned, or when any upstream step was
     itself uncacheable — uncacheability propagates down the DAG, because a key
     that omits an unknown input would collide across genuinely different runs.
     """
-    return step_identity_with_reason(spec, resolved, task_instance_id)[0]
+    return step_identity_with_reason(spec, resolved, task_instance_id, method)[0]

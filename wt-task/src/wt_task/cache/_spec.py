@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from wt_contracts import CodecDeclarationError, declared_structure
 
+from ._codec import json_digest
 from ._tree import content_dir, resolve_structure, strict
 
 if TYPE_CHECKING:
@@ -89,6 +90,10 @@ class ResolvedTask:
         root_codec: Directory under `content/` for the `call` method's
             payloads. The map methods always wrap the value in a list, so they
             file under their tree's id.
+        structures: Digest of each method's declared structure, for the key.
+            A return type can change without the distribution version moving,
+            and an entry written under the old shape must then miss rather than
+            decode into the new one.
     """
 
     anchor: str
@@ -97,6 +102,7 @@ class ResolvedTask:
     outcome: Outcome | None = None
     reason: str | None = None
     root_codec: str | None = None
+    structures: Mapping[str, str] = field(default_factory=dict)
 
     def tree(self, method: str) -> Tree | None:
         """Return the codec for the method being executed, if there is one."""
@@ -175,11 +181,13 @@ def resolve_task(func: Callable[..., Any]) -> ResolvedTask:
     if structure is None:
         return ResolvedTask(anchor, function, {}, "uncacheable", "return type declares no codec")
 
-    trees = {method: resolve_structure(_wrapped(structure, method)) for method in METHODS}
+    wrapped = {method: _wrapped(structure, method) for method in METHODS}
+    trees = {method: resolve_structure(wrapped[method]) for method in METHODS}
     if any(tree is None for tree in trees.values()):
         # `resolve_structure` has already warned, naming the ref.
         return ResolvedTask(
             anchor, function, {}, "refused", "declared codec refs could not be imported"
         )
     root_codec = content_dir(structure, cast("Tree", trees["call"]))
-    return ResolvedTask(anchor, function, trees, root_codec=root_codec)
+    structures = {method: json_digest(wrapped[method]) for method in METHODS}
+    return ResolvedTask(anchor, function, trees, root_codec=root_codec, structures=structures)

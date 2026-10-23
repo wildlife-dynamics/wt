@@ -284,7 +284,8 @@ def workflow(tmp_path, monkeypatch):
     monkeypatch.setenv("WT_CACHE__STORE", str(tmp_path / "cache"))
     monkeypatch.setenv("SOURCE_PAYLOAD", "1")
     monkeypatch.delenv("WT_CACHE__EPOCH", raising=False)
-    monkeypatch.delenv("WT_CACHE__SCOPE", raising=False)
+    # An io step with no scope is never served; most tests here want it to be.
+    monkeypatch.setenv("WT_CACHE__SCOPE", "tenant-a")
     monkeypatch.delenv("WT_CACHE__VERIFY", raising=False)
     monkeypatch.syspath_prepend(str(tmp_path))
 
@@ -554,6 +555,18 @@ def test_a_new_scope_costs_one_source_refetch_not_a_cold_run(workflow, tasks, mo
     tasks.reset()
 
     monkeypatch.setenv("WT_CACHE__SCOPE", "another-tenant")
+    run(main)
+    assert [c["task"] for c in tasks.calls()] == ["read_source"]
+
+
+def test_with_no_scope_the_source_always_refetches(workflow, tasks, monkeypatch):
+    # Unscoped, tenants sharing a connection name would share the source's key,
+    # so it is never served; the steps below still hit on identical content.
+    monkeypatch.delenv("WT_CACHE__SCOPE")
+    main, _ = workflow(_build_spec())
+    run(main)
+    tasks.reset()
+
     run(main)
     assert [c["task"] for c in tasks.calls()] == ["read_source"]
 

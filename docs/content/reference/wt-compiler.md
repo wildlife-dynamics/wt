@@ -75,7 +75,7 @@ What is emitted per step is only what the runtime cannot work out for itself:
 | Field | Source |
 |-------|--------|
 | `signature` | `KnownTask.signature_hash` — module, function name, JSON schema |
-| `fixed_inputs` | `TaskInstance.cache_fixed_inputs` — literal arguments, where each upstream reference sits, and the parallel-op argnames |
+| `fixed_inputs` | `TaskInstance.cache_fixed_inputs` — literal arguments, where each upstream reference sits, the parallel-op argnames, and the `skipif` conditions |
 | `upstream_inputs` | `TaskInstance.cache_upstream_inputs` — argument to upstream task-instance ids |
 | `env` | `TaskInstance.cache_env` — names of environment variables bound to arguments |
 | `servable` | `False` for a `no-cache` task; omitted otherwise |

@@ -1,7 +1,9 @@
 """Tests for step caching: the builder, the key, and hit/miss behaviour."""
 
+import dataclasses
 import inspect
 import re
+import sys
 import warnings
 from pathlib import Path
 from typing import Annotated, Any
@@ -286,6 +288,42 @@ def test_a_new_scope_misses_the_source_and_still_hits_everything_below(cache_dir
     assert source_calls == [1, 1]  # refetched under the new principal
     assert derived_calls == [42]  # but the step below it hit
     assert outcomes == ("miss", "hit")
+
+
+def test_an_io_step_with_no_scope_is_never_served_or_stored(cache_dir):
+    # Unscoped, every tenant sharing a connection name would share the key.
+    add, calls = counting_task()
+    cached = add.set_task_instance_id("step").cached(spec(scoped=True))
+    with run_scope() as ids:
+        cached.call(1, 2)
+        cached.call(1, 2)
+        row = ids["step"]
+    assert len(calls) == 2
+    assert (row.outcome, row.reason) == ("unservable", "io step with WT_CACHE__SCOPE unset")
+    assert not (cache_dir / "keys").exists()
+
+
+def test_an_unscoped_io_step_still_lets_everything_below_hit(cache_dir):
+    @task
+    def read_world() -> int:
+        return 42
+
+    derived_calls = []
+
+    @task
+    def transform(n: int) -> int:
+        derived_calls.append(n)
+        return n * 2
+
+    source = read_world.set_task_instance_id("source").cached(spec(scoped=True))
+    derived = transform.set_task_instance_id("derived").cached(
+        spec(upstream_inputs={"n": ["source"]})
+    )
+    for _ in range(2):
+        with run_scope():
+            source.call()
+            derived.call(42)
+    assert derived_calls == [42]
 
 
 # --- what cannot be cached -------------------------------------------------
@@ -698,7 +736,7 @@ def test_a_hit_gives_back_mapvalues_keys_a_downstream_step_can_group_by(cache_di
 # --- failure handling ------------------------------------------------------
 
 
-def test_a_corrupt_payload_fails_loudly(cache_dir):
+def test_a_corrupt_payload_fails_loudly_under_strict(cache_dir):
     add, _ = counting_task()
     cached = add.set_task_instance_id("step").cached(spec())
     cached.call(1, 2)
@@ -706,10 +744,25 @@ def test_a_corrupt_payload_fails_loudly(cache_dir):
     payload = next(p for p in (cache_dir / "content").rglob("*") if p.is_file())
     payload.write_bytes(b"not json at all")
 
-    # Never a silent wrong value, and never a quiet recompute: the entry names an
-    # installed codec and a payload that is present, so the store is lying.
+    # Never a silent wrong value: the entry names an installed codec and a
+    # payload that is present, so the store is lying.
     with pytest.raises(CacheCorruptionError):
         cached.call(1, 2)
+
+
+def test_a_corrupt_payload_warns_recomputes_and_repairs_without_strict(cache_dir, monkeypatch):
+    monkeypatch.delenv("WT_CACHE__STRICT")
+    add, calls = counting_task()
+    cached = add.set_task_instance_id("step").cached(spec())
+    cached.call(1, 2)
+
+    payload = next(p for p in (cache_dir / "content").rglob("*") if p.is_file())
+    payload.write_bytes(b"not json at all")
+
+    with pytest.warns(UserWarning, match="Could not decode"):
+        assert cached.call(1, 2) == 3
+    assert cached.call(1, 2) == 3  # the recompute rewrote the payload
+    assert len(calls) == 2
 
 
 def test_a_raising_task_stores_nothing(cache_dir):
@@ -799,6 +852,28 @@ def test_a_per_element_skip_survives_a_mapped_round_trip(cache_dir):
     assert [v for v in first if not isinstance(v, type(SKIP_SENTINEL))] == [2, 6]
     assert isinstance(second[1], type(SKIP_SENTINEL))
     assert calls == [1, 3]  # one entry for the step, served the second time
+
+
+def test_a_return_type_that_changes_shape_misses_under_an_unchanged_version(cache_dir, monkeypatch):
+    # An editable install moves no version, and the signature hash covers only
+    # the parameters, so the key itself has to move with the declared structure
+    # — or the old entry decodes into the new dataclass and fails the run.
+    module = sys.modules[__name__]
+
+    def build(*names):
+        point = dataclasses.make_dataclass("Point", [(n, int) for n in names])
+        point.__module__ = __name__
+        monkeypatch.setattr(module, "Point", point, raising=False)
+
+        def make() -> point:  # type: ignore[valid-type]
+            return point(*range(len(names)))
+
+        return task(make).set_task_instance_id("step").cached(spec()), point
+
+    old, _ = build("x")
+    old.call()
+    new, point = build("x", "y")
+    assert new.call() == point(0, 1)
 
 
 def test_a_declared_structure_the_value_does_not_fit_refuses(cache_dir):

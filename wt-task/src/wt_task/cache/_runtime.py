@@ -10,7 +10,7 @@ from ._entry import CacheEntry, utcnow
 from ._key import Outcome, record, step_identity_with_reason
 from ._settings import ENV_PREFIX, active_settings
 from ._store import open_store
-from ._tree import CacheMismatch, is_safe_codec_dir
+from ._tree import CacheMismatch, is_safe_codec_dir, strict
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -73,12 +73,12 @@ def _is_content_id(content_id: str) -> bool:
 
 
 class CacheCorruptionError(RuntimeError):
-    """Raised when a stored payload exists but cannot be read back at all.
+    """Raised under `strict` when a stored payload exists but cannot be read back.
 
-    Not downgraded to a miss: the payload is present and the declaration that
-    wrote it still resolves, so a failure here means the store is lying about
-    its contents, and recomputing would hide that. A declaration that moved
-    raises `CacheMismatch` instead, which misses cleanly.
+    Otherwise it warns and misses, and the recompute rewrites the payload: the
+    store may be lying about its contents, but losing the cache is still
+    preferable to losing the run. A declaration that moved raises
+    `CacheMismatch` instead, which misses without a warning.
     """
 
 
@@ -88,6 +88,21 @@ class CacheMismatchWarning(UserWarning):
     Its own category so that a verify run can collect the whole report with
     `warnings.catch_warnings(record=True)` rather than scraping stderr.
     """
+
+
+def _servable(spec: CacheSpec) -> tuple[bool, str | None]:
+    """Whether a stored result may be served for this step, and if not, why.
+
+    An io step with no scope set is not: credentials are keyed by connection
+    name, so another principal's entry would sit under the same key. It still
+    runs and promotes its digest, so the steps below it keep hitting on
+    identical content, which no principal can address without already holding.
+    """
+    if not spec.servable:
+        return False, "no-cache tag"
+    if spec.scoped and not active_settings().scope:
+        return False, f"io step with {ENV_PREFIX}SCOPE unset"
+    return True, None
 
 
 def _verifying() -> bool:
@@ -114,10 +129,14 @@ def _load(store: Store, entry: CacheEntry, identity: str, tree: Tree) -> tuple[A
         # A leaf codec or a declared type moved since this was written.
         return None
     except Exception as e:
-        raise CacheCorruptionError(
+        error = CacheCorruptionError(
             f"Could not decode {_path(CONTENT_PREFIX, entry.content_id)} "
             f"for cache key {identity}: {e!r}"
-        ) from e
+        )
+        if strict():
+            raise error from e
+        warnings.warn(f"{error} Recomputing.", stacklevel=2)
+        return None
 
 
 def _read_entry(store: Store, identity: str) -> CacheEntry | None:
@@ -204,14 +223,15 @@ def cached_call(
         )
         return run(), False
 
-    identity, blocked_by = step_identity_with_reason(spec, resolved, task_instance_id)
+    identity, blocked_by = step_identity_with_reason(spec, resolved, task_instance_id, method)
     if identity is None:
         record(task_instance_id, None, "uncacheable", blocked_by)
         return run(), False
 
     verifying = _verifying()
+    servable, unservable_reason = _servable(spec)
     expired: str | None = None
-    if spec.servable and not verifying:
+    if servable and not verifying:
         entry = _read_entry(store, identity)
         if entry is not None:
             expired = _too_old(spec, entry)
@@ -229,7 +249,7 @@ def cached_call(
     try:
         content_id = f"{resolved.content_dir(method, tree)}/{tree.digest(result)}"
         promoted: str | None = content_id
-        if spec.servable:
+        if servable:
             if verifying:
                 # A verify run must not write, so the baseline stays fixed and
                 # the check can be repeated.
@@ -247,8 +267,8 @@ def cached_call(
 
     outcome: Outcome = "miss"
     reason: str | None = None
-    if not spec.servable:
-        outcome = "unservable"
+    if not servable:
+        outcome, reason = "unservable", unservable_reason
     elif expired is not None:
         outcome, reason = "expired", expired
     record(

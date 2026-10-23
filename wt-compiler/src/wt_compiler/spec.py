@@ -888,8 +888,10 @@ class TaskInstance(_ForbidExtra):
         """Compile-time hash of how this instance's arguments are bound.
 
         Covers literal values, the shape of the binding (which dependency sits
-        in which position), and the parallel-operation argnames — everything
-        about the call that is fixed at compile time.
+        in which position), the parallel-operation argnames, and the skipif
+        conditions — everything about the call that is fixed at compile time.
+        The conditions decide whether a step returns the skip sentinel at all,
+        so two bindings that differ only there must not share an entry.
 
         Deliberately id-free: upstream steps appear as `$dep` markers rather
         than by name, so two workflows that bind the same task to the same
@@ -907,6 +909,14 @@ class TaskInstance(_ForbidExtra):
                     "mapvalues": {
                         "argnames": self.mapvalues.argnames,
                         "argvalues": _static_shape(self.mapvalues.argvalues),
+                    },
+                    "skipif": None
+                    if self.skipif is None
+                    else {
+                        "conditions": [
+                            f"{k.anchor}.{k.function_name}" for k in self.skipif.known_tasks
+                        ],
+                        "unpack_depth": self.skipif.unpack_depth,
                     },
                 },
                 sort_keys=True,

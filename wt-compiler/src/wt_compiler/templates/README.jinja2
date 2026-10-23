@@ -26,8 +26,8 @@ fingerprint of its dependency closure. An editable install — a local checkout
 wired in through `wt-compiler-env-overrides.toml`, say — freezes that version
 string at install time, so editing task code afterwards moves no key, and a
 warm run keeps serving what the old code produced. That is intended rather
-than a bug: changing a task's signature still invalidates through its
-signature hash, but changing its body does not. While developing against a
+than a bug: changing a task's signature or the shape of its return type still
+invalidates, but changing its body does not. While developing against a
 checkout, set `WT_CACHE__EPOCH` to something that moves with the code — the
 checkout's git sha, or a number you bump by hand — or clear the `WT_CACHE__STORE`
 store.
