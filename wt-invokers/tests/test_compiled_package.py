@@ -160,6 +160,25 @@ async def test_run_sets_pythonpath_and_results_env() -> None:
 
 
 @pytest.mark.asyncio
+async def test_run_resolves_a_relative_release_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The child resolves PYTHONPATH against its own cwd, which may differ from ours."""
+    monkeypatch.chdir(tmp_path)
+    invoker = _invoker(release_dir=Path("build/wf"), cwd="/")
+    with patch.object(subprocess, "Popen", return_value=MagicMock()) as popen:
+        await invoker.run(
+            workflow_run_id="r1",
+            config_text="{}",
+            results_url="file:///tmp/results",
+            execution_mode="sequential",
+            mock_io=True,
+        )
+    env = popen.call_args.kwargs["env"]
+    assert env["PYTHONPATH"].split(":")[0] == str(tmp_path / "build" / "wf")
+
+
+@pytest.mark.asyncio
 async def test_run_respects_custom_results_env_var() -> None:
     invoker = _invoker(results_env_var="MY_RESULTS")
     with patch.object(subprocess, "Popen", return_value=MagicMock()) as popen:

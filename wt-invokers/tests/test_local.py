@@ -352,8 +352,15 @@ async def test_wait_timeout_raises_invocation_timeout_error() -> None:
     invoker._is_running = True
     invoker.run_state["process"] = mock_process
 
-    with pytest.raises(InvocationTimeoutError):
+    # A MagicMock pid coerces to 1: never let it reach a real os.killpg.
+    with (
+        patch(
+            "wt_invokers._subprocess._signal_group", return_value=False
+        ) as signal_group,
+        pytest.raises(InvocationTimeoutError),
+    ):
         await invoker.wait(timeout=10.0, error_msg="Workflow timed out")
+    signal_group.assert_called_once()
 
 
 @pytest.mark.asyncio

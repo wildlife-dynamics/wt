@@ -17,10 +17,12 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import signal
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 from abc import abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,6 +35,9 @@ from .abstract import AbstractInvoker
 from .exceptions import InvocationTimeoutError
 
 LOG_TAIL_MAX_BYTES = 8192
+# Bounds the post-exit drain: a grandchild that inherited stdout and outlives the
+# child would otherwise hold the pipe open and block wait() indefinitely.
+DRAIN_JOIN_TIMEOUT_SECONDS = 5.0
 
 
 def _forward(chunk: bytes) -> None:
@@ -43,6 +48,15 @@ def _forward(chunk: bytes) -> None:
     else:
         sys.stderr.write(chunk.decode(errors="replace"))
         sys.stderr.flush()
+
+
+def _signal_group(pgid: int, sig: int) -> bool:
+    """Send ``sig`` to a process group; return False if the group is gone."""
+    try:
+        os.killpg(pgid, sig)
+    except ProcessLookupError:
+        return False
+    return True
 
 
 @dataclass
@@ -159,6 +173,9 @@ class SubprocessInvokerBase(AbstractInvoker):
                 stderr=subprocess.STDOUT,
                 env=env,
                 cwd=self.cwd,
+                # Own process group, so _stop reaches the workflow behind a
+                # `pixi run` wrapper, which doesn't forward SIGKILL.
+                start_new_session=True,
             )
             tail = bytearray()
             drain = threading.Thread(
@@ -226,18 +243,24 @@ class SubprocessInvokerBase(AbstractInvoker):
         return returncode
 
     def _stop(self, process: subprocess.Popen[bytes]) -> None:
-        if process.poll() is not None:
+        # The child leads its own group (start_new_session), so pgid == pid.
+        pgid = process.pid
+        if not _signal_group(pgid, signal.SIGTERM):
             return
-        process.terminate()
-        try:
-            process.wait(timeout=self.terminate_grace_seconds)
-        except TimeoutExpired:
-            process.kill()
-            process.wait()
+        deadline = time.monotonic() + self.terminate_grace_seconds
+        while time.monotonic() < deadline:
+            # Reap the leader: its zombie would keep the group signalable.
+            process.poll()
+            if not _signal_group(pgid, 0):
+                break
+            time.sleep(0.05)
+        else:
+            _signal_group(pgid, signal.SIGKILL)
+        process.wait()
 
     async def _finish_drain(self) -> None:
         drain: threading.Thread | None = self.run_state.get("drain")
         if drain is not None:
-            await asyncio.to_thread(drain.join)
+            await asyncio.to_thread(drain.join, DRAIN_JOIN_TIMEOUT_SECONDS)
         tail: bytearray = self.run_state.get("tail", bytearray())
         self._last_log_tail = bytes(tail).decode(errors="replace").strip()

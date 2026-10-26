@@ -111,7 +111,9 @@ class CompiledPackageInvoker(SubprocessInvokerBase):
         """
         if self.release_dir is None:
             raise ValueError("release_dir must be set to run a compiled package.")
-        return Path(self.release_dir)
+        # Resolved here: the child resolves a relative PYTHONPATH entry
+        # against its own cwd, which may differ from ours.
+        return Path(self.release_dir).resolve()
 
     def _entrypoint_argv(self) -> list[str]:
         """Return the argv that invokes the compiled package's CLI module."""

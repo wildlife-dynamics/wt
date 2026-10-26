@@ -1,6 +1,8 @@
 """Tests for the shared subprocess invoker mechanics."""
 
 import asyncio
+import contextlib
+import os
 import signal
 import sys
 from pathlib import Path
@@ -8,7 +10,7 @@ from pathlib import Path
 import pytest
 from rattler import MatchSpec
 
-from wt_invokers import CompiledPackageInvoker, LocalSubprocessInvoker
+from wt_invokers import CompiledPackageInvoker, LocalSubprocessInvoker, _subprocess
 from wt_invokers.exceptions import InvocationTimeoutError
 
 BUILD = "wt-demo-workflow==0.2.0=a1b2c3d4e5f60718"
@@ -132,6 +134,82 @@ async def test_child_ignoring_sigterm_is_killed_after_grace(tmp_path: Path) -> N
         await invoker.wait(timeout=0.5)
 
     assert process.returncode == -signal.SIGKILL
+
+
+def _alive(pid: int) -> bool:
+    """True if ``pid`` exists and isn't a zombie awaiting reaping."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+    except FileNotFoundError:
+        return False
+    return stat.rsplit(")", 1)[1].split()[0] != "Z"
+
+
+async def _wait_until_dead(pid: int, within: float = 5.0) -> bool:
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + within
+    while loop.time() < deadline:
+        if not _alive(pid):
+            return True
+        await asyncio.sleep(0.05)
+    return False
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="reads /proc")
+@pytest.mark.asyncio
+async def test_timeout_kills_the_workflow_behind_a_wrapper(tmp_path: Path) -> None:
+    """The child may be a `pixi run` wrapper; its workflow must not be orphaned.
+
+    The grandchild ignores SIGTERM (e.g. stuck in a C call), so only a
+    group-wide SIGKILL stops it.
+    """
+    pid_file = tmp_path / "grandchild.pid"
+    grandchild = "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)"
+    script = (
+        "import subprocess, sys, time; "
+        f"p = subprocess.Popen([sys.executable, '-c', {grandchild!r}]); "
+        f"open({str(pid_file)!r}, 'w').write(str(p.pid)); "
+        "print('ready', flush=True); p.wait()"
+    )
+    invoker = _echo_invoker(script, tmp_path)
+    invoker.terminate_grace_seconds = 0.5
+    await _start(invoker, tmp_path)
+    process = invoker.run_state["process"]
+    try:
+        await asyncio.sleep(1)
+        grandchild_pid = int(pid_file.read_text())
+
+        with pytest.raises(InvocationTimeoutError):
+            await asyncio.wait_for(invoker.wait(timeout=0.5), timeout=15)
+
+        assert await _wait_until_dead(grandchild_pid)
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+
+
+@pytest.mark.asyncio
+async def test_grandchild_holding_stdout_does_not_hang_wait(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A background worker that inherits stdout and outlives the child must not block wait()."""
+    monkeypatch.setattr(_subprocess, "DRAIN_JOIN_TIMEOUT_SECONDS", 0.5)
+    script = (
+        "import subprocess, sys; "
+        "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
+        "print('done', flush=True)"
+    )
+    invoker = _echo_invoker(script, tmp_path)
+    await _start(invoker, tmp_path)
+    process = invoker.run_state["process"]
+    try:
+        returncode = await asyncio.wait_for(invoker.wait(timeout=30), timeout=10)
+
+        assert returncode == 0
+        assert "done" in invoker.last_log_tail
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
 
 
 @pytest.mark.asyncio
