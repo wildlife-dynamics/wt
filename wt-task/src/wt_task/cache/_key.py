@@ -261,9 +261,27 @@ def _installed(name: str) -> _Installed | None:
     return entry
 
 
+def _top_level_declared_310(dist: importlib.metadata.Distribution) -> list[str]:
+    return (dist.read_text("top_level.txt") or "").split()
+
+
+def _top_level_inferred_310(dist: importlib.metadata.Distribution) -> set[str]:
+    return {
+        f.parts[0] if len(f.parts) > 1 else f.with_suffix("").name
+        for f in dist.files or ()
+        if f.suffix == ".py"
+    }
+
+
 # Stdlib's own per-distribution halves of `packages_distributions`, from 3.11.
-_TOP_LEVEL_DECLARED: Any = getattr(importlib.metadata, "_top_level_declared", None)
-_TOP_LEVEL_INFERRED: Any = getattr(importlib.metadata, "_top_level_inferred", None)
+# 3.10's reads only `top_level.txt`, which hatchling and flit never write, so
+# pydantic or packaging would resolve to nothing; the backports are 3.11's.
+_TOP_LEVEL_DECLARED: Any = getattr(
+    importlib.metadata, "_top_level_declared", _top_level_declared_310
+)
+_TOP_LEVEL_INFERRED: Any = getattr(
+    importlib.metadata, "_top_level_inferred", _top_level_inferred_310
+)
 
 
 class _TopLevel(Mapping[str, list[str]]):
@@ -273,8 +291,7 @@ class _TopLevel(Mapping[str, list[str]]):
     distribution without a `top_level.txt`, which parses every RECORD. A
     distribution can only infer a name its RECORD text contains, so the others
     are skipped unparsed. Inference itself stays stdlib's, which differs by
-    Python version; before 3.11 there is no per-distribution helper, and the
-    full mapping is used.
+    Python version.
     """
 
     def __init__(self) -> None:
@@ -285,8 +302,6 @@ class _TopLevel(Mapping[str, list[str]]):
         return importlib.metadata.packages_distributions()
 
     def __getitem__(self, top_level: str) -> list[str]:
-        if _TOP_LEVEL_DECLARED is None or _TOP_LEVEL_INFERRED is None:
-            return self._full[top_level]
         if top_level not in self._found:
             self._found[top_level] = [
                 name for dist, name in _index()[1] if self._provides(dist, top_level)

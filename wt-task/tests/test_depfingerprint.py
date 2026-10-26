@@ -356,14 +356,6 @@ def test_the_lazy_top_level_map_agrees_with_the_stdlibs(fresh_index):
     assert "no_such_module_xyz" not in lazy
 
 
-def test_without_per_distribution_helpers_the_full_map_is_used(fresh_index, monkeypatch):
-    monkeypatch.setattr(_key, "_TOP_LEVEL_DECLARED", None)
-    assert (
-        _packages_distributions()["wt_task"]
-        == importlib.metadata.packages_distributions()["wt_task"]
-    )
-
-
 def test_egg_info_requirements_are_followed(world, monkeypatch):
     # No Requires-Dist in the metadata: requirements live in requires.txt.
     world({"app": ("1.0", [], []), "deep": ("3.0", [], [])})
