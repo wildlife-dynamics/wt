@@ -101,9 +101,10 @@ def run_scope(
 ) -> Iterator[dict[str, CacheRecord]]:
     """Scope a fresh identity table, this run's parameters and its settings.
 
-    Entered once at DAG entry. Identities must not leak between runs: the same
-    task-instance id means different things in different workflows, and the
-    settings are read here once rather than per step.
+    Entered once at DAG entry. The table maps task-instance ids to this run's
+    digests, and an id only names a step within one run, so it must not leak
+    between runs; stored entries are keyed by content and are shared regardless.
+    Settings are read here once rather than per step.
 
     Args:
         params: The whole run's parameters, keyed by task-instance id, exactly

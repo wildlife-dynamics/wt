@@ -37,8 +37,10 @@ from .. import metadata as _metadata
 {% set entrypoint = '_main' if cache else 'main' %}
 {% if cache %}
 def main(params: dict[str, Any], validate_params_schema: bool = True):
-    # Cache identities are scoped to one execution: the same task-instance id
-    # means different things in different runs, so the table must not outlive it.
+    # A task-instance id only names a step within one run, so the id -> digest
+    # table that resolves upstream inputs is per execution. Stored entries are
+    # keyed by content, never by id, so they are still shared across runs and
+    # workflows.
     with run_scope(params=params):
         return _main(params, validate_params_schema)
 
