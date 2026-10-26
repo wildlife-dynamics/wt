@@ -14,13 +14,15 @@ and pandera, and a wrong guess silently mis-encodes a result.
 
 from __future__ import annotations
 
+import builtins
 import dataclasses
 import enum
 import inspect
 import pathlib
 import re
 import types
-from typing import Any, ClassVar, Literal, Union, get_args, get_origin, get_type_hints
+import typing
+from typing import Any, ClassVar, get_args, get_origin, get_type_hints
 
 import pydantic_core
 from pydantic import BaseModel
@@ -144,20 +146,23 @@ def _structure(annotation: Any) -> Structure | None:  # noqa: ANN401  # walks ar
         if declared is not None:
             return declared
 
-    origin = get_origin(annotation)
-    if origin is Literal:
-        return {"k": "json"}
-    if origin is Union or origin is types.UnionType:
-        return _union([_structure(arg) for arg in get_args(annotation)])
-    if origin is list:
-        return _container({"k": "list"}, "of", _structure(get_args(annotation)[0]))
-    if origin is tuple:
-        return _tuple(get_args(annotation))
-    if origin is dict:
-        key, value = (_structure(arg) for arg in get_args(annotation))
-        if key is None or value is None:
-            return None
-        return {"k": "dict", "key": key, "of": value}
+    args = get_args(annotation)
+    # Dotted names throughout: a bare name in a `case` is a capture pattern, not
+    # a comparison, so `case list:` would match anything.
+    match get_origin(annotation):
+        case typing.Literal:
+            return {"k": "json"}
+        case typing.Union | types.UnionType:
+            return _union([_structure(arg) for arg in args])
+        case builtins.list:
+            return _container({"k": "list"}, "of", _structure(args[0]))
+        case builtins.tuple:
+            return _tuple(args)
+        case builtins.dict:
+            key, value = (_structure(arg) for arg in args)
+            if key is None or value is None:
+                return None
+            return {"k": "dict", "key": key, "of": value}
 
     if dataclasses.is_dataclass(annotation) and isinstance(annotation, type):
         return _dataclass(annotation)
