@@ -38,7 +38,10 @@ P = ParamSpec("P")
 R = TypeVar("R")
 K = TypeVar("K")
 V = TypeVar("V")
-T = TypeVar("T")  # result of an arbitrary cached execution method
+# Scoped to `_through_cache`, not a class parameter: it passes through call's R
+# and map's Sequence[R] alike. Module-level only for <3.12, which lacks
+# per-function type parameters.
+T = TypeVar("T")
 
 
 @dataclass(frozen=True)
