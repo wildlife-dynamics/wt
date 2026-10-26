@@ -36,6 +36,7 @@ from wt_compiler.discovery import (
 )
 from wt_compiler.env_overrides import load_env_overrides_file
 from wt_compiler.formatting import ruff_formatted
+from wt_compiler.installed import resolve_installed_requirements
 from wt_compiler.jsonschema import ReactJSONSchemaFormConfiguration, find_referenced_defs
 from wt_compiler.pixi_toml_fragment import (
     FeatureSection,
@@ -933,6 +934,7 @@ class DagCompiler(BaseModel):
         *,
         merged_default_feature: FeatureSection,
         installed_requirements: list[SpecRequirement] | None = None,
+        compiled_against: list[SpecRequirement] | None = None,
         on_progress: Callable[[str], None] | None = None,
     ) -> WorkflowArtifacts:
         """Compile the workflow spec into complete artifacts.
@@ -946,6 +948,9 @@ class DagCompiler(BaseModel):
                 forwarded to :meth:`get_pixi_toml` so the emitted
                 ``pixi.toml`` carries the same dep set fed into discovery.
             installed_requirements: Optional list of solved/pinned requirements
+            compiled_against: Optional ``==`` pins the generated CLI checks at
+                ``run`` startup, refusing to run in an environment whose
+                installed versions differ. Omitted, the CLI is unchanged.
             on_progress: Optional callback invoked with a status message at each sub-step
 
         Returns:
@@ -1000,6 +1005,10 @@ class DagCompiler(BaseModel):
                     "pkg/cli.jinja2",
                     release_name=self.release_name,
                     results_env_var=self.results_env_var,
+                    compiled_against={
+                        r.name: str(r.version.version).removeprefix("==")
+                        for r in compiled_against or []
+                    },
                 ),
                 "dispatch.py": self.ruffrender("pkg/dispatch.jinja2"),
                 "metadata.py": self.ruffrender("pkg/metadata.jinja2"),
@@ -1134,6 +1143,7 @@ def compile_workflow(
     merged_default_feature: FeatureSection,
     env_overrides: PixiTomlFragment | None = None,
     installed_requirements: list[SpecRequirement] | None = None,
+    compiled_against: list[SpecRequirement] | None = None,
     on_progress: Callable[[str], None] | None = None,
     **compiler_kwargs: Any,  # noqa: ANN401  # forwarded to DagCompiler subclasses
 ) -> WorkflowArtifacts:
@@ -1159,6 +1169,10 @@ def compile_workflow(
             ``spec.yaml requirements:``) are added to the suppression set
             so the bundled defaults don't fight a transitively-supplied
             version.
+        compiled_against: Optional ``==`` pins, typically from
+            :func:`~wt_compiler.installed.resolve_installed_requirements`, that
+            bind the compiled package to the environment it was compiled in:
+            its CLI refuses to ``run`` where the installed versions differ.
         on_progress: Optional callback invoked with a status message at each sub-step
         **compiler_kwargs: Additional arguments for DagCompiler
 
@@ -1187,6 +1201,7 @@ def compile_workflow(
         spec_relpath,
         merged_default_feature=merged_default_feature,
         installed_requirements=installed_requirements,
+        compiled_against=compiled_against,
         on_progress=on_progress,
     )
 
@@ -1421,10 +1436,11 @@ def compile_workflow_from_env(
     image that bakes in ``ecoscope.platform`` and the ``wt`` stack, so the
     minutes-long discovery solve can be skipped entirely.
 
-    The emitted ``pixi.toml`` is still generated (bundled defaults plus
-    ``spec.yaml requirements:`` and any env-overrides), but the README
-    fingerprint carries no pinned ``installed_requirements`` -- those come
-    from a solve or a lockfile, neither of which this path consults.
+    The current environment must satisfy ``spec.yaml requirements:``; its
+    installed versions become the README fingerprint's pins and are baked into
+    the generated CLI, which refuses to ``run`` in an environment whose
+    versions differ. The emitted ``pixi.toml`` is still generated (bundled
+    defaults plus ``spec.yaml requirements:`` and any env-overrides).
 
     Args:
         yaml_path: Path to spec.yaml file.
@@ -1443,6 +1459,8 @@ def compile_workflow_from_env(
     Raises:
         FileNotFoundError: If yaml_path doesn't exist.
         ValueError: If spec is invalid.
+        InstalledRequirementsError: If the current environment does not
+            satisfy the spec's requirements.
         ImportError: If wt-registry is not installed in the current
             environment.
 
@@ -1465,6 +1483,10 @@ def compile_workflow_from_env(
         parsed_reqs = _parse_requirements_from_yaml(yaml_path)
         conda_requirements = parsed_reqs.conda
         pypi_requirements = parsed_reqs.pypi
+        # Before discovery, so a wrong environment fails without importing it.
+        installed_requirements = resolve_installed_requirements(
+            [*conda_requirements, *pypi_requirements]
+        )
 
         # Phase 2: Compute the merged default-feature dep set for the emitted
         # pixi.toml. There is no transitive solve here, so suppression uses
@@ -1494,8 +1516,7 @@ def compile_workflow_from_env(
             data = yaml.load(f)
         spec = Spec.model_validate(data)
 
-        # Phase 5: Compile. No installed_requirements: the README fingerprint's
-        # pinned versions come from a solve or lockfile, which this path skips.
+        # Phase 5: Compile, binding the package to this environment's versions.
         sp.update("Compiling artifacts...")
         spec_relpath = str(yaml_path)
         return compile_workflow(
@@ -1503,7 +1524,8 @@ def compile_workflow_from_env(
             spec_relpath,
             env_overrides=env_overrides,
             merged_default_feature=merged_default,
-            installed_requirements=None,
+            installed_requirements=installed_requirements,
+            compiled_against=installed_requirements,
             on_progress=sp.update,
             **compiler_kwargs,
         )

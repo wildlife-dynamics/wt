@@ -11,12 +11,16 @@ Main exports:
 - compile_workflow_from_env: Solve-free entry point against the resident registry
 - compile_workflow: Lower-level compilation (requires known_tasks pre-populated)
 - discover_tasks_from_requirements: Task discovery via wt-registry CLI
+- resolve_installed_requirements: Check a spec's requirements against the current environment
 
 Composing a solve-free compile out of process: populate the registry with
 ``populate_known_tasks_in_process``, then feed ``compile_workflow`` a
 ``merged_default_feature`` built from ``load_default_injections`` +
 ``compute_merged_default_feature``. That trio is the supported surface for a
-caller that owns its own build loop (e.g. a warm compile service).
+caller that owns its own build loop (e.g. a warm compile service). Such a caller
+should also run ``resolve_installed_requirements`` first and pass its result as
+``compile_workflow``'s ``installed_requirements`` and ``compiled_against``, as
+``compile_workflow_from_env`` does; nothing else checks the resident environment.
 """
 
 from wt_compiler.artifacts import (
@@ -43,10 +47,12 @@ from wt_compiler.discovery import (
 from wt_compiler.exceptions import (
     DiscoveryError,
     EnvironmentCreationError,
+    InstalledRequirementsError,
     PyPIInstallError,
     RegistryExecutionError,
     RegistryNotFoundError,
 )
+from wt_compiler.installed import resolve_installed_requirements
 from wt_compiler.spec import (
     KnownTask,
     PyPIRequirement,
@@ -62,6 +68,7 @@ __all__ = [
     "DiscoveryError",
     "EnvironmentCreationError",
     "Fingerprint",
+    "InstalledRequirementsError",
     "KnownTask",
     "PyPIInstallError",
     "PyPIRequirement",
@@ -85,6 +92,7 @@ __all__ = [
     "params_sha256_from_readme",
     "populate_known_tasks",
     "populate_known_tasks_in_process",
+    "resolve_installed_requirements",
 ]
 
 try:

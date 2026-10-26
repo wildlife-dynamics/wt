@@ -70,7 +70,11 @@ A caller that owns its own build loop (for example a long-lived compile
 service) can compose a solve-free compile from public pieces: populate the
 registry once with `populate_known_tasks_in_process()`, then call
 `compile_workflow()` with a `merged_default_feature` built from
-`load_default_injections()` and `compute_merged_default_feature()`.
+`load_default_injections()` and `compute_merged_default_feature()`. Such a
+caller should also run `resolve_installed_requirements()` first and pass its
+result as `compile_workflow()`'s `installed_requirements` and
+`compiled_against`, as `compile_workflow_from_env()` does. Nothing else checks
+the resident environment.
 `params_sha256_from_readme()` reads the parameter fingerprint back out of a
 compiled package's README.
 
@@ -182,10 +186,19 @@ Trade-offs against the default path:
   match whatever is installed. That's the point when the image is also the
   runtime, but it means the compiler process carries the task libraries'
   dependencies and import side effects.
-- **No pinned requirements in the fingerprint.** There is no solve and no
-  lockfile to consult, so the README fingerprint carries no
-  `installed_requirements`. The emitted `pixi.toml` is still generated from
-  the bundled defaults, `spec.yaml requirements:` and any `--env-overrides`.
+- **The environment must satisfy the spec.** Before discovery, every
+  `spec.yaml requirements:` entry is checked against what is installed
+  (`conda-meta`, then Python distributions). A missing package or a version
+  the spec doesn't admit fails the compile, listing every problem. The
+  installed versions become the README fingerprint's `installed_requirements`.
+  The emitted `pixi.toml` is still generated from the bundled defaults,
+  `spec.yaml requirements:` and any `--env-overrides`.
+- **The package is bound to that environment.** The generated CLI records the
+  installed versions and `run` refuses to start where they differ, naming each
+  mismatch. A workflow compiled against one platform version can't silently
+  run against another whose task signatures changed: recompile it with
+  `--from-env` in the new environment. Compiles on the default path don't
+  carry this check.
 - **One process, one version set.** Everything discovered has to coexist in
   the current interpreter, so this suits images built for a single platform
   version.
@@ -198,6 +211,7 @@ Trade-offs against the default path:
 | `populate_known_tasks()` | Discover tasks and update global state |
 | `discover_tasks_from_spec_requirements()` | Discover from `SpecRequirement` objects |
 | `discover_tasks_in_process()` | Discover from the registry in the current process; no solve |
+| `resolve_installed_requirements()` | Check spec requirements against the current environment; return `==` pins or raise `InstalledRequirementsError` |
 | `populate_known_tasks_in_process()` | In-process discovery, then update global state |
 
 ### Exceptions
@@ -208,6 +222,7 @@ Trade-offs against the default path:
 | `RegistryExecutionError` | `wt-registry` returned non-zero exit code |
 | `EnvironmentCreationError` | py-rattler failed to solve or install |
 | `PyPIInstallError` | The bulk `uv pip install` failed; the failure is shared across every requirement in the batch |
+| `InstalledRequirementsError` | `--from-env` only: the current environment is missing a spec requirement or has a version the spec doesn't admit |
 | `ImportError` | In-process discovery only: `wt-registry` is not installed in the current environment (install the `hot` extra) |
 
 ---

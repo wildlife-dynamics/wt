@@ -1,5 +1,6 @@
 """Tests for in-process (solve-free) task discovery."""
 
+import platform
 import sys
 import types
 from unittest.mock import MagicMock, patch
@@ -15,6 +16,7 @@ from wt_compiler.discovery import (
     discover_tasks_in_process,
     populate_known_tasks_in_process,
 )
+from wt_compiler.exceptions import InstalledRequirementsError
 from wt_compiler.spec import known_tasks
 
 
@@ -184,6 +186,54 @@ workflow: []
         pop.assert_called_once()
         solve.assert_not_called()  # the whole point: no ephemeral dependency solve
         assert isinstance(artifacts, WorkflowArtifacts)
+
+    def test_wrong_environment_fails_before_discovery(self, tmp_path):
+        spec_yaml = tmp_path / "spec.yaml"
+        spec_yaml.write_text(
+            "id: test_workflow\n"
+            "requirements:\n"
+            "  - {name: python, version: '<3', channel: conda-forge}\n"
+            "workflow: []\n"
+        )
+
+        with (
+            patch("wt_compiler.compiler.populate_known_tasks_in_process") as pop,
+            pytest.raises(InstalledRequirementsError, match="python <3 is required"),
+        ):
+            compile_workflow_from_env(spec_yaml, progress=False)
+
+        pop.assert_not_called()
+
+    def test_binds_the_package_to_the_installed_versions(self, tmp_path, monkeypatch):
+        spec_yaml = tmp_path / "spec.yaml"
+        spec_yaml.write_text(
+            "id: test_workflow\n"
+            "requirements:\n"
+            "  - {name: python, version: '>=3.10', channel: conda-forge}\n"
+            "workflow: []\n"
+        )
+        with patch(
+            "wt_compiler.compiler.populate_known_tasks_in_process",
+            return_value=DiscoveryResult(tasks={}, records=[]),
+        ):
+            artifacts = compile_workflow_from_env(spec_yaml, progress=False)
+        installed = platform.python_version()
+
+        assert f"=={installed}" in artifacts.readme_md  # fingerprint pins
+
+        # Exercise the generated startup check. Only its helpers run, so a stub
+        # click (absent from this venv) with a real exception class suffices.
+        click = MagicMock()
+        click.ClickException = type("ClickException", (Exception,), {})
+        monkeypatch.setitem(sys.modules, "click", click)
+        cli: dict = {}
+        exec(compile(artifacts.package.cli, "cli.py", "exec"), cli)  # noqa: S102
+        assert cli["COMPILED_AGAINST"] == {"python": installed}
+        cli["_check_compiled_against"]()  # same environment: passes
+
+        cli["COMPILED_AGAINST"]["python"] = "2.7.18"
+        with pytest.raises(click.ClickException, match=r"compiled against 2\.7\.18"):
+            cli["_check_compiled_against"]()
 
     def test_forwards_discover_packages(self, tmp_path):
         spec_yaml = tmp_path / "spec.yaml"
