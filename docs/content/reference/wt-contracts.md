@@ -19,6 +19,7 @@ from wt_contracts import (
     WorkflowCLIEnv,
     CodecRef,
     Cacheable,
+    ModelDumpCacheable,
     CodecDeclarationError,
     declared_structure,
 )

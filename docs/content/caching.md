@@ -165,13 +165,14 @@ edit. `CodecRef` anywhere in an `Annotated` overrides the walk below it, so it
 also works to say "trust me, this loosely-typed return really is JSON":
 `Annotated[dict[str, Any], CodecRef("wt_task.cache:JSON")]`.
 
-**On a class you own** — via the `Cacheable` mixin:
+**On a class you own** — via the `Cacheable` mixin, or `ModelDumpCacheable` for
+a pydantic model whose codec goes through `model_dump`/`model_validate`:
 
 ```python
 from pydantic import BaseModel
-from wt_contracts import Cacheable
+from wt_contracts import ModelDumpCacheable
 
-class ModelCodec(Cacheable):
+class ModelCodec(ModelDumpCacheable):
     __wt_codec__ = "mylib.codecs:model_codec"
 
 class TimeRange(BaseModel, ModelCodec):
@@ -189,19 +190,18 @@ also names a class — a callable `(type) -> Codec`. Refs are strings, resolved 
 
 ### The model round-trip check
 
-A pydantic model declaring `__wt_codec__` is checked once, at serialization
-time, for things that break a `model_dump` → `model_validate` round trip:
-private attributes, a `model_serializer` or `field_serializer`, or any field
-with `exclude=True`. Failing the check raises `CodecDeclarationError` naming the
-field.
+A pydantic model declared through `ModelDumpCacheable` is checked once, at
+serialization time, for things that break a `model_dump` → `model_validate`
+round trip: private attributes, a `model_serializer` or `field_serializer`, or
+any field with `exclude=True`. Failing the check raises `CodecDeclarationError`
+naming the field.
 
-The check guards the *generic* dump/validate codec. A codec that encodes the
-model itself opts out:
+The check guards only codecs that go through the dump. A codec that encodes the
+model some other way declares through plain `Cacheable` and is not checked:
 
 ```python
 class GrouperCodec(Cacheable):
     __wt_codec__ = "mylib.codecs:grouper_codec"
-    __wt_codec_owns_round_trip__ = True
 ```
 
 A declaration error does not break a compile: wt-registry carries it as data

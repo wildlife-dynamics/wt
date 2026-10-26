@@ -15,6 +15,7 @@ from wt_contracts.codecs import (
     Cacheable,
     CodecDeclarationError,
     CodecRef,
+    ModelDumpCacheable,
     declared_structure,
 )
 from wt_contracts.registry import RegistryEntry, RegistryMetadata
@@ -23,7 +24,7 @@ FRAME = CodecRef("mylib.codecs:FRAME")
 Frame = Annotated[list, FRAME]
 
 
-class ModelCodec(Cacheable):
+class ModelCodec(ModelDumpCacheable):
     __wt_codec__ = "mylib.codecs:model_codec"
 
 
@@ -355,14 +356,13 @@ def test_tuple_edge_cases():
     assert declared_structure(tuple[int, object]) is None
 
 
-# --- a codec that owns its own round trip ---------------------------------
+# --- a codec that encodes the model some other way ------------------------
 
 
 class GrouperCodec(Cacheable):
     """What a task library declares for a codec that encodes the model itself."""
 
     __wt_codec__ = "mylib.codecs:grouper_codec"
-    __wt_codec_owns_round_trip__ = True
 
 
 class Grouper(BaseModel, GrouperCodec):
@@ -375,59 +375,50 @@ class ExcludingModel(BaseModel, ModelCodec):
     help_text: str = Field(default="", exclude=True)
 
 
-def test_an_excluded_field_is_still_rejected_by_default():
+def test_an_excluded_field_is_rejected_under_the_model_dump_mixin():
     with pytest.raises(CodecDeclarationError, match="help_text"):
         declared_structure(ExcludingModel)
 
 
-def test_a_codec_that_owns_its_round_trip_skips_the_structural_check():
+def test_a_model_declared_through_plain_cacheable_is_not_checked():
     # `grouper_codec` encodes `help_text` explicitly rather than going through
-    # model_dump, so the check the generic model codec needs is a false
-    # positive here.
+    # model_dump, so the check the model-dump codec needs does not apply.
     assert declared_structure(Grouper) == ref(
         "mylib.codecs:grouper_codec", "tests.test_codecs:Grouper"
     )
 
 
-def test_the_flag_is_inherited_by_subclasses():
+def test_a_subclass_keeps_its_parents_mixin():
     class TemporalGrouper(Grouper):
         is_temporal: bool = Field(default=True, exclude=True)
 
-    assert TemporalGrouper.__wt_codec_owns_round_trip__ is True
     assert declared_structure(TemporalGrouper)["ref"] == "mylib.codecs:grouper_codec"
 
+    class StillChecked(ExcludingModel):
+        pass
 
-def test_the_flag_defaults_to_off():
-    assert ModelCodec.__wt_codec_owns_round_trip__ is False
-    assert Point.__wt_codec_owns_round_trip__ is False
+    with pytest.raises(CodecDeclarationError, match="help_text"):
+        declared_structure(StillChecked)
 
 
-def test_a_class_declaring_the_codec_without_the_mixin_can_opt_out_too():
-    # Read with `getattr`, so the mixin is a convenience rather than a
-    # requirement.
+def test_a_class_declaring_the_codec_without_a_mixin_is_not_checked():
     class Standalone(BaseModel):
         __wt_codec__ = "mylib.codecs:grouper_codec"
-        __wt_codec_owns_round_trip__ = True
         help_text: str = Field(default="", exclude=True)
 
     assert declared_structure(Standalone)["ref"] == "mylib.codecs:grouper_codec"
 
 
-def test_the_flag_does_not_affect_a_non_model_class():
-    class Plain(GrouperCodec):
-        pass
-
-    assert declared_structure(Plain)["ref"] == "mylib.codecs:grouper_codec"
-
+def test_the_model_dump_mixin_does_not_affect_a_non_model_class():
     @dataclass
-    class Boxed(GrouperCodec):
+    class Boxed(ModelCodec):
         label: str
 
     # A dataclass with the mixin resolves by its ref, not structurally.
-    assert declared_structure(Boxed)["ref"] == "mylib.codecs:grouper_codec"
+    assert declared_structure(Boxed)["ref"] == "mylib.codecs:model_codec"
 
 
-def test_other_structural_failures_still_bite_when_the_flag_is_off():
+def test_other_structural_failures_are_rejected_under_the_model_dump_mixin():
     class WithPrivate(BaseModel, ModelCodec):
         index_name: str
         _hidden: int = PrivateAttr(default=1)

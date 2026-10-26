@@ -6,7 +6,7 @@ from typing import Annotated
 import pytest
 from pydantic import BaseModel, Field
 from pydantic import ValidationError as PydanticValidationError
-from wt_contracts import Cacheable, CodecRef
+from wt_contracts import CodecRef, ModelDumpCacheable
 
 from wt_registry.cli import serialize_entries
 from wt_registry.exceptions import SchemaGenerationError
@@ -284,7 +284,7 @@ FRAME = CodecRef("mylib.codecs:FRAME")
 Frame = Annotated[list, FRAME]
 
 
-class ModelCodec(Cacheable):
+class ModelCodec(ModelDumpCacheable):
     __wt_codec__ = "mylib.codecs:model_codec"
 
 

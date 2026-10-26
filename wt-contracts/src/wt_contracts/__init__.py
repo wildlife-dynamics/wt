@@ -4,7 +4,7 @@ This package provides type-safe interface definitions (Pydantic models +
 Protocols) that enable inter-package compatibility across the wt ecosystem.
 
 Submodules:
-    codecs: Declared cache codecs (CodecRef, Cacheable, declared_structure)
+    codecs: Declared cache codecs (CodecRef, Cacheable, ModelDumpCacheable, declared_structure)
     registry: Registry JSON schema contracts (RegistryMetadata, RegistryEntry, RegistryOutput)
     task: Task execution protocol (TaskProtocol)
     cli: Generated CLI contracts (WorkflowCLIArgs, WorkflowCLIEnv)
@@ -16,6 +16,7 @@ from wt_contracts.codecs import (
     Cacheable,
     CodecDeclarationError,
     CodecRef,
+    ModelDumpCacheable,
     declared_structure,
 )
 from wt_contracts.formdata import (
@@ -40,6 +41,7 @@ __all__ = [
     "Cacheable",
     "CodecDeclarationError",
     "CodecRef",
+    "ModelDumpCacheable",
     "RegistryEntry",
     "RegistryMetadata",
     "RegistryOutput",

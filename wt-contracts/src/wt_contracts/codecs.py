@@ -75,9 +75,6 @@ class Cacheable:
     Attributes:
         __wt_codec__: Import path of a callable ``(type) -> Codec``, as
             ``"pkg.mod:NAME"``.
-        __wt_codec_owns_round_trip__: Set True when the named codec encodes the
-            model itself rather than through ``model_dump``/``model_validate``,
-            which skips the structural check those two would otherwise need.
 
     Examples:
         >>> class ModelCodec(Cacheable):
@@ -89,7 +86,6 @@ class Cacheable:
     """
 
     __wt_codec__: ClassVar[str]
-    __wt_codec_owns_round_trip__: ClassVar[bool] = False
 
     def __init_subclass__(cls, **kwargs: Any) -> None:  # noqa: ANN401  # forwards whatever the real base takes
         """Check the ref's format. Importing it is the resolver's job, at run time."""
@@ -99,6 +95,22 @@ class Cacheable:
             raise CodecDeclarationError(
                 f"{cls.__qualname__}.__wt_codec__ must be 'pkg.mod:NAME', got {ref!r}"
             )
+
+
+class ModelDumpCacheable(Cacheable):
+    """Mixin for a pydantic model whose codec goes through ``model_dump``/``model_validate``.
+
+    Declaring through this mixin is what subjects the model to the round-trip
+    check: private attributes, serializers and excluded fields are all lost on
+    the way through that codec. A codec that encodes the model some other way
+    declares through plain :class:`Cacheable` and is not checked.
+
+    Examples:
+        >>> class ModelCodec(ModelDumpCacheable):
+        ...     __wt_codec__ = "mylib.codecs:model_codec"
+        >>> issubclass(ModelCodec, Cacheable)
+        True
+    """
 
 
 def declared_structure(target: Any) -> Structure | None:  # noqa: ANN401  # a function or a type annotation
@@ -177,10 +189,7 @@ def _declared_class_ref(cls: type) -> Structure | None:
     """Resolve rules 2 and 3: a declared codec, or a builtin leaf, for `cls`."""
     ref = getattr(cls, "__wt_codec__", None)
     if ref is not None:
-        # `getattr`, not the mixin's attribute, so a class that declares
-        # `__wt_codec__` directly can opt out the same way.
-        owns = getattr(cls, "__wt_codec_owns_round_trip__", False)
-        if issubclass(cls, BaseModel) and not owns:
+        if issubclass(cls, ModelDumpCacheable) and issubclass(cls, BaseModel):
             _check_model_round_trips(cls)
         return _ref(ref, cls)
 
@@ -256,9 +265,8 @@ def _check_model_round_trips(cls: type[BaseModel]) -> None:
     """Reject a declared model whose dump cannot be validated back into itself.
 
     The structural half of the check — the half that needs no instance — run
-    once here instead of on every value the cache sees. It guards the generic
-    dump/validate codec only; a codec that encodes the model itself says so
-    with ``__wt_codec_owns_round_trip__``.
+    once here instead of on every value the cache sees. Only for models
+    declared through :class:`ModelDumpCacheable`.
 
     Raises:
         CodecDeclarationError: Naming the attribute or field that breaks it.
@@ -294,6 +302,7 @@ __all__ = [
     "Cacheable",
     "CodecDeclarationError",
     "CodecRef",
+    "ModelDumpCacheable",
     "Structure",
     "declared_structure",
     "type_ref",

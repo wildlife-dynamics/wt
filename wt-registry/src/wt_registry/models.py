@@ -166,8 +166,8 @@ class RegistryEntry(BaseModel):
 
         Examples:
             >>> from pydantic import BaseModel, Field
-            >>> from wt_contracts import Cacheable
-            >>> class Broken(BaseModel, Cacheable):
+            >>> from wt_contracts import ModelDumpCacheable
+            >>> class Broken(BaseModel, ModelDumpCacheable):
             ...     __wt_codec__ = "mylib.codecs:model_codec"
             ...     help_text: str = Field(default="", exclude=True)
             >>> def make() -> Broken:

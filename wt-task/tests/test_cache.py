@@ -10,7 +10,7 @@ from typing import Annotated, Any
 
 import pytest
 from pydantic import BaseModel, Field
-from wt_contracts import Cacheable, CodecDeclarationError, CodecRef, declared_structure
+from wt_contracts import CodecDeclarationError, CodecRef, ModelDumpCacheable, declared_structure
 
 from wt_task import task
 from wt_task.cache import (
@@ -1220,7 +1220,7 @@ def test_an_anchor_that_is_a_private_submodule_is_fine(cache_dir, monkeypatch):
 # --- a declaration the type cannot honour ----------------------------------
 
 
-class _BadCodec(Cacheable):
+class _BadCodec(ModelDumpCacheable):
     __wt_codec__ = "wt_task.cache:JSON"
 
 
