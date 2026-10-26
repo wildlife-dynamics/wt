@@ -302,6 +302,38 @@ class TestCompileCommand:
         mock_artifacts.update.assert_called_once()
         mock_artifacts.install.assert_not_called()
 
+    def test_compile_from_env_with_clobber_and_update_skips_update(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    ) -> None:
+        """Test that --from-env --clobber --update keeps the carried-over lock (no re-solve)."""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text("id: test-workflow\n")
+
+        mock_artifacts = MagicMock()
+        mock_artifacts.release_dir = tmp_path / "test-workflow"
+
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "wt-compiler",
+                    "compile",
+                    "--spec",
+                    str(spec_file),
+                    "--from-env",
+                    "--clobber",
+                    "--update",
+                ],
+            ),
+            patch("wt_compiler.cli.compile_workflow_from_env", return_value=mock_artifacts),
+        ):
+            main()
+
+        mock_artifacts.dump.assert_called_once_with(clobber=True, update=True)
+        mock_artifacts.update.assert_not_called()
+        mock_artifacts.install.assert_not_called()
+
     def test_compile_update_without_clobber_error(
         self, capsys: pytest.CaptureFixture[str], tmp_path: Path
     ) -> None:

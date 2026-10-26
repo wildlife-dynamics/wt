@@ -540,7 +540,8 @@ def _compile(args: argparse.Namespace) -> None:
 
         if args.install:
             artifacts.install()
-        elif args.update:
+        elif args.update and not args.from_env:
+            # --from-env is solve-free: keep the pixi.lock dump() carried over.
             artifacts.update()
 
         print(f"Compiled workflow to: {artifacts.release_dir}")
