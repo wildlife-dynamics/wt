@@ -175,6 +175,7 @@ class TestCompileCommand:
             pkg_name_prefix="wt",
             results_env_var="WT_RESULTS",
             cache=False,
+            strict_caching=False,
         )
         mock_artifacts.dump.assert_called_once_with(clobber=False, update=False)
 

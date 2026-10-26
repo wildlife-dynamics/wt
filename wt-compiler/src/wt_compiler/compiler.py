@@ -15,7 +15,7 @@ import jsonschema
 import pydot as dot
 import ruamel.yaml
 from jinja2 import Environment, FileSystemLoader
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 from rattler import Channel, MatchSpec, NamelessMatchSpec
 from wt_contracts import ValidationError
 
@@ -394,6 +394,14 @@ class DagCompiler(BaseModel):
     pkg_name_prefix: str = "wt"
     results_env_var: str = "WT_RESULTS"
     cache: bool = False
+    strict_caching: bool = False
+
+    @model_validator(mode="after")
+    def check_strict_caching_needs_caching(self) -> "DagCompiler":
+        """Validate that `strict_caching` is only set alongside `cache`."""
+        if self.strict_caching and not self.cache:
+            raise ValueError("strict_caching=True requires cache=True")
+        return self
 
     def get_dag_config(self, dag_type: DagTypes, mock_io: bool) -> dict[str, Any]:  # noqa: ARG002  # subclasses dispatch on dag_type
         """Get configuration dict for rendering a DAG.
@@ -443,9 +451,9 @@ class DagCompiler(BaseModel):
             upstream = next(
                 (d for d in self.spec.task_instance_dependencies[t.id] if d in blocked), None
             )
-            if known.cache_structure_error is not None:
-                status, reason = "uncacheable", known.cache_structure_error
-            elif known.cache_structure is None:
+            if known.cache_declaration_error is not None:
+                status, reason = "uncacheable", known.cache_declaration_error
+            elif not known.declares_codec:
                 status, reason = "uncacheable", "return type has no codec"
             elif upstream is not None:
                 status, reason = "uncacheable", f"upstream {upstream} uncacheable"
@@ -464,17 +472,17 @@ class DagCompiler(BaseModel):
     def _check_cache_declarations(self) -> None:
         """Fail the compile if a task in this spec declares a codec it cannot honour.
 
-        Only under `--with-caching`: a bad declaration in one task of a library
-        must not break every non-caching compile against that library, so
-        wt-registry carries it as data and this is where it becomes an error.
+        Only under `--strict-caching`: a bad declaration may sit in a task
+        library the spec author does not own, so by default it is a report row
+        and the step runs uncached.
 
         Raises:
             ValueError: Naming the task and the field that breaks the round trip.
         """
         broken = {
-            t.known_task.importable_reference: t.known_task.cache_structure_error
+            t.known_task.importable_reference: t.known_task.cache_declaration_error
             for t in self.spec.flat_workflow
-            if t.known_task.cache_structure_error is not None
+            if t.known_task.cache_declaration_error is not None
         }
         if broken:
             detail = "; ".join(f"{ref}: {err}" for ref, err in sorted(broken.items()))
@@ -1081,8 +1089,9 @@ class DagCompiler(BaseModel):
             >>> # artifacts = compiler.compile("path/to/spec.yaml")  # doctest: +SKIP
         """
         if self.cache:
-            self._check_cache_declarations()
             self.log_cache_report()
+        if self.strict_caching:
+            self._check_cache_declarations()
 
         if on_progress is not None:
             on_progress("Generating schemas...")

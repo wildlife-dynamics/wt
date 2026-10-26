@@ -66,8 +66,8 @@ class KnownTask(BaseModel):
     # serialized field here would move every existing workflow's fingerprint.
     # Nothing re-parses a dumped `KnownTask` — the builder rebuilds it from the
     # global `known_tasks` table.
-    cache_structure: dict[str, Any] | None = Field(default=None, exclude=True)
-    cache_structure_error: str | None = Field(default=None, exclude=True)
+    declares_codec: bool = Field(default=False, exclude=True)
+    cache_declaration_error: str | None = Field(default=None, exclude=True)
 
     @property
     def anchor(self) -> str:

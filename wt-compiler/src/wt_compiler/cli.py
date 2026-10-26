@@ -392,6 +392,14 @@ def main() -> None:
         ),
     )
     compile_parser.add_argument(
+        "--strict-caching",
+        action="store_true",
+        help=(
+            "With --with-caching, fail the compile if any task in the spec declares a cache "
+            "codec its return type cannot honour, instead of reporting the step uncacheable."
+        ),
+    )
+    compile_parser.add_argument(
         "--results-env-var",
         type=str,
         default="WT_RESULTS",
@@ -513,6 +521,10 @@ def _compile(args: argparse.Namespace) -> None:
         )
         sys.exit(1)
 
+    if args.strict_caching and not args.with_caching:
+        print("Error: --strict-caching requires --with-caching", file=sys.stderr)
+        sys.exit(1)
+
     spec_path = args.spec.resolve()
 
     if not spec_path.exists():
@@ -532,6 +544,7 @@ def _compile(args: argparse.Namespace) -> None:
             compiler_kwargs["variant"] = args.variant
         compiler_kwargs["results_env_var"] = args.results_env_var
         compiler_kwargs["cache"] = args.with_caching
+        compiler_kwargs["strict_caching"] = args.strict_caching
         if args.env_overrides is not None:
             compiler_kwargs["env_overrides_path"] = Path(args.env_overrides).resolve()
         with _deferred_logs("wt_compiler"):

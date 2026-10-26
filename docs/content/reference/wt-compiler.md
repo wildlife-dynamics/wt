@@ -83,8 +83,8 @@ What is emitted per step is only what the runtime cannot work out for itself:
 
 The return type's structure, the task's module and name, the method and the
 step's parameters are all derived at run time and deliberately absent.
-`KnownTask.cache_structure` is still carried for the report below, but is not
-emitted.
+`KnownTask.declares_codec` and `KnownTask.cache_declaration_error` are carried
+for the report below and are not emitted.
 
 Nothing here is serialized into the spec: `Spec.sha256` hashes the dumped
 model, so a serialized field would move every existing workflow's fingerprint.
@@ -96,8 +96,12 @@ model, so a serialized field would move every existing workflow's fingerprint.
 `reason` — computed over the spec's dependencies so that propagation is
 visible. Under `--with-caching` the compiler logs every step's status (with the
 reason for any non-cacheable one) and a summary count, which the CLI prints to
-stderr once compilation finishes, and fails outright if any task declares a codec its return type
-cannot honour.
+stderr once compilation finishes.
+
+`--strict-caching` (`DagCompiler(strict_caching=True)`, which requires
+`cache=True`) additionally fails the compile if any task in the spec declares a
+codec its return type cannot honour. Without it, such a step is reported
+`uncacheable` and runs uncached.
 
 ---
 

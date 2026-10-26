@@ -133,12 +133,12 @@ class RegistryEntry(BaseModel):
         return schema
 
     @property
-    def cache_structure(self) -> dict[str, Any] | None:
-        """Declared cache structure of the return type, or None if it has none.
+    def declares_codec(self) -> bool:
+        """Whether the return type declares a cache codec that resolves.
 
         Lazy like :attr:`json_schema`, and for the same reason: it is only read
-        at export. A bad declaration yields None here and surfaces through
-        :attr:`cache_structure_error` instead of raising, so one unserializable
+        at export. A bad declaration yields False here and surfaces through
+        :attr:`cache_declaration_error` instead of raising, so one unserializable
         return type cannot break every non-caching compile against the library.
 
         Raises:
@@ -153,15 +153,15 @@ class RegistryEntry(BaseModel):
             ...     metadata=metadata, module_path="test", function_name="counts"
             ... )
             >>> entry._func_ref = counts
-            >>> entry.cache_structure
-            {'k': 'json'}
-            >>> entry.cache_structure_error is None
+            >>> entry.declares_codec
+            True
+            >>> entry.cache_declaration_error is None
             True
         """
-        return self._cache_structure()[0]
+        return self._cache_declaration()[0]
 
     @property
-    def cache_structure_error(self) -> str | None:
+    def cache_declaration_error(self) -> str | None:
         """Why the return type's codec declaration could not be resolved, if so.
 
         Examples:
@@ -176,26 +176,26 @@ class RegistryEntry(BaseModel):
             ...     metadata=RegistryMetadata(), module_path="test", function_name="make"
             ... )
             >>> entry._func_ref = make
-            >>> entry.cache_structure is None
-            True
-            >>> "help_text" in entry.cache_structure_error
+            >>> entry.declares_codec
+            False
+            >>> "help_text" in entry.cache_declaration_error
             True
         """
-        return self._cache_structure()[1]
+        return self._cache_declaration()[1]
 
-    def _cache_structure(self) -> tuple[dict[str, Any] | None, str | None]:
+    def _cache_declaration(self) -> tuple[bool, str | None]:
         if self._func_ref is None:
             raise AttributeError(
-                f"Cannot resolve cache structure for {self.fully_qualified_name}: "
+                f"Cannot resolve cache declaration for {self.fully_qualified_name}: "
                 "function reference not set. Use @register decorator to register functions."
             )
         try:
-            return declared_structure(self._func_ref), None
+            return declared_structure(self._func_ref) is not None, None
         except CodecDeclarationError as e:
-            return None, str(e)
+            return False, str(e)
         except Exception as e:
             raise SchemaGenerationError(
-                f"Failed to resolve cache structure for {self.fully_qualified_name}: {e}"
+                f"Failed to resolve cache declaration for {self.fully_qualified_name}: {e}"
             ) from e
 
     @property

@@ -161,7 +161,7 @@ def _build_spec(
                 json_schema={"properties": {}},
                 # What wt-registry would have put on the wire. Resolved from the
                 # real functions so the refs the DAG carries really do import.
-                cache_structure=declared_structure(getattr(e2e_tasks, name)),
+                declares_codec=declared_structure(getattr(e2e_tasks, name)) is not None,
             )
         }
     return wt_spec.Spec.model_validate(

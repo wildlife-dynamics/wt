@@ -3,7 +3,7 @@
 Opt-in at compile time. A step is keyed by its code, its arguments, and the
 content digests of the steps feeding it, and a hit returns the stored value
 instead of executing. What a result *is* comes from the task's return type —
-`wt_contracts.declared_structure` resolves it, the compiler emits it, and
+`wt_contracts.declared_structure` resolves it at run time, and
 `resolve_structure` turns it into the `Tree` that encodes the whole step.
 Everything degrades to running normally: with `WT_CACHE__STORE` unset, or for any
 return type that declares no codec, the cache is inert.

@@ -204,8 +204,9 @@ class GrouperCodec(Cacheable):
     __wt_codec_owns_round_trip__ = True
 ```
 
-A declaration error does not break a non-caching compile: wt-registry carries it
-as data (`cache_structure_error`) and `--with-caching` turns it into an error.
+A declaration error does not break a compile: wt-registry carries it as data
+(`cache_declaration_error`), `--with-caching` reports the step `uncacheable`, and
+`--strict-caching` turns it into an error.
 
 ### Codecs and trees
 
@@ -379,6 +380,8 @@ Two reports, answering two different questions.
 `DagCompiler.cache_report()` returns one row per step — `task_instance_id`,
 `status`, `reason` — and `wt-compiler compile --with-caching` prints every step
 with its status, the reason for any that is not cacheable, and a summary count.
+Add `--strict-caching` to fail the compile on a bad codec declaration instead of
+reporting it.
 
 | Status | Meaning |
 |--------|---------|
@@ -543,7 +546,7 @@ its `reason`:
 | *return type declares no codec* | Annotate the return type — see [declaring a codec](#declaring-a-codec-for-a-type-you-own). |
 | *upstream `<id>` uncacheable* | Fix that step; this one cannot be cached until it is. |
 | *no distribution version for `<anchor>`* | The task's package is not installed as a distribution. |
-| *declared codec refs could not be imported* | The running environment lacks the codec the registry recorded. Run with `WT_CACHE__STRICT=1` to see the failure. |
+| *declared codec refs could not be imported* | The running environment lacks a codec the return type declares. Run with `WT_CACHE__STRICT=1` to see the failure. |
 | *`Undigestible(...)`* | A codec declined the actual value. The declared type is wider than what the task returns. |
 | *older than `<n>`s (age `<n>`s)* | Working as configured: the io step's entry outlived `WT_CACHE__IO_TTL`. Raise the TTL if that is too eager. |
 | *`WT_CACHE__IO_TTL` is zero: io steps always refetch* | Every io step refetches by design. Unset the variable, or give it a duration. |

@@ -117,13 +117,13 @@ the CLI's JSON output.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `cache_structure` | `dict \| None` | The return type's declared cache structure, from `wt_contracts.declared_structure`. `None` means the type declares no codec and the step is not cacheable. |
-| `cache_structure_error` | `str \| None` | Why a declaration could not be resolved, naming the offending field. |
+| `declares_codec` | `bool` | Whether the return type declares a cache codec that resolves, per `wt_contracts.declared_structure`. `False` means the step is not cacheable. |
+| `cache_declaration_error` | `str \| None` | Why a declaration could not be resolved, naming the offending field. |
 
-A bad declaration yields `cache_structure=None` plus an error string rather
+A bad declaration yields `declares_codec=False` plus an error string rather
 than raising: one unserializable return type in a task library must not break
-every non-caching compile against it. `wt-compiler --with-caching` turns the
-error into a hard failure.
+every non-caching compile against it. `wt-compiler --with-caching` reports it;
+`--strict-caching` turns it into a hard failure.
 
 See [Caching](../caching.md) for what a declaration looks like.
 

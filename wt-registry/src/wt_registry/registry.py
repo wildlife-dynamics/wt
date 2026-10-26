@@ -177,8 +177,8 @@ def to_json(pretty: bool = False) -> str:
         data = entry.model_dump(mode="json")
         # Manually add the lazy properties, which are not fields
         data["json_schema"] = entry.json_schema
-        data["cache_structure"] = entry.cache_structure
-        data["cache_structure_error"] = entry.cache_structure_error
+        data["declares_codec"] = entry.declares_codec
+        data["cache_declaration_error"] = entry.cache_declaration_error
         registry_data[fqn] = data
     if pretty:
         return json.dumps(registry_data, indent=2)

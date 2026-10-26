@@ -228,8 +228,8 @@ async def discover_tasks_from_requirements(
                 registry_ref=0,
                 json_schema=json_schema,
                 description=metadata.description or None,
-                cache_structure=entry.cache_structure,
-                cache_structure_error=entry.cache_structure_error,
+                declares_codec=entry.declares_codec,
+                cache_declaration_error=entry.cache_declaration_error,
             )
 
             # Add to discovered_tasks dict

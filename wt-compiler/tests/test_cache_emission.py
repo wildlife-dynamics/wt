@@ -48,14 +48,11 @@ def demo_spec():
     )
 
 
-JSON_STRUCTURE = {"k": "ref", "ref": "wt_task.cache:JSON", "type": None}
-
-
 @pytest.fixture
 def declared_spec(demo_spec):
     """The same spec with every task's return type declaring a codec."""
     for name in ("get_events", "chart", "persist"):
-        wt_spec.known_tasks[name]["demo.tasks"].cache_structure = dict(JSON_STRUCTURE)
+        wt_spec.known_tasks[name]["demo.tasks"].declares_codec = True
     return demo_spec
 
 
@@ -83,15 +80,15 @@ def test_new_properties_stay_out_of_the_serialized_spec(demo_spec):
     assert not {
         "signature_hash",
         "is_cacheable",
-        "cache_structure",
-        "cache_structure_error",
+        "declares_codec",
+        "cache_declaration_error",
     } & set(dumped["known_task"])
 
 
-def test_the_spec_fingerprint_is_unchanged_by_a_declared_structure(demo_spec):
+def test_the_spec_fingerprint_is_unchanged_by_a_cache_declaration(demo_spec):
     before = demo_spec.sha256
-    wt_spec.known_tasks["chart"]["demo.tasks"].cache_structure = {"k": "json"}
-    wt_spec.known_tasks["chart"]["demo.tasks"].cache_structure_error = "nope"
+    wt_spec.known_tasks["chart"]["demo.tasks"].declares_codec = True
+    wt_spec.known_tasks["chart"]["demo.tasks"].cache_declaration_error = "nope"
     assert demo_spec.sha256 == before
 
 
@@ -240,13 +237,14 @@ async def test_an_unknown_tag_string_is_silently_dropped(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_discovery_carries_the_cache_structure_and_its_error(tmp_path):
-    structure = {"k": "ref", "ref": "wt_task.cache:JSON", "type": None}
-    known = await _discover(
-        _entry(cache_structure=structure, cache_structure_error="excludes field x"), tmp_path
-    )
-    assert known.cache_structure == structure
-    assert known.cache_structure_error == "excludes field x"
+async def test_discovery_carries_the_cache_declaration_and_its_error(tmp_path):
+    known = await _discover(_entry(declares_codec=True), tmp_path)
+    assert known.declares_codec
+    assert known.cache_declaration_error is None
+
+    known = await _discover(_entry(cache_declaration_error="excludes field x"), tmp_path / "bad")
+    assert not known.declares_codec
+    assert known.cache_declaration_error == "excludes field x"
 
 
 # --- the identity pieces ---------------------------------------------------
@@ -481,8 +479,15 @@ def test_renaming_steps_does_not_change_the_spec_fingerprint_contract(demo_spec)
 # --- the CLI flag ----------------------------------------------------------
 
 
-@pytest.mark.parametrize(("argv_extra", "expected"), [([], False), (["--with-caching"], True)])
-def test_cli_flag_reaches_the_compiler(tmp_path: Path, argv_extra, expected):
+@pytest.mark.parametrize(
+    ("argv_extra", "cache", "strict"),
+    [
+        ([], False, False),
+        (["--with-caching"], True, False),
+        (["--with-caching", "--strict-caching"], True, True),
+    ],
+)
+def test_cli_flags_reach_the_compiler(tmp_path: Path, argv_extra, cache, strict):
     spec_file = tmp_path / "spec.yaml"
     spec_file.write_text("id: test_workflow\n")
     artifacts = MagicMock()
@@ -497,7 +502,29 @@ def test_cli_flag_reaches_the_compiler(tmp_path: Path, argv_extra, expected):
     ):
         main()
 
-    assert compile_workflow.call_args.kwargs["cache"] is expected
+    assert compile_workflow.call_args.kwargs["cache"] is cache
+    assert compile_workflow.call_args.kwargs["strict_caching"] is strict
+
+
+def test_strict_caching_without_caching_is_rejected_before_compiling(tmp_path: Path, capsys):
+    spec_file = tmp_path / "spec.yaml"
+    spec_file.write_text("id: test_workflow\n")
+    argv = ["wt-compiler", "compile", "--spec", str(spec_file), "--strict-caching"]
+    with (
+        patch.object(sys, "argv", argv),
+        patch("wt_compiler.cli.compile_workflow_from_yaml") as compile_workflow,
+        pytest.raises(SystemExit) as exc_info,
+    ):
+        main()
+
+    assert exc_info.value.code == 1
+    assert "--strict-caching requires --with-caching" in capsys.readouterr().err
+    compile_workflow.assert_not_called()
+
+
+def test_the_compiler_rejects_strict_caching_without_caching(demo_spec):
+    with pytest.raises(ValueError, match="requires cache=True"):
+        DagCompiler(spec=demo_spec, strict_caching=True)
 
 
 # --- the declared structure reaches the DAG --------------------------------
@@ -552,16 +579,6 @@ def test_a_default_step_is_one_short_cached_call(declared_spec):
             assert absent not in call
 
 
-def test_the_structure_is_not_emitted_even_when_the_registry_knows_it(declared_spec):
-    dag = DagCompiler(spec=declared_spec, cache=True).render_dag("sequential")
-    assert "wt_task.cache:JSON" not in dag
-
-
-def test_the_compiler_still_knows_the_structure_for_its_report(declared_spec):
-    rows = DagCompiler(spec=declared_spec, cache=True).cache_report()
-    assert [r.status for r in rows] == ["cacheable"] * 3
-
-
 def test_only_io_tagged_steps_are_scoped(declared_spec):
     # A derived step is a pure function of its input digests, so folding a
     # per-request scope into its key would make a fresh token a cold run.
@@ -579,7 +596,7 @@ def test_every_step_is_cacheable_when_every_return_type_declares_one(declared_sp
 
 
 def test_an_undeclared_return_type_propagates_down_the_report(declared_spec):
-    wt_spec.known_tasks["chart"]["demo.tasks"].cache_structure = None
+    wt_spec.known_tasks["chart"]["demo.tasks"].declares_codec = False
     rows = {
         r.task_instance_id: r for r in DagCompiler(spec=declared_spec, cache=True).cache_report()
     }
@@ -600,23 +617,49 @@ def test_a_no_cache_task_is_unservable_and_does_not_block_its_dependents(declare
     assert rows["figure"].status == "cacheable"
 
 
-def test_a_bad_declaration_is_reported_and_blocks_a_caching_compile(declared_spec):
-    wt_spec.known_tasks["chart"]["demo.tasks"].cache_structure = None
-    wt_spec.known_tasks["chart"]["demo.tasks"].cache_structure_error = "excludes field help_text"
+def _with_a_bad_declaration() -> None:
+    wt_spec.known_tasks["chart"]["demo.tasks"].declares_codec = False
+    wt_spec.known_tasks["chart"]["demo.tasks"].cache_declaration_error = "excludes field help_text"
+
+
+class _PastTheGateError(Exception):
+    """Raised from `on_progress`, the first thing `compile` does after the cache gate."""
+
+
+def _compile_until_past_the_gate(compiler: DagCompiler, tmp_path: Path) -> None:
+    def stop(_: str) -> None:
+        raise _PastTheGateError
+
+    compiler.compile(
+        str(tmp_path / "spec.yaml"), merged_default_feature=MagicMock(), on_progress=stop
+    )
+
+
+def test_a_bad_declaration_is_reported_but_does_not_block_a_caching_compile(
+    declared_spec, tmp_path
+):
+    _with_a_bad_declaration()
 
     compiler = DagCompiler(spec=declared_spec, cache=True)
     rows = {r.task_instance_id: r for r in compiler.cache_report()}
-    assert rows["figure"].reason == "excludes field help_text"
+    assert (rows["figure"].status, rows["figure"].reason) == (
+        "uncacheable",
+        "excludes field help_text",
+    )
+    with pytest.raises(_PastTheGateError):
+        _compile_until_past_the_gate(compiler, tmp_path)
 
-    with pytest.raises(ValueError, match="help_text"):
-        compiler._check_cache_declarations()
-    # Without the flag it is data, not an error: one bad declaration in a task
-    # library must not break every non-caching compile against it.
-    assert ".cached(" not in DagCompiler(spec=declared_spec, cache=False).render_dag("sequential")
+
+def test_a_bad_declaration_blocks_a_strict_caching_compile(declared_spec, tmp_path):
+    _with_a_bad_declaration()
+
+    compiler = DagCompiler(spec=declared_spec, cache=True, strict_caching=True)
+    with pytest.raises(ValueError, match=r"demo\.tasks\.chart: excludes field help_text"):
+        _compile_until_past_the_gate(compiler, tmp_path)
 
 
 def test_the_report_is_logged_under_the_flag(declared_spec, caplog):
-    wt_spec.known_tasks["chart"]["demo.tasks"].cache_structure = None
+    wt_spec.known_tasks["chart"]["demo.tasks"].declares_codec = False
     with caplog.at_level("INFO"):
         DagCompiler(spec=declared_spec, cache=True).log_cache_report()
     assert "figure is uncacheable" in caplog.text

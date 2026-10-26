@@ -7,8 +7,6 @@ communication across package boundaries.
 
 from __future__ import annotations
 
-from typing import Any
-
 from pydantic import BaseModel, Field
 
 
@@ -112,11 +110,11 @@ class RegistryEntry(BaseModel):
     function_name: str = Field(..., description="Function name")
     import_statement: str = Field(..., description="Complete import statement")
     json_schema: dict[str, object] = Field(..., description="JSON Schema for signature")
-    cache_structure: dict[str, Any] | None = Field(
-        default=None,
-        description="Declared cache structure of the return type; None = not cacheable",
+    declares_codec: bool = Field(
+        default=False,
+        description="Whether the return type declares a cache codec that resolves",
     )
-    cache_structure_error: str | None = Field(
+    cache_declaration_error: str | None = Field(
         default=None,
         description="Why the return type's codec declaration could not be resolved, if it could not",
     )

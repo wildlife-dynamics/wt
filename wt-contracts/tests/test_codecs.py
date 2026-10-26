@@ -319,7 +319,7 @@ def test_a_function_without_a_return_annotation_is_not_cacheable():
 # --- the wire ---------------------------------------------------------------
 
 
-def test_the_structure_survives_a_registry_wire_round_trip():
+def test_the_cache_declaration_survives_a_registry_wire_round_trip():
     entry = RegistryEntry(
         metadata=RegistryMetadata(title="t", description="d"),
         module_path="m",
@@ -327,11 +327,12 @@ def test_the_structure_survives_a_registry_wire_round_trip():
         function_name="f",
         import_statement="from m import f as f",
         json_schema={},
-        cache_structure=declared_structure(dict[str, list[Frame]]),
+        declares_codec=True,
+        cache_declaration_error=None,
     )
     back = RegistryEntry.model_validate_json(entry.model_dump_json())
-    assert back.cache_structure == entry.cache_structure
-    assert back.cache_structure_error is None
+    assert back.declares_codec
+    assert back.cache_declaration_error is None
 
 
 def test_an_older_registry_payload_validates_unchanged():
@@ -345,7 +346,8 @@ def test_an_older_registry_payload_validates_unchanged():
             "json_schema": {},
         }
     )
-    assert back.cache_structure is None
+    assert not back.declares_codec
+    assert back.cache_declaration_error is None
 
 
 def test_tuple_edge_cases():

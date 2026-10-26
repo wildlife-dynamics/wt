@@ -306,24 +306,15 @@ def _entry(func) -> RegistryEntry:
     return entry
 
 
-def test_cache_structure_resolves_an_annotated_alias_return() -> None:
-    def make() -> Frame:
-        return []
+@pytest.mark.parametrize("returns", [Frame, Point], ids=["annotated-alias", "cacheable-model"])
+def test_a_declared_return_type_declares_a_codec(returns) -> None:
+    def make():
+        return None
 
-    assert _entry(make).cache_structure == {
-        "k": "ref",
-        "ref": "mylib.codecs:FRAME",
-        "type": None,
-    }
-
-
-def test_cache_structure_resolves_a_cacheable_model_return() -> None:
-    def make() -> Point:
-        return Point(x=1)
-
-    structure = _entry(make).cache_structure
-    assert structure["ref"] == "mylib.codecs:model_codec"
-    assert structure["type"].endswith(":Point")
+    make.__annotations__["return"] = returns
+    entry = _entry(make)
+    assert entry.declares_codec
+    assert entry.cache_declaration_error is None
 
 
 def test_a_bare_model_return_is_not_cacheable() -> None:
@@ -333,8 +324,8 @@ def test_a_bare_model_return_is_not_cacheable() -> None:
     def make() -> Bare:
         return Bare(x=1)
 
-    assert _entry(make).cache_structure is None
-    assert _entry(make).cache_structure_error is None
+    assert not _entry(make).declares_codec
+    assert _entry(make).cache_declaration_error is None
 
 
 def test_a_bad_declaration_does_not_fail_serialization_and_names_the_field() -> None:
@@ -342,21 +333,21 @@ def test_a_bad_declaration_does_not_fail_serialization_and_names_the_field() -> 
         return Unroundtrippable()
 
     entry = _entry(make)
-    assert entry.cache_structure is None
-    assert "help_text" in entry.cache_structure_error
+    assert not entry.declares_codec
+    assert "help_text" in entry.cache_declaration_error
 
 
-def test_cache_structure_without_a_function_reference_raises() -> None:
+def test_cache_declaration_without_a_function_reference_raises() -> None:
     entry = RegistryEntry(
         metadata=RegistryMetadata(title="T", description="D"),
         module_path="test.module",
         function_name="missing",
     )
     with pytest.raises(AttributeError, match="function reference not set"):
-        _ = entry.cache_structure
+        _ = entry.declares_codec
 
 
-def test_to_json_carries_the_cache_structure() -> None:
+def test_to_json_carries_the_cache_declaration() -> None:
     clear_registry()
 
     def make() -> Frame:
@@ -365,24 +356,24 @@ def test_to_json_carries_the_cache_structure() -> None:
     register_entry(_entry(make))
     data = json.loads(to_json())
     entry = data["test.module.make"]
-    assert entry["cache_structure"] == {"k": "ref", "ref": "mylib.codecs:FRAME", "type": None}
-    assert entry["cache_structure_error"] is None
+    assert entry["declares_codec"] is True
+    assert entry["cache_declaration_error"] is None
     clear_registry()
 
 
-def test_serialize_entries_carries_the_cache_structure() -> None:
+def test_serialize_entries_carries_the_cache_declaration() -> None:
     def make() -> Unroundtrippable:
         return Unroundtrippable()
 
     output = serialize_entries({"test.module.make": _entry(make)})
     contract_entry = output.entries["test.module.make"]
-    assert contract_entry.cache_structure is None
-    assert "help_text" in contract_entry.cache_structure_error
+    assert not contract_entry.declares_codec
+    assert "help_text" in contract_entry.cache_declaration_error
 
 
 def test_an_unresolvable_return_annotation_surfaces_as_a_schema_error() -> None:
     def make() -> "NoSuchType":  # noqa: F821  # unresolvable on purpose
         return None
 
-    with pytest.raises(SchemaGenerationError, match="cache structure"):
-        _ = _entry(make).cache_structure
+    with pytest.raises(SchemaGenerationError, match="cache declaration"):
+        _ = _entry(make).declares_codec
