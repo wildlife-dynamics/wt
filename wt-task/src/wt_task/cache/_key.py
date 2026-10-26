@@ -400,18 +400,42 @@ def _closure_fingerprint(roots: tuple[str, ...]) -> str:
     pandas or geopandas under an unchanged `ecoscope` would serve results the
     new code would not produce. Only installed requirements are followed: a
     missing optional dependency is not part of this environment.
+
+    Which extras of a root are in use is unrecorded, so `_wanted` infers them.
+    Below the roots, an extra is followed only when a requirement that reached
+    the distribution names it. Inferring there too pulls in `pandas[xml]` or a
+    `[test]` extra whenever an unrelated package happens to install lxml or
+    pytest, giving every workflow with extra tooling a private cache.
     """
     found: dict[str, str] = {}
-    queue = deque(roots)
+    followed: dict[str, set[str]] = {}
+    queue: deque[tuple[str, frozenset[str] | None]] = deque((root, None) for root in roots)
     while queue:
-        name = canonicalize_name(queue.popleft())
-        if name in found:
-            continue
+        raw, requested = queue.popleft()
+        name = canonicalize_name(raw)
         version = _installed_version(name)
         if version is None:
             continue
+        first = name not in found
         found[name] = version
-        queue.extend(req.name for req, gating in _gated_requirements(name) if _wanted(name, gating))
+        if requested is None:
+            if not first:
+                continue
+            wanted = [req for req, gating in _gated_requirements(name) if _wanted(name, gating)]
+        else:
+            new = requested - followed.setdefault(name, set())
+            if not first and not new:
+                continue
+            followed[name] |= new
+            wanted = [
+                req
+                for req, gating in _gated_requirements(name)
+                if (gating is None and first)
+                or (gating and new & {canonicalize_name(e) for e in gating})
+            ]
+        queue.extend(
+            (req.name, frozenset(canonicalize_name(e) for e in req.extras)) for req in wanted
+        )
 
     lines = "\n".join(f"{name}=={version}" for name, version in sorted(found.items()))
     return hashlib.sha256(lines.encode("utf-8")).hexdigest()[:12]

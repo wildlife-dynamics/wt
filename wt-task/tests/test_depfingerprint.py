@@ -189,6 +189,47 @@ def test_a_half_installed_extra_is_not_followed(world):
     assert distribution_version("app") != half
 
 
+def transitive_extra(**overrides):
+    """`lib` has a `[test]` extra; `app` asks for `lib` without it unless overridden."""
+    return {
+        "app": ("1.0", ["lib"], []),
+        "lib": ("2.0", ["pytest; extra == 'test'"], ["test"]),
+        **overrides,
+    }
+
+
+def test_an_installed_but_unrequested_extra_of_a_dependency_is_not_followed(world):
+    # The `pandas[xml]` case: lxml installed for some other package's sake must
+    # not move the key of every task whose closure reaches pandas.
+    world(transitive_extra())
+    without = distribution_version("app")
+
+    world(transitive_extra(pytest=("9.0", [], [])))
+    assert distribution_version("app") == without
+
+
+def test_an_extra_a_requirement_names_is_followed(world):
+    world(transitive_extra(app=("1.0", ["lib[test]"], [])))
+    without = distribution_version("app")
+
+    world(transitive_extra(app=("1.0", ["lib[test]"], []), pytest=("9.0", [], [])))
+    assert distribution_version("app") != without
+
+
+def test_a_distribution_reached_twice_follows_the_extras_of_both_paths(world):
+    # `lib` is reached plainly first, then again with `[test]`; the second
+    # visit must still follow the extra.
+    two_paths = transitive_extra(
+        app=("1.0", ["lib", "other"], []),
+        other=("1.0", ["lib[test]"], []),
+    )
+    world(two_paths)
+    without = distribution_version("app")
+
+    world({**two_paths, "pytest": ("9.0", [], [])})
+    assert distribution_version("app") != without
+
+
 def test_a_requirement_whose_marker_excludes_this_environment_is_skipped(world):
     world(
         {

@@ -74,9 +74,12 @@ Four pieces, combined by
 - **`WT_CACHE__EPOCH`**, the manual invalidator.
 
 Only *installed* requirements are followed, so a missing optional dependency is
-skipped rather than being an error. An extra counts as in use when all of its
-own requirements are installed — which picks up `ecoscope[platform]` in a
-platform environment and leaves `[gcp]` out of a local one.
+skipped rather than being an error. For the task's own distribution, an extra
+counts as in use when all of its own requirements are installed — which picks
+up `ecoscope[platform]` in a platform environment and leaves `[gcp]` out of a
+local one. Below that, an extra is followed only when a requirement asks for
+it, so an unrelated package installing, say, pytest does not pull `[test]`
+extras into the closure and split the cache.
 
 The closure, rather than the workflow's lock hash, because every workflow
 resolves its own environment: a lock hash would give each workflow a private
