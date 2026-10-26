@@ -21,6 +21,7 @@ from wt_task.cache import (
     CacheSpec,
     Codec,
     _key,
+    _runtime,
     record,
     resolve_task,
     run_report,
@@ -793,6 +794,39 @@ def test_an_unwritable_store_degrades_to_running(tmp_path, monkeypatch):
         assert len(calls) == 1
     finally:
         unwritable.chmod(0o700)
+
+
+def test_a_refused_write_still_lets_everything_below_hit(cache_dir, monkeypatch):
+    # The `combined_df` case: a frame the codec can digest but not encode.
+    real_save = _runtime._save
+
+    def refuse_the_source(store, identity, tree, content_id, value):
+        return value != 42 and real_save(store, identity, tree, content_id, value)
+
+    monkeypatch.setattr(_runtime, "_save", refuse_the_source)
+
+    @task
+    def read_world() -> int:
+        return 42
+
+    derived_calls = []
+
+    @task
+    def transform(n: int) -> int:
+        derived_calls.append(n)
+        return n * 2
+
+    source = read_world.set_task_instance_id("source").cached(spec())
+    derived = transform.set_task_instance_id("derived").cached(
+        spec(upstream_inputs={"n": ["source"]})
+    )
+    for _ in range(2):
+        with run_scope() as ids:
+            source.call()
+            derived.call(42)
+    assert derived_calls == [42]
+    assert ids["source"].outcome == "unservable"
+    assert ids["source"].reason == "store would not accept the write"
 
 
 def test_argument_collecting_several_upstreams_folds_in_all_of_them(cache_dir):

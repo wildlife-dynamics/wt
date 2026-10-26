@@ -435,7 +435,7 @@ the run so far, with status `running`.
 | `hit` | Served from the store; the step did not execute |
 | `miss` | Executed, and the result was stored |
 | `expired` | An io step whose entry was older than `WT_CACHE__IO_TTL`, or that is set to always refetch. Executed and overwritten; the digest is still promoted |
-| `unservable` | `no-cache`, or an io step with `WT_CACHE__SCOPE` unset: executed, digested and promoted, not stored |
+| `unservable` | `no-cache`, an io step with `WT_CACHE__SCOPE` unset, or a value the store would not accept: executed, digested and promoted, not stored |
 | `uncacheable` | No codec, unpinnable distribution, or an uncacheable upstream |
 | `refused` | A codec declined the value, or a declared ref would not import |
 | `inert` | No store configured |
@@ -548,6 +548,7 @@ its `reason`:
 | *older than `<n>`s (age `<n>`s)* | Working as configured: the io step's entry outlived `WT_CACHE__IO_TTL`. Raise the TTL if that is too eager. |
 | *`WT_CACHE__IO_TTL` is zero: io steps always refetch* | Every io step refetches by design. Unset the variable, or give it a duration. |
 | *io step with `WT_CACHE__SCOPE` unset* | Working as designed: unscoped sources are never served. Set a scope. |
+| *store would not accept the write* (with a *Could not write cache entry* warning) | The value was digested but could not be stored — usually a codec that cannot encode it. Its dependents still cache; the warning names the cause. |
 | *Could not decode `content/...` (warning)* | A stored payload is present but unreadable. The step recomputed and rewrote it; `WT_CACHE__STRICT=1` raises `CacheCorruptionError` instead. |
 | *Ignoring unusable cache settings (...)* | A setting would not parse and was dropped to its safest value. Fix it, or set `WT_CACHE__STRICT=1` to make it fail loudly. |
 

@@ -205,8 +205,9 @@ def cached_call(
     step that re-executes but returns unchanged data stops the recomputation
     there. Every failure path falls back to running normally and marks this step
     uncacheable for its dependents: an unset store, an unpinnable distribution,
-    an uncacheable upstream, a return type with no codec, a value the declared
-    structure refuses, or a store that will not accept a write.
+    an uncacheable upstream, a return type with no codec, or a value the
+    declared structure refuses. A store that will not accept a write is the
+    exception: the digest was computed, so dependents still key on it.
     """
     store = open_store()
     if store is None:
@@ -248,14 +249,14 @@ def cached_call(
 
     try:
         content_id = f"{resolved.content_dir(method, tree)}/{tree.digest(result)}"
-        promoted: str | None = content_id
+        stored = True
         if servable:
             if verifying:
                 # A verify run must not write, so the baseline stays fixed and
                 # the check can be repeated.
                 _verify(store, resolved, task_instance_id, identity, content_id)
-            elif not _save(store, identity, tree, content_id, result):
-                promoted = None
+            else:
+                stored = _save(store, identity, tree, content_id, result)
     except Exception as e:  # noqa: BLE001  # a codec that declines must not fail the run
         warnings.warn(
             f"Not caching task instance {task_instance_id!r} "
@@ -265,16 +266,16 @@ def cached_call(
         record(task_instance_id, None, "refused", repr(e))
         return result, False
 
+    # A refused write still promotes the digest, which was computed fine: the
+    # step reruns next time, but one value a codec cannot store must not make
+    # its whole subtree uncacheable.
     outcome: Outcome = "miss"
     reason: str | None = None
     if not servable:
         outcome, reason = "unservable", unservable_reason
+    elif not stored:
+        outcome, reason = "unservable", "store would not accept the write"
     elif expired is not None:
         outcome, reason = "expired", expired
-    record(
-        task_instance_id,
-        promoted,
-        outcome,
-        reason if promoted is not None else "store would not accept the write",
-    )
+    record(task_instance_id, content_id, outcome, reason)
     return result, False
