@@ -481,10 +481,12 @@ class DagCompiler(BaseModel):
             raise ValueError(f"Cannot compile with caching: {detail}")
 
     def log_cache_report(self) -> None:
-        """Log one line per step the cache cannot serve, plus a summary count."""
+        """Log one line per step, with the reason for any it cannot serve, plus a summary count."""
         rows = self.cache_report()
         for row in rows:
-            if row.status != "cacheable":
+            if row.status == "cacheable":
+                logger.info("cache: %s is cacheable", row.task_instance_id)
+            else:
                 logger.warning("cache: %s is %s (%s)", row.task_instance_id, row.status, row.reason)
         counts = Counter(row.status for row in rows)
         logger.info(

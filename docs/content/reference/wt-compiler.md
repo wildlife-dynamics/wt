@@ -94,8 +94,9 @@ model, so a serialized field would move every existing workflow's fingerprint.
 `DagCompiler.cache_report()` returns one `CacheReportRow` per step —
 `task_instance_id`, `status` (`cacheable` / `unservable` / `uncacheable`) and
 `reason` — computed over the spec's dependencies so that propagation is
-visible. Under `--with-caching` the compiler logs each non-cacheable step and a
-summary count, and fails outright if any task declares a codec its return type
+visible. Under `--with-caching` the compiler logs every step's status (with the
+reason for any non-cacheable one) and a summary count, which the CLI prints to
+stderr once compilation finishes, and fails outright if any task declares a codec its return type
 cannot honour.
 
 ---

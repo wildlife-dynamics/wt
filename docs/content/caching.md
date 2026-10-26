@@ -374,8 +374,8 @@ Two reports, answering two different questions.
 ### At compile time
 
 `DagCompiler.cache_report()` returns one row per step — `task_instance_id`,
-`status`, `reason` — and `--with-caching` logs every non-cacheable step plus a
-summary count.
+`status`, `reason` — and `wt-compiler compile --with-caching` prints every step
+with its status, the reason for any that is not cacheable, and a summary count.
 
 | Status | Meaning |
 |--------|---------|
@@ -508,6 +508,12 @@ fails closed. This bites functions defined in test modules and in notebooks.
 its result encodes; `.partial()` replaces that function with a
 `functools.partial`, which carries neither `__module__` nor `__name__`. The
 generated DAG already orders them correctly.
+
+**A path under a per-run output root defeats early cutoff.** If each run writes
+its results under a fresh directory, a step that returns an absolute path into
+it produces a new value every run, and everything below it misses. Return paths
+relative to the root, and resolve them in the step that hands results to their
+reader — ecoscope's `persist_*` tasks and `gather_dashboard` do this.
 
 **Mapped steps cache as one entry**, not one per element. One changed group
 recomputes all of them. Acceptable while mapped steps sit at the tail of a

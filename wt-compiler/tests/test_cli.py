@@ -2,6 +2,7 @@
 # ruff: noqa: SIM117, S108  # nested with-blocks read clearer here; /tmp paths are test data
 
 import argparse
+import logging
 import sys
 import types
 from pathlib import Path
@@ -179,6 +180,29 @@ class TestCompileCommand:
 
         captured = capsys.readouterr()
         assert "Compiled workflow to:" in captured.out
+
+    def test_compile_prints_the_compilers_info_logs_after_the_spinner(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    ) -> None:
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text("id: test-workflow\n")
+        mock_artifacts = MagicMock()
+        mock_artifacts.release_dir = tmp_path / "test-workflow"
+        printed_during_compile: list[str] = []
+
+        def fake_compile(*args: object, **kwargs: object) -> MagicMock:
+            logging.getLogger("wt_compiler.compiler").info("cache: 1 of 1 steps cacheable")
+            printed_during_compile.append(capsys.readouterr().err)
+            return mock_artifacts
+
+        argv = ["wt-compiler", "compile", "--spec", str(spec_file), "--with-caching"]
+        with patch.object(sys, "argv", argv):
+            with patch("wt_compiler.cli.compile_workflow_from_yaml", side_effect=fake_compile):
+                main()
+
+        assert printed_during_compile == [""]
+        assert "cache: 1 of 1 steps cacheable" in capsys.readouterr().err
+        assert not logging.getLogger("wt_compiler").handlers
 
     def test_compile_with_clobber(self, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
         """Test compilation with --clobber flag."""

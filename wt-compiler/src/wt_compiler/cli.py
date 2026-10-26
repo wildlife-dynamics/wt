@@ -5,6 +5,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
+import logging
+import logging.handlers
 import re
 import resource
 import sys
@@ -19,7 +22,7 @@ from wt_compiler.wizard import DefaultWizardProvider
 from wt_compiler.wizard import providers as wt_providers
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
     from wt_compiler.wizard.abstract import (
         AbstractWizardProvider,
@@ -463,6 +466,31 @@ def main() -> None:
             raise AssertionError(f"Unhandled command: {args.command!r}")
 
 
+@contextlib.contextmanager
+def _deferred_logs(name: str) -> Iterator[None]:
+    """Print `name`'s INFO-and-above records to stderr once the block exits.
+
+    Without a handler Python drops INFO, which is where the cache report's
+    cacheable rows and summary live; and the progress spinner owns stderr while
+    the block runs, so printing as records arrive would garble both.
+    """
+    logger = logging.getLogger(name)
+    target = logging.StreamHandler(sys.stderr)
+    target.setFormatter(logging.Formatter("%(message)s"))
+    handler = logging.handlers.MemoryHandler(
+        capacity=sys.maxsize, flushLevel=logging.CRITICAL + 1, target=target
+    )
+    previous_level = logger.level
+    logger.setLevel(logging.INFO)
+    logger.addHandler(handler)
+    try:
+        yield
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(previous_level)
+        handler.close()
+
+
 def _compile(args: argparse.Namespace) -> None:
     """Execute the compile command.
 
@@ -506,13 +534,14 @@ def _compile(args: argparse.Namespace) -> None:
         compiler_kwargs["cache"] = args.with_caching
         if args.env_overrides is not None:
             compiler_kwargs["env_overrides_path"] = Path(args.env_overrides).resolve()
-        artifacts = asyncio.run(
-            compile_workflow_from_yaml(
-                str(spec_path),
-                progress=not args.no_progress,
-                **compiler_kwargs,
+        with _deferred_logs("wt_compiler"):
+            artifacts = asyncio.run(
+                compile_workflow_from_yaml(
+                    str(spec_path),
+                    progress=not args.no_progress,
+                    **compiler_kwargs,
+                )
             )
-        )
 
         # Write artifacts to disk
         artifacts.dump(clobber=args.clobber, update=args.update)

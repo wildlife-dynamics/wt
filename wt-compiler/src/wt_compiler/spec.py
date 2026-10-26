@@ -966,6 +966,30 @@ class TaskInstance(_ForbidExtra):
             raise e
         return self
 
+    @model_validator(mode="after")
+    def check_unfillable_required_args_are_bound(self) -> "TaskInstance":
+        """Validate that every required arg hidden from the form is bound in the spec.
+
+        A required arg that the task's schema leaves out of `properties` (an
+        `exclude=True` field) cannot come from the run's parameters either, so
+        an unbound one would only fail when the step is finally called, after
+        every step before it has run.
+        """
+        schema = self.known_task.json_schema
+        bound = {*self.partial, *self.map.argnames, *self.mapvalues.argnames}
+        missing = [
+            arg
+            for arg in schema.get("required", [])
+            if arg not in schema.get("properties", {}) and arg not in bound
+        ]
+        if missing:
+            raise ValueError(
+                f"Task instance `{self.id}` ({self.known_task_name}) does not bind required "
+                f"argument(s) {missing}, which the run's parameters cannot supply. "
+                "Bind them under `partial`, `map` or `mapvalues`."
+            )
+        return self
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def method(self) -> str:

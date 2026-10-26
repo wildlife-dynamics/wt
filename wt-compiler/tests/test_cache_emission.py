@@ -621,6 +621,8 @@ def test_the_report_is_logged_under_the_flag(declared_spec, caplog):
         DagCompiler(spec=declared_spec, cache=True).log_cache_report()
     assert "figure is uncacheable" in caplog.text
     assert "1 of 3 steps cacheable" in caplog.text
+    # Every step gets a line, not only the ones the cache cannot serve, plus the summary.
+    assert len([r for r in caplog.records if r.getMessage().startswith("cache: ")]) == 4
 
 
 # --- the per-run report beside the result envelope -------------------------
