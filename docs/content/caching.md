@@ -206,7 +206,7 @@ class GrouperCodec(Cacheable):
 
 A declaration error does not break a compile: wt-registry carries it as data
 (`cache_declaration_error`), `--with-caching` reports the step `uncacheable`, and
-`--strict-caching` turns it into an error.
+`--with-caching=strict` turns it into an error.
 
 ### Codecs and trees
 
@@ -380,8 +380,8 @@ Two reports, answering two different questions.
 `DagCompiler.cache_report()` returns one row per step — `task_instance_id`,
 `status`, `reason` — and `wt-compiler compile --with-caching` prints every step
 with its status, the reason for any that is not cacheable, and a summary count.
-Add `--strict-caching` to fail the compile on a bad codec declaration instead of
-reporting it.
+`--with-caching=strict` also fails the compile on a bad codec declaration
+instead of reporting it.
 
 | Status | Meaning |
 |--------|---------|

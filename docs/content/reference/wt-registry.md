@@ -123,7 +123,7 @@ the CLI's JSON output.
 A bad declaration yields `declares_codec=False` plus an error string rather
 than raising: one unserializable return type in a task library must not break
 every non-caching compile against it. `wt-compiler --with-caching` reports it;
-`--strict-caching` turns it into a hard failure.
+`--with-caching=strict` turns it into a hard failure.
 
 See [Caching](../caching.md) for what a declaration looks like.
 

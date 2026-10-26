@@ -66,7 +66,7 @@ def test_caching_is_off_by_default(demo_spec):
 def test_without_the_flag_nothing_about_the_dag_changes(demo_spec):
     # The regression guarantee: existing workflows recompile byte-identically,
     # so no downstream repo needs a version bump to adopt this.
-    dag = DagCompiler(spec=demo_spec, cache=False).render_dag("sequential")
+    dag = DagCompiler(spec=demo_spec).render_dag("sequential")
     assert ".cached(" not in dag
     assert "CacheSpec" not in dag
     assert "run_scope" not in dag
@@ -97,7 +97,7 @@ def test_the_spec_fingerprint_is_unchanged_by_a_cache_declaration(demo_spec):
 
 @pytest.fixture
 def cached_dag(demo_spec):
-    return DagCompiler(spec=demo_spec, cache=True).render_dag("sequential")
+    return DagCompiler(spec=demo_spec, caching="report").render_dag("sequential")
 
 
 def test_every_step_is_wrapped(cached_dag):
@@ -142,13 +142,13 @@ def test_runtime_params_reach_the_key(cached_dag):
 def test_mocked_io_dag_is_not_cached(demo_spec):
     # Mocked tasks return canned fixtures; caching them would store the fixture
     # under an identity that claims to describe real work.
-    dag = DagCompiler(spec=demo_spec, cache=True).render_dag("sequential", mock_io=True)
+    dag = DagCompiler(spec=demo_spec, caching="report").render_dag("sequential", mock_io=True)
     assert "create_func_magicmock" in dag  # the io task really is mocked
     assert dag.count(".cached(") == 2  # the two non-io steps only
 
 
 def test_async_dag_also_emits_cache_specs(demo_spec):
-    dag = DagCompiler(spec=demo_spec, cache=True).render_dag("async")
+    dag = DagCompiler(spec=demo_spec, caching="report").render_dag("async")
     assert ".cached(" in dag
 
 
@@ -179,7 +179,7 @@ def optout_dag():
             ],
         }
     )
-    return DagCompiler(spec=spec, cache=True).render_dag("sequential")
+    return DagCompiler(spec=spec, caching="report").render_dag("sequential")
 
 
 def test_an_opted_out_task_is_still_wrapped(optout_dag):
@@ -480,14 +480,15 @@ def test_renaming_steps_does_not_change_the_spec_fingerprint_contract(demo_spec)
 
 
 @pytest.mark.parametrize(
-    ("argv_extra", "cache", "strict"),
+    ("argv_extra", "caching"),
     [
-        ([], False, False),
-        (["--with-caching"], True, False),
-        (["--with-caching", "--strict-caching"], True, True),
+        ([], "off"),
+        (["--with-caching"], "report"),
+        (["--with-caching=strict"], "strict"),
+        (["--with-caching", "strict"], "strict"),
     ],
 )
-def test_cli_flags_reach_the_compiler(tmp_path: Path, argv_extra, cache, strict):
+def test_cli_flag_reaches_the_compiler(tmp_path: Path, argv_extra, caching):
     spec_file = tmp_path / "spec.yaml"
     spec_file.write_text("id: test_workflow\n")
     artifacts = MagicMock()
@@ -502,29 +503,18 @@ def test_cli_flags_reach_the_compiler(tmp_path: Path, argv_extra, cache, strict)
     ):
         main()
 
-    assert compile_workflow.call_args.kwargs["cache"] is cache
-    assert compile_workflow.call_args.kwargs["strict_caching"] is strict
+    assert compile_workflow.call_args.kwargs["caching"] == caching
 
 
-def test_strict_caching_without_caching_is_rejected_before_compiling(tmp_path: Path, capsys):
+def test_an_unknown_caching_mode_is_rejected(tmp_path: Path, capsys):
     spec_file = tmp_path / "spec.yaml"
     spec_file.write_text("id: test_workflow\n")
-    argv = ["wt-compiler", "compile", "--spec", str(spec_file), "--strict-caching"]
-    with (
-        patch.object(sys, "argv", argv),
-        patch("wt_compiler.cli.compile_workflow_from_yaml") as compile_workflow,
-        pytest.raises(SystemExit) as exc_info,
-    ):
+    argv = ["wt-compiler", "compile", "--spec", str(spec_file), "--with-caching=loose"]
+    with patch.object(sys, "argv", argv), pytest.raises(SystemExit) as exc_info:
         main()
 
-    assert exc_info.value.code == 1
-    assert "--strict-caching requires --with-caching" in capsys.readouterr().err
-    compile_workflow.assert_not_called()
-
-
-def test_the_compiler_rejects_strict_caching_without_caching(demo_spec):
-    with pytest.raises(ValueError, match="requires cache=True"):
-        DagCompiler(spec=demo_spec, strict_caching=True)
+    assert exc_info.value.code == 2
+    assert "invalid choice: 'loose'" in capsys.readouterr().err
 
 
 # --- the declared structure reaches the DAG --------------------------------
@@ -555,7 +545,7 @@ def _first_cached_call(dag):
 
 def test_a_default_step_is_one_short_cached_call(declared_spec):
     # Everything the runtime can work out for itself stays out of the DAG.
-    dag = DagCompiler(spec=declared_spec, cache=True).render_dag("sequential")
+    dag = DagCompiler(spec=declared_spec, caching="report").render_dag("sequential")
     calls = _cached_calls(dag)
     assert len(calls) == 3
 
@@ -582,7 +572,7 @@ def test_a_default_step_is_one_short_cached_call(declared_spec):
 def test_only_io_tagged_steps_are_scoped(declared_spec):
     # A derived step is a pure function of its input digests, so folding a
     # per-request scope into its key would make a fresh token a cold run.
-    dag = DagCompiler(spec=declared_spec, cache=True).render_dag("sequential")
+    dag = DagCompiler(spec=declared_spec, caching="report").render_dag("sequential")
     assert dag.count("scoped=True") == 1
     assert "scoped=False" not in dag
 
@@ -591,14 +581,15 @@ def test_only_io_tagged_steps_are_scoped(declared_spec):
 
 
 def test_every_step_is_cacheable_when_every_return_type_declares_one(declared_spec):
-    rows = DagCompiler(spec=declared_spec, cache=True).cache_report()
+    rows = DagCompiler(spec=declared_spec, caching="report").cache_report()
     assert [r.status for r in rows] == ["cacheable"] * 3
 
 
 def test_an_undeclared_return_type_propagates_down_the_report(declared_spec):
     wt_spec.known_tasks["chart"]["demo.tasks"].declares_codec = False
     rows = {
-        r.task_instance_id: r for r in DagCompiler(spec=declared_spec, cache=True).cache_report()
+        r.task_instance_id: r
+        for r in DagCompiler(spec=declared_spec, caching="report").cache_report()
     }
 
     assert rows["events"].status == "cacheable"
@@ -611,7 +602,8 @@ def test_an_undeclared_return_type_propagates_down_the_report(declared_spec):
 def test_a_no_cache_task_is_unservable_and_does_not_block_its_dependents(declared_spec):
     wt_spec.known_tasks["get_events"]["demo.tasks"].tags = [wt_spec.TaskTag.no_cache]
     rows = {
-        r.task_instance_id: r for r in DagCompiler(spec=declared_spec, cache=True).cache_report()
+        r.task_instance_id: r
+        for r in DagCompiler(spec=declared_spec, caching="report").cache_report()
     }
     assert (rows["events"].status, rows["events"].reason) == ("unservable", "no-cache tag")
     assert rows["figure"].status == "cacheable"
@@ -640,7 +632,7 @@ def test_a_bad_declaration_is_reported_but_does_not_block_a_caching_compile(
 ):
     _with_a_bad_declaration()
 
-    compiler = DagCompiler(spec=declared_spec, cache=True)
+    compiler = DagCompiler(spec=declared_spec, caching="report")
     rows = {r.task_instance_id: r for r in compiler.cache_report()}
     assert (rows["figure"].status, rows["figure"].reason) == (
         "uncacheable",
@@ -653,7 +645,7 @@ def test_a_bad_declaration_is_reported_but_does_not_block_a_caching_compile(
 def test_a_bad_declaration_blocks_a_strict_caching_compile(declared_spec, tmp_path):
     _with_a_bad_declaration()
 
-    compiler = DagCompiler(spec=declared_spec, cache=True, strict_caching=True)
+    compiler = DagCompiler(spec=declared_spec, caching="strict")
     with pytest.raises(ValueError, match=r"demo\.tasks\.chart: excludes field help_text"):
         _compile_until_past_the_gate(compiler, tmp_path)
 
@@ -661,7 +653,7 @@ def test_a_bad_declaration_blocks_a_strict_caching_compile(declared_spec, tmp_pa
 def test_the_report_is_logged_under_the_flag(declared_spec, caplog):
     wt_spec.known_tasks["chart"]["demo.tasks"].declares_codec = False
     with caplog.at_level("INFO"):
-        DagCompiler(spec=declared_spec, cache=True).log_cache_report()
+        DagCompiler(spec=declared_spec, caching="report").log_cache_report()
     assert "figure is uncacheable" in caplog.text
     assert "1 of 3 steps cacheable" in caplog.text
     # Every step gets a line, not only the ones the cache cannot serve, plus the summary.
@@ -672,14 +664,14 @@ def test_the_report_is_logged_under_the_flag(declared_spec, caplog):
 
 
 def _cli(spec, cache):
-    return DagCompiler(spec=spec, cache=cache).ruffrender(
+    return DagCompiler(spec=spec, caching="report" if cache else "off").ruffrender(
         "pkg/cli.jinja2", release_name="demo", results_env_var="WT_RESULTS", cache=cache
     )
 
 
 @pytest.mark.parametrize("cache", [True, False])
 def test_the_result_envelope_has_no_cache_field(demo_spec, cache):
-    compiler = DagCompiler(spec=demo_spec, cache=cache)
+    compiler = DagCompiler(spec=demo_spec, caching="report" if cache else "off")
     assert "cache" not in compiler.ruffrender("pkg/response.jinja2")
     dispatch = compiler.ruffrender("pkg/dispatch.jinja2")
     assert "run_report" not in dispatch
@@ -705,7 +697,7 @@ def test_the_cli_is_unchanged_without_the_flag(demo_spec):
 
 
 def _readme(spec, cache):
-    return DagCompiler(spec=spec, cache=cache).plainrender(
+    return DagCompiler(spec=spec, caching="report" if cache else "off").plainrender(
         "README.jinja2", fingerprint="", spec_id=spec.id, release_name="demo", cache=cache
     )
 

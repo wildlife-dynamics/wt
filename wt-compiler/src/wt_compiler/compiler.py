@@ -9,13 +9,13 @@ import pathlib
 from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, Literal, NamedTuple
 
 import jsonschema
 import pydot as dot
 import ruamel.yaml
 from jinja2 import Environment, FileSystemLoader
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 from rattler import Channel, MatchSpec, NamelessMatchSpec
 from wt_contracts import ValidationError
 
@@ -393,15 +393,14 @@ class DagCompiler(BaseModel):
     jinja_templates_dir: pathlib.Path = TEMPLATES
     pkg_name_prefix: str = "wt"
     results_env_var: str = "WT_RESULTS"
-    cache: bool = False
-    strict_caching: bool = False
+    # `report` wraps every step and logs the cache report; `strict` also fails
+    # the compile on a codec declaration a return type cannot honour.
+    caching: Literal["off", "report", "strict"] = "off"
 
-    @model_validator(mode="after")
-    def check_strict_caching_needs_caching(self) -> "DagCompiler":
-        """Validate that `strict_caching` is only set alongside `cache`."""
-        if self.strict_caching and not self.cache:
-            raise ValueError("strict_caching=True requires cache=True")
-        return self
+    @property
+    def cache(self) -> bool:
+        """Whether the generated DAG wraps its steps in the step cache."""
+        return self.caching != "off"
 
     def get_dag_config(self, dag_type: DagTypes, mock_io: bool) -> dict[str, Any]:  # noqa: ARG002  # subclasses dispatch on dag_type
         """Get configuration dict for rendering a DAG.
@@ -417,6 +416,7 @@ class DagCompiler(BaseModel):
             exclude={"jinja_templates_dir"},
             context={"mock_io": mock_io},
         )
+        config["cache"] = self.cache
         if self.cache:
             config["cache_specs"] = self._cache_specs()
         return config
@@ -472,7 +472,7 @@ class DagCompiler(BaseModel):
     def _check_cache_declarations(self) -> None:
         """Fail the compile if a task in this spec declares a codec it cannot honour.
 
-        Only under `--strict-caching`: a bad declaration may sit in a task
+        Only under `--with-caching=strict`: a bad declaration may sit in a task
         library the spec author does not own, so by default it is a report row
         and the step runs uncached.
 
@@ -1090,7 +1090,7 @@ class DagCompiler(BaseModel):
         """
         if self.cache:
             self.log_cache_report()
-        if self.strict_caching:
+        if self.caching == "strict":
             self._check_cache_declarations()
 
         if on_progress is not None:

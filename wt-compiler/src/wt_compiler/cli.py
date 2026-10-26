@@ -384,19 +384,17 @@ def main() -> None:
     )
     compile_parser.add_argument(
         "--with-caching",
-        action="store_true",
+        nargs="?",
+        const="report",
+        default="off",
+        choices=["report", "strict"],
+        metavar="strict",
         help=(
-            "Wrap every step of the generated DAG in the step cache. At run time the "
-            "cache is located by the WT_CACHE__STORE environment variable; with it unset the "
-            "emitted code is inert and every step runs as usual."
-        ),
-    )
-    compile_parser.add_argument(
-        "--strict-caching",
-        action="store_true",
-        help=(
-            "With --with-caching, fail the compile if any task in the spec declares a cache "
-            "codec its return type cannot honour, instead of reporting the step uncacheable."
+            "Wrap every step of the generated DAG in the step cache and report which steps "
+            "can be cached. At run time the cache is located by the WT_CACHE__STORE "
+            "environment variable; with it unset the emitted code is inert and every step "
+            "runs as usual. With =strict, also fail the compile if any task in the spec "
+            "declares a cache codec its return type cannot honour."
         ),
     )
     compile_parser.add_argument(
@@ -521,10 +519,6 @@ def _compile(args: argparse.Namespace) -> None:
         )
         sys.exit(1)
 
-    if args.strict_caching and not args.with_caching:
-        print("Error: --strict-caching requires --with-caching", file=sys.stderr)
-        sys.exit(1)
-
     spec_path = args.spec.resolve()
 
     if not spec_path.exists():
@@ -543,8 +537,7 @@ def _compile(args: argparse.Namespace) -> None:
         if args.variant:
             compiler_kwargs["variant"] = args.variant
         compiler_kwargs["results_env_var"] = args.results_env_var
-        compiler_kwargs["cache"] = args.with_caching
-        compiler_kwargs["strict_caching"] = args.strict_caching
+        compiler_kwargs["caching"] = args.with_caching
         if args.env_overrides is not None:
             compiler_kwargs["env_overrides_path"] = Path(args.env_overrides).resolve()
         with _deferred_logs("wt_compiler"):

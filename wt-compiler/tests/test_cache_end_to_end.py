@@ -311,7 +311,7 @@ def workflow(tmp_path, monkeypatch):
         (pkg / "__init__.py").write_text("")
         (pkg / "metadata.py").write_text(METADATA_MODULE)
         (pkg / "dags" / "__init__.py").write_text("")
-        compiler = DagCompiler(spec=spec, cache=cache)
+        compiler = DagCompiler(spec=spec, caching="report" if cache else "off")
         dag = compiler.render_dag("sequential")
         (pkg / "dags" / "run_sequential.py").write_text(dag)
         (pkg / "dispatch.py").write_text(compiler.ruffrender("pkg/dispatch.jinja2"))

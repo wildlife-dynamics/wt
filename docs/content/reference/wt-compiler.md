@@ -98,8 +98,8 @@ visible. Under `--with-caching` the compiler logs every step's status (with the
 reason for any non-cacheable one) and a summary count, which the CLI prints to
 stderr once compilation finishes.
 
-`--strict-caching` (`DagCompiler(strict_caching=True)`, which requires
-`cache=True`) additionally fails the compile if any task in the spec declares a
+`--with-caching=strict` (`DagCompiler(caching="strict")`; bare `--with-caching`
+is `caching="report"`) additionally fails the compile if any task in the spec declares a
 codec its return type cannot honour. Without it, such a step is reported
 `uncacheable` and runs uncached.
 
