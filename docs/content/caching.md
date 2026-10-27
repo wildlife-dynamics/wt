@@ -523,9 +523,10 @@ generated DAG already orders them correctly.
 
 **A path under a per-run output root defeats early cutoff.** If each run writes
 its results under a fresh directory, a step that returns an absolute path into
-it produces a new value every run, and everything below it misses. Return paths
-relative to the root, and resolve them in the step that hands results to their
-reader — ecoscope's `persist_*` tasks and `gather_dashboard` do this.
+it produces a new value every run, and everything below it misses. Returning
+paths relative to the root avoids that, but only if every consumer resolves them
+against the root, including tasks that read the file back. ecoscope's `persist_*`
+tasks return absolute paths for that reason, and accept the misses below them.
 
 **Mapped steps cache as one entry**, not one per element. One changed group
 recomputes all of them. Acceptable while mapped steps sit at the tail of a
