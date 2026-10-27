@@ -342,7 +342,7 @@ def _cache_spec_literal(t: TaskInstance) -> str:
     name, its return structure, which method it runs, the parameters it was
     given — is deliberately absent.
     """
-    args = [f'signature="{t.known_task.signature_hash}"', f'fixed_inputs="{t.cache_fixed_inputs}"']
+    args = [f'signature="{t.known_task.signature}"', f'fixed_inputs="{t.cache_fixed_inputs}"']
     if t.cache_upstream_inputs:
         args.append(f"upstream_inputs={t.cache_upstream_inputs}")
     if t.cache_env:
@@ -357,7 +357,7 @@ def _cache_spec_literal(t: TaskInstance) -> str:
     return f"CacheSpec({', '.join(args)})"
 
 
-class CacheReportRow(NamedTuple):
+class CacheabilityRow(NamedTuple):
     """One step's compile-time cache verdict.
 
     Attributes:
@@ -398,7 +398,7 @@ class DagCompiler(BaseModel):
     caching: Literal["off", "report", "strict"] = "off"
 
     @property
-    def cache(self) -> bool:
+    def caching_enabled(self) -> bool:
         """Whether the generated DAG wraps its steps in the step cache."""
         return self.caching != "off"
 
@@ -416,8 +416,8 @@ class DagCompiler(BaseModel):
             exclude={"jinja_templates_dir"},
             context={"mock_io": mock_io},
         )
-        config["cache"] = self.cache
-        if self.cache:
+        config["cache"] = self.caching_enabled
+        if self.caching_enabled:
             config["cache_specs"] = self._cache_specs()
         return config
 
@@ -434,7 +434,7 @@ class DagCompiler(BaseModel):
         """
         return {t.id: _cache_spec_literal(t) for t in self.spec.flat_workflow}
 
-    def cache_report(self) -> list[CacheReportRow]:
+    def cacheability_report(self) -> list[CacheabilityRow]:
         """Which steps this spec can cache, and why the rest cannot.
 
         A claim about declared return types, computed before anything runs.
@@ -444,7 +444,7 @@ class DagCompiler(BaseModel):
         Returns:
             One row per step, in workflow order.
         """
-        rows: list[CacheReportRow] = []
+        rows: list[CacheabilityRow] = []
         blocked: set[str] = set()
         for t in self.spec.flat_workflow:
             known = t.known_task
@@ -466,7 +466,7 @@ class DagCompiler(BaseModel):
                 # digests and promotes its output, so its dependents keep
                 # hitting.
                 blocked.add(t.id)
-            rows.append(CacheReportRow(task_instance_id=t.id, status=status, reason=reason))
+            rows.append(CacheabilityRow(task_instance_id=t.id, status=status, reason=reason))
         return rows
 
     def _check_cache_declarations(self) -> None:
@@ -488,9 +488,9 @@ class DagCompiler(BaseModel):
             detail = "; ".join(f"{ref}: {err}" for ref, err in sorted(broken.items()))
             raise ValueError(f"Cannot compile with caching: {detail}")
 
-    def log_cache_report(self) -> None:
+    def log_cacheability_report(self) -> None:
         """Log one line per step, with the reason for any it cannot serve, plus a summary count."""
-        rows = self.cache_report()
+        rows = self.cacheability_report()
         for row in rows:
             if row.status == "cacheable":
                 logger.info("cache: %s is cacheable", row.task_instance_id)
@@ -1088,8 +1088,8 @@ class DagCompiler(BaseModel):
             >>> # compiler = DagCompiler(spec=spec)  # doctest: +SKIP
             >>> # artifacts = compiler.compile("path/to/spec.yaml")  # doctest: +SKIP
         """
-        if self.cache:
-            self.log_cache_report()
+        if self.caching_enabled:
+            self.log_cacheability_report()
         if self.caching == "strict":
             self._check_cache_declarations()
 
@@ -1136,7 +1136,7 @@ class DagCompiler(BaseModel):
                     "pkg/cli.jinja2",
                     release_name=self.release_name,
                     results_env_var=self.results_env_var,
-                    cache=self.cache,
+                    cache=self.caching_enabled,
                 ),
                 "dispatch.py": self.ruffrender("pkg/dispatch.jinja2"),
                 "metadata.py": self.ruffrender("pkg/metadata.jinja2"),
@@ -1225,7 +1225,7 @@ class DagCompiler(BaseModel):
             fingerprint=fingerprint.to_yaml(),
             spec_id=self.spec.id,
             release_name=self.release_name,
-            cache=self.cache,
+            cache=self.caching_enabled,
         )
         artifacts.readme_md = readme_md
 

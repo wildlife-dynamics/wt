@@ -222,7 +222,7 @@ into it. A bare frame is a one-leaf tree. A tree can also be a leaf of another
 tree, which is how a library declares a codec for a container type it owns.
 
 A codec may decline a value by raising `Undigestible` — an unhashable cell, a
-subclass an exact codec does not cover. The step then runs and records itself
+subclass a codec with `accepts_subclasses=False` does not cover. The step then runs and records itself
 `refused`; nothing fails.
 
 Both live in
@@ -377,7 +377,7 @@ Two reports, answering two different questions.
 
 ### At compile time
 
-`DagCompiler.cache_report()` returns one row per step — `task_instance_id`,
+`DagCompiler.cacheability_report()` returns one row per step — `task_instance_id`,
 `status`, `reason` — and `wt-compiler compile --with-caching` prints every step
 with its status, the reason for any that is not cacheable, and a summary count.
 `--with-caching=strict` also fails the compile on a bad codec declaration
@@ -443,8 +443,8 @@ the run so far, with status `running`.
 | `refused` | A codec declined the value, or a declared ref would not import |
 | `inert` | No store configured |
 
-A declared type can claim cacheable and still be refused at run time — an exact
-codec handed a subclass, a union with no matching arm, an unhashable cell. That
+A declared type can claim cacheable and still be refused at run time — a codec
+that refuses subclasses handed one, a union with no matching arm, an unhashable cell. That
 only shows here.
 
 ---

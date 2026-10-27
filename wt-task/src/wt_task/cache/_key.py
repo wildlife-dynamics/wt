@@ -33,7 +33,7 @@ from ._settings import CacheSettings, active_settings, load_settings, use_settin
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from ._spec import CacheSpec, ResolvedTask
+    from ._spec import CacheSpec, TaskEncoding
 
 
 Outcome = Literal["hit", "miss", "expired", "unservable", "refused", "uncacheable", "inert"]
@@ -55,7 +55,7 @@ class CacheRecord:
     reason: str | None = None
 
 
-_RUN_IDS: ContextVar[dict[str, CacheRecord]] = ContextVar("_RUN_IDS")
+_RUN_RECORDS: ContextVar[dict[str, CacheRecord]] = ContextVar("_RUN_RECORDS")
 # Per-step form values, as the DAG received them. Passed once at DAG entry
 # rather than baked into every step's spec, and keyed on raw: what the step's
 # wrapper ends up seeing may have been coerced by `validate`.
@@ -99,7 +99,7 @@ def run_scope(
     params: dict[str, Any] | None = None,
     settings: CacheSettings | None = None,
 ) -> Iterator[dict[str, CacheRecord]]:
-    """Scope a fresh identity table, this run's parameters and its settings.
+    """Scope a fresh record table, this run's parameters and its settings.
 
     Entered once at DAG entry. The table maps task-instance ids to this run's
     digests, and an id only names a step within one run, so it must not leak
@@ -113,14 +113,14 @@ def run_scope(
             sources when omitted.
 
     Examples:
-        >>> with run_scope() as ids:
+        >>> with run_scope() as records:
         ...     record("a", "deadbeef", "miss")
-        ...     ids["a"].digest
+        ...     records["a"].digest
         'deadbeef'
     """
     table: dict[str, CacheRecord] = {}
     resolved = settings if settings is not None else load_settings()
-    token = _RUN_IDS.set(table)
+    token = _RUN_RECORDS.set(table)
     params_token = _RUN_PARAMS.set(params or {})
     error: str | None = None
     failed_step: str | None = None
@@ -131,7 +131,7 @@ def run_scope(
         error, failed_step = str(e) or type(e).__name__, _failed_step(e)
         raise
     finally:
-        _RUN_IDS.reset(token)
+        _RUN_RECORDS.reset(token)
         _RUN_PARAMS.reset(params_token)
         # Kept on failure too: what ran before the error is the useful part.
         _LAST_RUN.clear()
@@ -157,7 +157,7 @@ def step_params(task_instance_id: str) -> dict[str, Any]:
 
 def record(
     task_instance_id: str,
-    identity: str | None,
+    digest: str | None,
     outcome: Outcome,
     reason: str | None = None,
 ) -> None:
@@ -166,9 +166,9 @@ def record(
     A no-op outside a `run_scope`, so a task called directly in a test or a REPL
     behaves exactly as it does today.
     """
-    ids = _RUN_IDS.get(None)
-    if ids is not None:
-        ids[task_instance_id] = CacheRecord(identity, outcome, reason)
+    records = _RUN_RECORDS.get(None)
+    if records is not None:
+        records[task_instance_id] = CacheRecord(digest, outcome, reason)
 
 
 def run_report() -> dict[str, dict[str, str | None]]:
@@ -183,19 +183,19 @@ def run_report() -> dict[str, dict[str, str | None]]:
         ...     run_report()
         {'a': {'digest': None, 'outcome': 'refused', 'reason': 'no union arm'}}
     """
-    ids = _RUN_IDS.get(None)
-    table = ids if ids is not None else _LAST_RUN
+    records = _RUN_RECORDS.get(None)
+    table = records if records is not None else _LAST_RUN
     return {
         step: {"digest": row.digest, "outcome": row.outcome, "reason": row.reason}
         for step, row in table.items()
     }
 
 
-def _upstream(task_instance_id: str) -> str | None:
-    ids = _RUN_IDS.get(None)
-    if ids is None:
+def _upstream_digest(task_instance_id: str) -> str | None:
+    records = _RUN_RECORDS.get(None)
+    if records is None:
         return None
-    row = ids.get(task_instance_id)
+    row = records.get(task_instance_id)
     return row.digest if row is not None else None
 
 
@@ -285,7 +285,7 @@ _TOP_LEVEL_INFERRED: Any = getattr(
 )
 
 
-class _TopLevel(Mapping[str, list[str]]):
+class _LazyPackagesDistributions(Mapping[str, list[str]]):
     """`importlib.metadata.packages_distributions()`, computed one key at a time.
 
     The full mapping infers top-level names from `dist.files` for every
@@ -329,7 +329,7 @@ class _TopLevel(Mapping[str, list[str]]):
 
 @functools.lru_cache(maxsize=1)
 def _packages_distributions() -> Mapping[str, list[str]]:
-    return _TopLevel()
+    return _LazyPackagesDistributions()
 
 
 def _installed_version(name: str) -> str | None:
@@ -458,7 +458,7 @@ def _closure_fingerprint(roots: tuple[str, ...]) -> str:
 
 
 @functools.cache
-def distribution_version(anchor: str) -> str | None:
+def distribution_fingerprint(anchor: str) -> str | None:
     """Return a version string for the distribution providing `anchor`, else None.
 
     None means "do not cache this step". Failing closed is the point: without a
@@ -490,7 +490,7 @@ def distribution_version(anchor: str) -> str | None:
         return None
 
 
-def task_identity(spec: CacheSpec, resolved: ResolvedTask) -> str | None:
+def task_identity(spec: CacheSpec, encoding: TaskEncoding) -> str | None:
     """Identify the code a step runs, or None if it cannot be pinned.
 
     The `epoch` setting is the manual invalidator, for when a distribution version
@@ -499,37 +499,44 @@ def task_identity(spec: CacheSpec, resolved: ResolvedTask) -> str | None:
     hash the tasks come from — not from the per-workflow image, or two
     workflows shipping the same library would never share an entry.
     """
-    version = distribution_version(resolved.anchor)
+    version = distribution_fingerprint(encoding.anchor)
     if version is None:
         return None
     epoch = active_settings().epoch
-    return f"{resolved.anchor}.{resolved.function}@{version}#{spec.signature}#{epoch}"
+    return f"{encoding.anchor}.{encoding.function}@{version}#{spec.signature}#{epoch}"
 
 
-def step_identity_with_reason(
-    spec: CacheSpec, resolved: ResolvedTask, task_instance_id: str, method: str = "call"
+def step_identity(
+    spec: CacheSpec, encoding: TaskEncoding, params: dict[str, Any], method: str = "call"
 ) -> tuple[str | None, str | None]:
-    """Compute this step's cache key, or None and the reason it has none."""
-    task = task_identity(spec, resolved)
+    """Compute this step's cache key, or None and the reason it has none.
+
+    The key is None when the code cannot be pinned, or when any upstream step
+    was itself uncacheable — uncacheability propagates down the DAG, because a
+    key that omits an unknown input would collide across genuinely different
+    runs. `params` are the step's own run parameters; no task-instance id
+    reaches the key, which is what lets workflows share entries.
+    """
+    task = task_identity(spec, encoding)
     if task is None:
-        return None, f"no distribution version for {resolved.anchor!r}"
+        return None, f"no distribution version for {encoding.anchor!r}"
 
     upstream_inputs: dict[str, list[str]] = {}
     for argname, dep_ids in spec.upstream_inputs.items():
         digests = []
         for dep_id in dep_ids:
-            identity = _upstream(dep_id)
-            if identity is None:
+            digest = _upstream_digest(dep_id)
+            if digest is None:
                 return None, f"upstream {dep_id!r} uncacheable"
-            digests.append(identity)
+            digests.append(digest)
         upstream_inputs[argname] = digests
 
     key = {
         "task": task,
-        "structure": resolved.structures.get(method),
+        "structure": encoding.structures.get(method),
         "fixed_inputs": spec.fixed_inputs,
         "env": {name: os.environ.get(name, "") for name in spec.env},
-        "params": step_params(task_instance_id),
+        "params": params,
         "upstream_inputs": upstream_inputs,
     }
     if spec.scoped:
@@ -541,15 +548,3 @@ def step_identity_with_reason(
         key["scope"] = active_settings().scope
 
     return json_digest(key), None
-
-
-def step_identity(
-    spec: CacheSpec, resolved: ResolvedTask, task_instance_id: str, method: str = "call"
-) -> str | None:
-    """Compute this step's cache key, or None if it cannot be cached.
-
-    Returns None when the code cannot be pinned, or when any upstream step was
-    itself uncacheable — uncacheability propagates down the DAG, because a key
-    that omits an unknown input would collide across genuinely different runs.
-    """
-    return step_identity_with_reason(spec, resolved, task_instance_id, method)[0]

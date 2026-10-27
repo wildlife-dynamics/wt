@@ -54,9 +54,9 @@ class Codec:
         encode: Value to bytes.
         decode: Bytes back to a value.
         digest: Stable content digest. May raise `Undigestible`.
-        exact: Match on `type(value) is types[0]` rather than `isinstance`. Set
-            by class-parameterized codecs, which must not accept a subclass
-            their encoder would silently narrow.
+        accepts_subclasses: Match with `isinstance` rather than
+            `type(value) is types[0]`. Cleared by class-parameterized codecs,
+            which must not accept a subclass their encoder would silently narrow.
     """
 
     codec_id: str
@@ -65,7 +65,7 @@ class Codec:
     encode: Callable[[Any], bytes]
     decode: Callable[[bytes], Any]
     digest: Callable[[Any], str]
-    exact: bool = False
+    accepts_subclasses: bool = True
 
 
 def json_digest(value: Any) -> str:  # noqa: ANN401  # digests arbitrary JSON-able values
@@ -171,5 +171,5 @@ def enum_codec(cls: type[enum.Enum]) -> Codec:
         encode=lambda v: _strict_json(v.value),
         decode=lambda d: cls(json.loads(d)),
         digest=lambda v: hashlib.sha256(_strict_json(v.value)).hexdigest(),
-        exact=True,
+        accepts_subclasses=False,
     )

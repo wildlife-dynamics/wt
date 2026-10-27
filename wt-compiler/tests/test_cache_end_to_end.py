@@ -15,7 +15,7 @@ from wt_contracts import declared_structure
 from wt_task.cache import REPORT_NAME, CacheMismatchWarning, put_cache_report
 
 # Private, but the fixture has to invalidate what the runtime memoizes per process.
-from wt_task.cache._key import _packages_distributions, distribution_version
+from wt_task.cache._key import _packages_distributions, distribution_fingerprint
 from wt_task.cache._store import LocalStore
 
 from wt_compiler import spec as wt_spec
@@ -53,7 +53,7 @@ def summary_codec(cls):
         encode=lambda v: v.model_dump_json().encode(),
         decode=cls.model_validate_json,
         digest=lambda v: hashlib.sha256(v.model_dump_json().encode()).hexdigest(),
-        exact=True,
+        accepts_subclasses=False,
     )
 
 
@@ -299,7 +299,7 @@ def workflow(tmp_path, monkeypatch):
     (dist_info / "METADATA").write_text("Metadata-Version: 2.1\nName: e2e-tasks\nVersion: 1.0.0\n")
     (dist_info / "top_level.txt").write_text("e2e_tasks\n")
     _packages_distributions.cache_clear()
-    distribution_version.cache_clear()
+    distribution_fingerprint.cache_clear()
 
     # Each test gets its own tmp_path, so a module cached from a previous test
     # would log into the wrong directory and every assertion would read zero calls.

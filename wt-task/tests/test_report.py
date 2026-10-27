@@ -15,7 +15,7 @@ from wt_task.cache import (
     record,
     run_scope,
 )
-from wt_task.cache._key import _packages_distributions, distribution_version
+from wt_task.cache._key import _packages_distributions, distribution_fingerprint
 
 ANCHOR = "test_report"
 
@@ -24,9 +24,9 @@ ANCHOR = "test_report"
 def tasks_belong_to_a_distribution(monkeypatch):
     real = _packages_distributions()
     monkeypatch.setattr(_key, "_packages_distributions", lambda: {**real, ANCHOR: ["wt-task"]})
-    distribution_version.cache_clear()
+    distribution_fingerprint.cache_clear()
     yield
-    distribution_version.cache_clear()
+    distribution_fingerprint.cache_clear()
 
 
 @pytest.fixture

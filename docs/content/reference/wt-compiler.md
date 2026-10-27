@@ -74,7 +74,7 @@ What is emitted per step is only what the runtime cannot work out for itself:
 
 | Field | Source |
 |-------|--------|
-| `signature` | `KnownTask.signature_hash` — module, function name, JSON schema |
+| `signature` | `KnownTask.signature` — module, function name, JSON schema |
 | `fixed_inputs` | `TaskInstance.cache_fixed_inputs` — literal arguments, where each upstream reference sits, the parallel-op argnames, and the `skipif` conditions |
 | `upstream_inputs` | `TaskInstance.cache_upstream_inputs` — argument to upstream task-instance ids |
 | `env` | `TaskInstance.cache_env` — names of environment variables bound to arguments |
@@ -89,9 +89,9 @@ for the report below and are not emitted.
 Nothing here is serialized into the spec: `Spec.sha256` hashes the dumped
 model, so a serialized field would move every existing workflow's fingerprint.
 
-### `cache_report()`
+### `cacheability_report()`
 
-`DagCompiler.cache_report()` returns one `CacheReportRow` per step —
+`DagCompiler.cacheability_report()` returns one `CacheabilityRow` per step —
 `task_instance_id`, `status` (`cacheable` / `unservable` / `uncacheable`) and
 `reason` — computed over the spec's dependencies so that propagation is
 visible. Under `--with-caching` the compiler logs every step's status (with the

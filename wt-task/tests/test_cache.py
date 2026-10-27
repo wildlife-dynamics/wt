@@ -27,7 +27,12 @@ from wt_task.cache import (
     run_report,
     run_scope,
 )
-from wt_task.cache._key import _packages_distributions, distribution_version, step_identity
+from wt_task.cache._key import (
+    _packages_distributions,
+    distribution_fingerprint,
+    step_identity,
+    step_params,
+)
 from wt_task.executors.python import PythonExecutor
 from wt_task.skip import SKIP_SENTINEL
 
@@ -44,9 +49,9 @@ Json = Annotated[Any, CodecRef("wt_task.cache:JSON")]
 def tasks_belong_to_a_distribution(monkeypatch):
     real = _packages_distributions()
     monkeypatch.setattr(_key, "_packages_distributions", lambda: {**real, ANCHOR: ["wt-task"]})
-    distribution_version.cache_clear()
+    distribution_fingerprint.cache_clear()
     yield
-    distribution_version.cache_clear()
+    distribution_fingerprint.cache_clear()
 
 
 @pytest.fixture
@@ -109,10 +114,10 @@ def test_cached_returns_a_new_task_and_leaves_the_original_alone():
     add, _ = counting_task()
     cached = add.set_task_instance_id("step").cached(spec())
     assert cached is not add
-    assert add.cache is None
-    assert cached.cache.signature == "signature-1"
+    assert add.cache_spec is None
+    assert cached.cache_spec.signature == "signature-1"
     # The other half of the identity comes from the function, not the spec.
-    assert cached.resolved.function == "add"
+    assert cached.encoding.function == "add"
 
 
 def test_cached_chains_with_the_other_builders():
@@ -124,7 +129,7 @@ def test_cached_chains_with_the_other_builders():
         .set_task_instance_id("step")
         .cached(spec())
     )
-    assert chained.cache is not None
+    assert chained.cache_spec is not None
     assert chained.task_instance_id == "step"
     assert chained.call("1", "2") == 3
 
@@ -135,8 +140,8 @@ def test_set_executor_preserves_the_cache_spec(executor):
     # to drop silently; that would turn caching off wherever an executor is set.
     add, _ = counting_task()
     moved = add.set_task_instance_id("step").cached(spec()).set_executor(executor)
-    assert moved.cache.signature == "signature-1"
-    assert moved.resolved.function == "add"
+    assert moved.cache_spec.signature == "signature-1"
+    assert moved.encoding.function == "add"
     assert moved.task_instance_id == "step"
 
 
@@ -342,8 +347,8 @@ def test_unresolvable_distribution_is_not_cached(cache_dir, monkeypatch):
 
 
 def test_distribution_version_fails_closed():
-    assert distribution_version("no_such_distribution_xyz") is None
-    assert distribution_version("wt_task") is not None
+    assert distribution_fingerprint("no_such_distribution_xyz") is None
+    assert distribution_fingerprint("wt_task") is not None
 
 
 def test_a_return_type_with_no_declared_codec_is_not_cached(cache_dir):
@@ -429,7 +434,8 @@ def test_every_step_contributes_its_output_digest(cache_dir):
         s = spec()
         cached = add.set_task_instance_id("producer").cached(s)
         cached.call(1, 2)
-        assert ids["producer"].digest != step_identity(s, cached.resolved, "producer")
+        key, _ = step_identity(s, cached.encoding, step_params("producer"))
+        assert ids["producer"].digest != key
         assert _IN_TREE_DIR.fullmatch(ids["producer"].digest)
 
 
@@ -1079,11 +1085,11 @@ def test_the_root_codec_is_the_one_declared_leaf_or_else_the_tree(annotation, ex
     def f() -> int: ...
 
     f.__annotations__["return"] = annotation
-    resolved = resolve_task(f)
-    assert resolved.root_codec == expected
+    encoding = resolve_task(f)
+    assert encoding.root_codec == expected
     # The map methods always wrap the value in a list.
-    assert resolved.content_dir("map", resolved.tree("map")) == "tree/v2"
-    assert resolved.content_dir("call", resolved.tree("call")) == expected
+    assert encoding.content_dir("map", encoding.tree("map")) == "tree/v2"
+    assert encoding.content_dir("call", encoding.tree("call")) == expected
 
 
 def test_an_unsafe_codec_id_falls_back_to_the_tree(cache_dir):
@@ -1170,7 +1176,7 @@ def test_a_cached_task_resolves_the_same_anchor_through_the_whole_chain():
         .with_tracing()
         .partial(name="/a")
     )
-    assert (built.resolved.anchor, built.resolved.function) == (ANCHOR, "to_path")
+    assert (built.encoding.anchor, built.encoding.function) == (ANCHOR, "to_path")
 
 
 @pytest.mark.parametrize("method", ["call", "map", "mapvalues"])
@@ -1179,10 +1185,10 @@ def test_every_method_gets_a_tree_wrapping_the_declared_structure(method):
     def to_path(name: str) -> Path:
         return Path(name)
 
-    resolved = resolve_task(to_path.func)
-    assert resolved.tree(method) is not None
+    encoding = resolve_task(to_path.func)
+    assert encoding.tree(method) is not None
     # Whatever the annotation says, a skip can replace the result.
-    assert resolved.tree(method).decode(resolved.tree(method).encode(_sample(method)))
+    assert encoding.tree(method).decode(encoding.tree(method).encode(_sample(method)))
 
 
 def _sample(method):
@@ -1198,10 +1204,10 @@ def test_a_task_the_structure_walker_cannot_read_is_uncacheable():
     def opaque() -> object:
         return object()
 
-    resolved = resolve_task(opaque.func)
-    assert resolved.tree("call") is None
-    assert resolved.outcome == "uncacheable"
-    assert resolved.reason == "return type declares no codec"
+    encoding = resolve_task(opaque.func)
+    assert encoding.tree("call") is None
+    assert encoding.outcome == "uncacheable"
+    assert encoding.reason == "return type declares no codec"
 
 
 def test_an_anchor_that_is_a_private_submodule_is_fine(cache_dir, monkeypatch):
@@ -1210,7 +1216,7 @@ def test_an_anchor_that_is_a_private_submodule_is_fine(cache_dir, monkeypatch):
     add, calls = counting_task()
     monkeypatch.setattr(add.func, "__module__", f"{ANCHOR}._private")
     monkeypatch.setattr(_key, "_packages_distributions", lambda: {ANCHOR: ["wt-task"]})
-    distribution_version.cache_clear()
+    distribution_fingerprint.cache_clear()
     cached = add.set_task_instance_id("step").cached(spec())
     cached.call(1, 2)
     cached.call(1, 2)
@@ -1236,10 +1242,10 @@ def test_a_declaration_error_degrades_to_uncacheable_with_a_warning(monkeypatch)
         return Unroundtrippable()
 
     with pytest.warns(UserWarning, match="cannot honour"):
-        resolved = resolve_task(make.func)
-    assert resolved.tree("call") is None
-    assert resolved.outcome == "refused"
-    assert "help_text" in resolved.reason
+        encoding = resolve_task(make.func)
+    assert encoding.tree("call") is None
+    assert encoding.outcome == "refused"
+    assert "help_text" in encoding.reason
 
 
 def test_a_declaration_error_raises_under_strict_mode(monkeypatch):

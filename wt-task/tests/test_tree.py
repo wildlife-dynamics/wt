@@ -7,7 +7,7 @@ import pathlib
 import pytest
 
 from wt_task.cache import Codec, Tree, Undigestible
-from wt_task.cache._tree import CacheMismatch
+from wt_task.cache._tree import StructureMismatch
 from wt_task.skip import SKIP_SENTINEL
 
 
@@ -144,7 +144,7 @@ def test_a_payload_in_the_previous_format_reads_as_a_miss():
     # Bumping the payload format must cost a recompute, never a decode that
     # hands back lists where the writer meant tuples.
     stale = b"wt.tree/v1\n" + b'[["a","b"]]' + b"\n"
-    with pytest.raises(CacheMismatch, match="this build writes"):
+    with pytest.raises(StructureMismatch, match="this build writes"):
         tree(DYNAMIC).decode(stale)
 
 
@@ -223,7 +223,7 @@ def test_the_digest_is_not_the_payload_bytes():
 
 def test_a_leaf_codec_id_mismatch_reads_as_a_miss_not_a_wrong_value():
     payload = tree({"k": "list", "of": BYTES}).encode([b"a"])
-    with pytest.raises(CacheMismatch, match="bytes/v1"):
+    with pytest.raises(StructureMismatch, match="bytes/v1"):
         tree({"k": "list", "of": PATH}).decode(payload)
 
 
@@ -234,13 +234,13 @@ def test_a_dataclass_that_moved_reads_as_a_miss():
         "type": "test_tree:Caption",
         "fields": LEGEND["fields"],
     }
-    with pytest.raises(CacheMismatch, match="test_tree:Legend"):
+    with pytest.raises(StructureMismatch, match="test_tree:Legend"):
         tree(renamed).decode(payload)
 
 
 def test_a_union_arm_that_no_longer_exists_reads_as_a_miss():
     payload = tree({"k": "union", "of": [JSON, BYTES]}).encode(b"x")
-    with pytest.raises(CacheMismatch, match="outside the declaration"):
+    with pytest.raises(StructureMismatch, match="outside the declaration"):
         tree({"k": "union", "of": [JSON]}).decode(payload)
 
 

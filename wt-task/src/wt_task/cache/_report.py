@@ -12,7 +12,7 @@ from collections import Counter
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
-from ._key import _LAST_EXIT, _RUN_IDS, run_report
+from ._key import _LAST_EXIT, _RUN_RECORDS, run_report
 from ._settings import active_settings, load_settings
 from ._store import _local_root
 
@@ -76,7 +76,7 @@ def cache_report(error: str | None = None) -> dict[str, Any]:
         ('completed', {'inert': 1}, {'configured': False, 'scheme': None})
     """
     steps = run_report()
-    if _RUN_IDS.get(None) is not None:
+    if _RUN_RECORDS.get(None) is not None:
         status, settings, failure, failed_step = "running", active_settings(), None, None
     else:
         settings = _LAST_EXIT.settings or load_settings()

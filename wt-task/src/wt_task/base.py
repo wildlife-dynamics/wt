@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from .async_task import AsyncTask
-    from .cache import CacheSpec, ResolvedTask
+    from .cache import CacheSpec, TaskEncoding
     from .sync_task import SyncTask
 
 from pydantic import validate_call
@@ -63,9 +63,9 @@ class _Task(Generic[P, R, K, V]):
         tags: List of tags for categorization
         description: Optional description of the task
         task_instance_id: Optional unique identifier for this task instance
-        cache: Optional cache identity for this step, set by the compiler when
+        cache_spec: Optional cache identity for this step, set by the compiler when
             the workflow is compiled with caching enabled
-        resolved: What `.cached()` worked out from the wrapped function
+        encoding: What `.cached()` worked out from the wrapped function
     """
 
     func: Callable[P, R]
@@ -74,8 +74,8 @@ class _Task(Generic[P, R, K, V]):
     task_instance_id: str | None
     # kw_only so that a default here does not force one onto `AsyncTask.executor`,
     # which has no sensible default.
-    cache: CacheSpec | None = field(default=None, kw_only=True)
-    resolved: ResolvedTask | None = field(default=None, kw_only=True, repr=False, compare=False)
+    cache_spec: CacheSpec | None = field(default=None, kw_only=True)
+    encoding: TaskEncoding | None = field(default=None, kw_only=True, repr=False, compare=False)
 
     def set_task_instance_id(self, task_instance_id: str, /) -> Self:
         """Return a new Task with the task_instance_id set.
@@ -281,12 +281,12 @@ class _Task(Generic[P, R, K, V]):
             ... def add(a: int, b: int) -> int:
             ...     return a + b
             >>> cached = add.cached(CacheSpec(signature="abc123"))
-            >>> cached.resolved.function
+            >>> cached.encoding.function
             'add'
             >>> cached.call(1, 2)  # inert with WT_CACHE__STORE unset
             3
         """
-        return replace(self, cache=spec, resolved=resolve_task(inspect.unwrap(self.func)))
+        return replace(self, cache_spec=spec, encoding=resolve_task(inspect.unwrap(self.func)))
 
     def _through_cache(
         self,
@@ -300,10 +300,10 @@ class _Task(Generic[P, R, K, V]):
         agree on what one cache entry covers: the whole step. The method is
         passed in rather than stored, because it is the call that picks it.
         """
-        if self.cache is None or self.resolved is None:
+        if self.cache_spec is None or self.encoding is None:
             return run()
         result, hit = cached_call(
-            self.cache, run, self.resolved, self.task_instance_id or "", method
+            self.cache_spec, run, self.encoding, self.task_instance_id or "", method
         )
         if span is not None:
             span.set_attribute("cache.hit", hit)
@@ -369,8 +369,8 @@ class _Task(Generic[P, R, K, V]):
                     tags=self.tags,
                     description=self.description,
                     task_instance_id=self.task_instance_id,
-                    cache=self.cache,
-                    resolved=self.resolved,
+                    cache_spec=self.cache_spec,
+                    encoding=self.encoding,
                     executor=PythonExecutor(),
                 )
             case AsyncExecutor():
@@ -379,8 +379,8 @@ class _Task(Generic[P, R, K, V]):
                     tags=self.tags,
                     description=self.description,
                     task_instance_id=self.task_instance_id,
-                    cache=self.cache,
-                    resolved=self.resolved,
+                    cache_spec=self.cache_spec,
+                    encoding=self.encoding,
                     executor=name_or_executor,
                 )
             case SyncExecutor():
@@ -389,8 +389,8 @@ class _Task(Generic[P, R, K, V]):
                     tags=self.tags,
                     description=self.description,
                     task_instance_id=self.task_instance_id,
-                    cache=self.cache,
-                    resolved=self.resolved,
+                    cache_spec=self.cache_spec,
+                    encoding=self.encoding,
                     executor=name_or_executor,
                 )
             case _:

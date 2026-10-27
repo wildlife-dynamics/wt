@@ -7,16 +7,16 @@ import warnings
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from ._entry import CacheEntry, utcnow
-from ._key import Outcome, record, step_identity_with_reason
+from ._key import Outcome, record, step_identity, step_params
 from ._settings import ENV_PREFIX, active_settings
 from ._store import open_store
-from ._tree import CacheMismatch, is_safe_codec_dir, strict
+from ._tree import StructureMismatch, is_safe_codec_dir, strict
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from datetime import timedelta
 
-    from ._spec import CacheSpec, ResolvedTask
+    from ._spec import CacheSpec, TaskEncoding
     from ._store import Store
     from ._tree import Tree
 
@@ -78,7 +78,7 @@ class CacheCorruptionError(RuntimeError):
     Otherwise it warns and misses, and the recompute rewrites the payload: the
     store may be lying about its contents, but losing the cache is still
     preferable to losing the run. A declaration that moved raises
-    `CacheMismatch` instead, which misses without a warning.
+    `StructureMismatch` instead, which misses without a warning.
     """
 
 
@@ -125,7 +125,7 @@ def _load(store: Store, entry: CacheEntry, identity: str, tree: Tree) -> tuple[A
 
     try:
         return (tree.decode(payload),)
-    except CacheMismatch:
+    except StructureMismatch:
         # A leaf codec or a declared type moved since this was written.
         return None
     except Exception as e:
@@ -171,7 +171,7 @@ def _save(
 
 
 def _verify(
-    store: Store, resolved: ResolvedTask, task_instance_id: str, identity: str, content_id: str
+    store: Store, encoding: TaskEncoding, task_instance_id: str, identity: str, content_id: str
 ) -> None:
     """Warn if a stored output for this key differs from the one just computed.
 
@@ -184,7 +184,7 @@ def _verify(
         return
     warnings.warn(
         f"Cache verification failed for task instance {task_instance_id!r} "
-        f"({resolved.anchor}.{resolved.function}): stored output {entry.content_id} but "
+        f"({encoding.anchor}.{encoding.function}): stored output {entry.content_id} but "
         f"recomputed {content_id} for cache key {identity}. The same declared "
         f"inputs produced different output.",
         CacheMismatchWarning,
@@ -195,7 +195,7 @@ def _verify(
 def cached_call(
     spec: CacheSpec,
     run: Callable[[], R],
-    resolved: ResolvedTask,
+    encoding: TaskEncoding,
     task_instance_id: str,
     method: str = "call",
 ) -> tuple[R, bool]:
@@ -214,17 +214,17 @@ def cached_call(
         record(task_instance_id, None, "inert", "no cache store configured")
         return run(), False
 
-    tree = resolved.tree(method)
+    tree = encoding.tree(method)
     if tree is None:
         record(
             task_instance_id,
             None,
-            resolved.outcome or "uncacheable",
-            resolved.reason or f"no codec for the {method!r} method",
+            encoding.outcome or "uncacheable",
+            encoding.reason or f"no codec for the {method!r} method",
         )
         return run(), False
 
-    identity, blocked_by = step_identity_with_reason(spec, resolved, task_instance_id, method)
+    identity, blocked_by = step_identity(spec, encoding, step_params(task_instance_id), method)
     if identity is None:
         record(task_instance_id, None, "uncacheable", blocked_by)
         return run(), False
@@ -248,19 +248,19 @@ def cached_call(
         result = cast("R", list(cast("Any", result)))
 
     try:
-        content_id = f"{resolved.content_dir(method, tree)}/{tree.digest(result)}"
+        content_id = f"{encoding.content_dir(method, tree)}/{tree.digest(result)}"
         stored = True
         if servable:
             if verifying:
                 # A verify run must not write, so the baseline stays fixed and
                 # the check can be repeated.
-                _verify(store, resolved, task_instance_id, identity, content_id)
+                _verify(store, encoding, task_instance_id, identity, content_id)
             else:
                 stored = _save(store, identity, tree, content_id, result)
     except Exception as e:  # noqa: BLE001  # a codec that declines must not fail the run
         warnings.warn(
             f"Not caching task instance {task_instance_id!r} "
-            f"({resolved.anchor}.{resolved.function}): {e!r}",
+            f"({encoding.anchor}.{encoding.function}): {e!r}",
             stacklevel=2,
         )
         record(task_instance_id, None, "refused", repr(e))

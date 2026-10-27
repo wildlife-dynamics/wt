@@ -1,7 +1,7 @@
 """The two halves of a step's cache identity.
 
 `CacheSpec` is what the compiler knows and the runtime cannot work out —
-hashes of the spec's own text. `ResolvedTask` is the other half, worked out
+hashes of the spec's own text. `TaskEncoding` is the other half, worked out
 from the wrapped function when `.cached()` runs.
 """
 
@@ -32,6 +32,8 @@ _DYNAMIC = {"k": "dynamic"}
 @dataclass(frozen=True)
 class CacheSpec:
     """What the compiler tells the runtime about one step's cache identity.
+
+    Emitted into the generated DAG as `.cached(CacheSpec(...))`.
 
     Only what the spec's text decides. The task's own identity, the structure
     of its return and the parameters it was given all come from elsewhere at
@@ -70,7 +72,7 @@ class CacheSpec:
 
 
 @dataclass(frozen=True)
-class ResolvedTask:
+class TaskEncoding:
     """What `.cached()` works out from the wrapped function, once.
 
     Resolved when the builder runs rather than per call, because `.partial()`
@@ -139,7 +141,7 @@ def _declared(func: Callable[..., Any]) -> dict[str, Any] | None:
     return declared_structure(func)
 
 
-def resolve_task(func: Callable[..., Any]) -> ResolvedTask:
+def resolve_task(func: Callable[..., Any]) -> TaskEncoding:
     """Work out where `func` lives and how each of its methods' results encode.
 
     A return type that declares no codec, a declaration the type cannot honour,
@@ -151,17 +153,17 @@ def resolve_task(func: Callable[..., Any]) -> ResolvedTask:
         func: The unwrapped task function.
 
     Returns:
-        The resolved half of this step's cache identity.
+        The function's half of this step's cache identity.
 
     Examples:
         >>> def add(a: int, b: int) -> int:
         ...     return a + b
-        >>> resolved = resolve_task(add)
-        >>> resolved.function
+        >>> encoding = resolve_task(add)
+        >>> encoding.function
         'add'
-        >>> resolved.tree("call").codec_id
+        >>> encoding.tree("call").codec_id
         'tree/v2'
-        >>> resolved.root_codec
+        >>> encoding.root_codec
         'tree/v2'
     """
     anchor = getattr(func, "__module__", "") or ""
@@ -176,18 +178,18 @@ def resolve_task(func: Callable[..., Any]) -> ResolvedTask:
             f"this step will not be cached.",
             stacklevel=2,
         )
-        return ResolvedTask(anchor, function, {}, "refused", str(e))
+        return TaskEncoding(anchor, function, {}, "refused", str(e))
 
     if structure is None:
-        return ResolvedTask(anchor, function, {}, "uncacheable", "return type declares no codec")
+        return TaskEncoding(anchor, function, {}, "uncacheable", "return type declares no codec")
 
     wrapped = {method: _wrapped(structure, method) for method in METHODS}
     trees = {method: resolve_structure(wrapped[method]) for method in METHODS}
     if any(tree is None for tree in trees.values()):
         # `resolve_structure` has already warned, naming the ref.
-        return ResolvedTask(
+        return TaskEncoding(
             anchor, function, {}, "refused", "declared codec refs could not be imported"
         )
     root_codec = content_dir(structure, cast("Tree", trees["call"]))
     structures = {method: json_digest(wrapped[method]) for method in METHODS}
-    return ResolvedTask(anchor, function, trees, root_codec=root_codec, structures=structures)
+    return TaskEncoding(anchor, function, trees, root_codec=root_codec, structures=structures)

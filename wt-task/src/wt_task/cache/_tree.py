@@ -50,7 +50,7 @@ _NATIVE_SCALARS = (bool, int, float, str)
 _PATH_SEGMENT = re.compile(r"[A-Za-z0-9_.-]+")
 
 
-class CacheMismatch(Exception):  # noqa: N818  # a miss signal, not an error the caller sees
+class StructureMismatch(Exception):  # noqa: N818  # a miss signal, not an error the caller sees
     """Raised when a stored payload no longer matches the declared structure.
 
     A leaf written by a different codec version, a union arm that no longer
@@ -156,7 +156,7 @@ def _claims(node: Node, value: Any) -> bool:  # noqa: ANN401  # inspects any run
         case _Leaf(codec):
             if not codec.types:
                 return False
-            if codec.exact:
+            if not codec.accepts_subclasses:
                 return type(value) is codec.types[0]
             # `bool` is an `int` subclass, so a codec claiming `int` would
             # otherwise swallow True/False on its way past a `json` arm.
@@ -247,7 +247,7 @@ def _encode(node: Node, value: Any, leaf: Leaf) -> Any:  # noqa: ANN401  # walks
     """
     match node:
         case _Leaf(codec):
-            # `exact` has to bite here too, not only between union arms: a
+            # Refusing subclasses has to bite here too, not only between union arms: a
             # class-parameterized codec handed a subclass would narrow it away.
             if codec.types and not _claims(node, value):
                 raise Undigestible(f"{codec.codec_id} does not accept {type(value).__name__}")
@@ -291,12 +291,12 @@ def _decode(node: Node, header: Any, payload: bytes) -> Any:  # noqa: ANN401  # 
     """Rebuild the value `header` describes, reading leaf blobs from `payload`.
 
     Raises:
-        CacheMismatch: If the stored value no longer matches the declaration.
+        StructureMismatch: If the stored value no longer matches the declaration.
     """
     match node:
         case _Leaf(codec):
             if not isinstance(header, dict) or header.get("c") != codec.codec_id:
-                raise CacheMismatch(
+                raise StructureMismatch(
                     f"leaf was written by {header.get('c') if isinstance(header, dict) else header!r}, "
                     f"the declaration now resolves {codec.codec_id!r}"
                 )
@@ -311,20 +311,22 @@ def _decode(node: Node, header: Any, payload: bytes) -> Any:  # noqa: ANN401  # 
             return tuple(decoded) if as_tuple else decoded
         case _Fixed(of):
             if len(header) != len(of):
-                raise CacheMismatch(f"expected {len(of)} elements, stored {len(header)}")
+                raise StructureMismatch(f"expected {len(of)} elements, stored {len(header)}")
             return tuple(_decode(n, h, payload) for n, h in zip(of, header, strict=True))
         case _Mapping(key, of):
             return {_hashable(_decode(key, k, payload)): _decode(of, v, payload) for k, v in header}
         case _Union(of):
             index = header["u"]
             if not 0 <= index < len(of):
-                raise CacheMismatch(f"stored union arm {index} is outside the declaration")
+                raise StructureMismatch(f"stored union arm {index} is outside the declaration")
             return _decode(of[index], header["v"], payload)
         case _Dataclass(cls, type_ref, fields):
             if header.get("t") != type_ref:
-                raise CacheMismatch(f"stored {header.get('t')!r}, declaration says {type_ref!r}")
+                raise StructureMismatch(
+                    f"stored {header.get('t')!r}, declaration says {type_ref!r}"
+                )
             return cls(**{name: _decode(n, header["f"][name], payload) for name, n in fields})
-    raise CacheMismatch(f"unhandled structure node {node!r}")
+    raise StructureMismatch(f"unhandled structure node {node!r}")
 
 
 def _hashable(key: Any) -> Any:  # noqa: ANN401  # any decoded dict key
@@ -343,7 +345,7 @@ class Tree:
         structure: The declared structure. A `ref` node may carry a resolved
             `codec` instead of an import path, for a tree built in Python.
         types: Runtime types this tree accepts, when used as a union arm.
-        exact: As on `Codec`.
+        accepts_subclasses: As on `Codec`.
         codec_id: Recorded in the header of any tree embedding this one.
         media_type: Media type of the encoded payload.
 
@@ -364,13 +366,13 @@ class Tree:
         structure: dict[str, Any],
         *,
         types: tuple[type, ...] = (),
-        exact: bool = False,
+        accepts_subclasses: bool = True,
         codec_id: str = TREE_CODEC_ID,
         media_type: str = TREE_MEDIA_TYPE,
     ) -> None:
         self.root = _compile(structure)
         self.types = types
-        self.exact = exact
+        self.accepts_subclasses = accepts_subclasses
         self.codec_id = codec_id
         self.media_type = media_type
 
@@ -394,14 +396,14 @@ class Tree:
         """Decode a payload this tree wrote.
 
         Raises:
-            CacheMismatch: If the payload no longer matches the declaration, or
+            StructureMismatch: If the payload no longer matches the declaration, or
                 was written in an older payload format.
             ValueError: If the payload is not a tree payload at all.
         """
         if not data.startswith(MAGIC):
             if data.startswith(MAGIC_PREFIX):
                 # A format this build no longer reads. Stale, not corrupt.
-                raise CacheMismatch(
+                raise StructureMismatch(
                     f"payload is {data[: len(MAGIC)]!r}, this build writes {MAGIC!r}"
                 )
             raise ValueError("not a wt.tree payload")

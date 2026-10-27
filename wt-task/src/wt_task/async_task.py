@@ -70,7 +70,7 @@ class AsyncTask(_Task[P, R, K, V]):
         that folded in a key for a step whose result was never stored would
         collide across genuinely different runs.
         """
-        if self.cache is not None:
+        if self.cache_spec is not None:
             record(
                 self.task_instance_id or "",
                 None,

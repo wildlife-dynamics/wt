@@ -17,9 +17,9 @@ from ._key import CacheRecord, record, run_report, run_scope, step_identity, ste
 from ._report import REPORT_NAME, cache_report, put_cache_report
 from ._runtime import CacheCorruptionError, CacheMismatchWarning, cached_call
 from ._settings import CacheSettings, load_settings
-from ._spec import CacheSpec, ResolvedTask, resolve_task
+from ._spec import CacheSpec, TaskEncoding, resolve_task
 from ._store import open_store
-from ._tree import CacheMismatch, Tree, resolve_structure
+from ._tree import StructureMismatch, Tree, resolve_structure
 
 __all__ = [
     "BYTES",
@@ -30,13 +30,13 @@ __all__ = [
     "URL",
     "CacheCorruptionError",
     "CacheEntry",
-    "CacheMismatch",
     "CacheMismatchWarning",
     "CacheRecord",
     "CacheSettings",
     "CacheSpec",
     "Codec",
-    "ResolvedTask",
+    "StructureMismatch",
+    "TaskEncoding",
     "Tree",
     "Undigestible",
     "cache_report",

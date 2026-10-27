@@ -92,7 +92,7 @@ class KnownTask(BaseModel):
         )
 
     @property
-    def signature_hash(self) -> str:
+    def signature(self) -> str:
         """Hash identifying this task's code *shape* for the step cache.
 
         Deliberately not a `computed_field`: `Spec.sha256` dumps the model, so
@@ -670,7 +670,7 @@ def _find_env_vars(v: Any) -> "Generator[EnvVariable, None, None]":
 _DEP_MARKER = "$dep"
 
 
-def _static_shape(v: Any) -> Any:
+def _fixed_input_shape(v: Any) -> Any:
     """Render one bound argument without naming any upstream task instance.
 
     The sibling of `_find_task_id_vars`, and it must walk in the same order:
@@ -694,11 +694,11 @@ def _static_shape(v: Any) -> Any:
         case InlineValue():
             return {"lit": v.value}
         case VariableValuesDict():
-            return [[k, _static_shape(inner)] for k, inner in v.value.items()]
+            return [[k, _fixed_input_shape(inner)] for k, inner in v.value.items()]
         case VariableValuesList():
-            return [_static_shape(inner) for inner in v.value]
+            return [_fixed_input_shape(inner) for inner in v.value]
         case list():
-            return [_static_shape(inner) for inner in v]
+            return [_fixed_input_shape(inner) for inner in v]
         case _:
             return {"lit": v}
 
@@ -901,14 +901,14 @@ class TaskInstance(_ForbidExtra):
         return hashlib.sha256(
             json.dumps(
                 {
-                    "partial": {arg: _static_shape(dep) for arg, dep in self.partial.items()},
+                    "partial": {arg: _fixed_input_shape(dep) for arg, dep in self.partial.items()},
                     "map": {
                         "argnames": self.map.argnames,
-                        "argvalues": _static_shape(self.map.argvalues),
+                        "argvalues": _fixed_input_shape(self.map.argvalues),
                     },
                     "mapvalues": {
                         "argnames": self.mapvalues.argnames,
-                        "argvalues": _static_shape(self.mapvalues.argvalues),
+                        "argvalues": _fixed_input_shape(self.mapvalues.argvalues),
                     },
                     "skipif": None
                     if self.skipif is None

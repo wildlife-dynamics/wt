@@ -60,7 +60,7 @@ def declared_spec(demo_spec):
 
 
 def test_caching_is_off_by_default(demo_spec):
-    assert DagCompiler(spec=demo_spec).cache is False
+    assert DagCompiler(spec=demo_spec).caching_enabled is False
 
 
 def test_without_the_flag_nothing_about_the_dag_changes(demo_spec):
@@ -78,7 +78,7 @@ def test_new_properties_stay_out_of_the_serialized_spec(demo_spec):
     dumped = demo_spec.model_dump()["workflow"][0]
     assert not {"cache_upstream_inputs", "cache_env", "cache_fixed_inputs"} & set(dumped)
     assert not {
-        "signature_hash",
+        "signature",
         "is_cacheable",
         "declares_codec",
         "cache_declaration_error",
@@ -252,7 +252,7 @@ async def test_discovery_carries_the_cache_declaration_and_its_error(tmp_path):
 
 def test_signature_hash_is_stable_for_the_same_task():
     kwargs = {"importable_reference": "m.f", "json_schema": {"properties": {"a": {}}}}
-    assert wt_spec.KnownTask(**kwargs).signature_hash == wt_spec.KnownTask(**kwargs).signature_hash
+    assert wt_spec.KnownTask(**kwargs).signature == wt_spec.KnownTask(**kwargs).signature
 
 
 def test_signature_hash_moves_when_the_signature_changes():
@@ -262,14 +262,14 @@ def test_signature_hash_moves_when_the_signature_changes():
     b = wt_spec.KnownTask(
         importable_reference="m.f", json_schema={"properties": {"a": {}, "b": {}}}
     )
-    assert a.signature_hash != b.signature_hash
+    assert a.signature != b.signature
 
 
 def test_signature_hash_distinguishes_different_functions():
     schema = {"properties": {"a": {}}}
     assert (
-        wt_spec.KnownTask(importable_reference="m.f", json_schema=schema).signature_hash
-        != wt_spec.KnownTask(importable_reference="m.g", json_schema=schema).signature_hash
+        wt_spec.KnownTask(importable_reference="m.f", json_schema=schema).signature
+        != wt_spec.KnownTask(importable_reference="m.g", json_schema=schema).signature
     )
 
 
@@ -549,7 +549,7 @@ def test_a_default_step_is_one_short_cached_call(declared_spec):
     calls = _cached_calls(dag)
     assert len(calls) == 3
 
-    signature = wt_spec.known_tasks["chart"]["demo.tasks"].signature_hash
+    signature = wt_spec.known_tasks["chart"]["demo.tasks"].signature
     fixed = next(t for t in declared_spec.flat_workflow if t.id == "figure").cache_fixed_inputs
     assert calls[1] == (
         f'.cached(CacheSpec(signature="{signature}", fixed_inputs="{fixed}", '
@@ -581,7 +581,7 @@ def test_only_io_tagged_steps_are_scoped(declared_spec):
 
 
 def test_every_step_is_cacheable_when_every_return_type_declares_one(declared_spec):
-    rows = DagCompiler(spec=declared_spec, caching="report").cache_report()
+    rows = DagCompiler(spec=declared_spec, caching="report").cacheability_report()
     assert [r.status for r in rows] == ["cacheable"] * 3
 
 
@@ -589,7 +589,7 @@ def test_an_undeclared_return_type_propagates_down_the_report(declared_spec):
     wt_spec.known_tasks["chart"]["demo.tasks"].declares_codec = False
     rows = {
         r.task_instance_id: r
-        for r in DagCompiler(spec=declared_spec, caching="report").cache_report()
+        for r in DagCompiler(spec=declared_spec, caching="report").cacheability_report()
     }
 
     assert rows["events"].status == "cacheable"
@@ -603,7 +603,7 @@ def test_a_no_cache_task_is_unservable_and_does_not_block_its_dependents(declare
     wt_spec.known_tasks["get_events"]["demo.tasks"].tags = [wt_spec.TaskTag.no_cache]
     rows = {
         r.task_instance_id: r
-        for r in DagCompiler(spec=declared_spec, caching="report").cache_report()
+        for r in DagCompiler(spec=declared_spec, caching="report").cacheability_report()
     }
     assert (rows["events"].status, rows["events"].reason) == ("unservable", "no-cache tag")
     assert rows["figure"].status == "cacheable"
@@ -633,7 +633,7 @@ def test_a_bad_declaration_is_reported_but_does_not_block_a_caching_compile(
     _with_a_bad_declaration()
 
     compiler = DagCompiler(spec=declared_spec, caching="report")
-    rows = {r.task_instance_id: r for r in compiler.cache_report()}
+    rows = {r.task_instance_id: r for r in compiler.cacheability_report()}
     assert (rows["figure"].status, rows["figure"].reason) == (
         "uncacheable",
         "excludes field help_text",
@@ -653,7 +653,7 @@ def test_a_bad_declaration_blocks_a_strict_caching_compile(declared_spec, tmp_pa
 def test_the_report_is_logged_under_the_flag(declared_spec, caplog):
     wt_spec.known_tasks["chart"]["demo.tasks"].declares_codec = False
     with caplog.at_level("INFO"):
-        DagCompiler(spec=declared_spec, caching="report").log_cache_report()
+        DagCompiler(spec=declared_spec, caching="report").log_cacheability_report()
     assert "figure is uncacheable" in caplog.text
     assert "1 of 3 steps cacheable" in caplog.text
     # Every step gets a line, not only the ones the cache cannot serve, plus the summary.

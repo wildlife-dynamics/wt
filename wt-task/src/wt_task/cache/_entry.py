@@ -24,7 +24,6 @@ class CacheEntry(BaseModel):
             content digest, which together locate the payload under `content/`.
         codec_id: Codec that wrote the payload and must read it back.
         media_type: Media type of the payload.
-        type_ref: Optional schema fingerprint, for codecs that have one.
         created_at: When the entry was written. Read by the freshness
             check that `WT_CACHE__IO_TTL` puts on io-tagged steps.
     """
@@ -32,5 +31,4 @@ class CacheEntry(BaseModel):
     content_id: str
     codec_id: str
     media_type: str
-    type_ref: str | None = None
     created_at: datetime = Field(default_factory=utcnow)

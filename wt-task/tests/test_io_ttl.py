@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from wt_task import task
 from wt_task.cache import CacheEntry, CacheSpec, _key, _runtime, run_report, run_scope
-from wt_task.cache._key import _packages_distributions, distribution_version
+from wt_task.cache._key import _packages_distributions, distribution_fingerprint
 from wt_task.cache._settings import ENV_PREFIX, CacheSettings, load_settings, parse_duration
 
 IO_TTL_ENV_VAR = f"{ENV_PREFIX}IO_TTL"
@@ -26,9 +26,9 @@ def cache_dir(tmp_path, monkeypatch):
 
     real = _packages_distributions()
     monkeypatch.setattr(_key, "_packages_distributions", lambda: {**real, ANCHOR: ["wt-task"]})
-    distribution_version.cache_clear()
+    distribution_fingerprint.cache_clear()
     yield tmp_path / "cache"
-    distribution_version.cache_clear()
+    distribution_fingerprint.cache_clear()
 
 
 def source(task_instance_id="source", **kwargs):

@@ -63,7 +63,7 @@ def test_the_json_codec_declines_what_json_cannot_hold():
 
 def test_an_enum_codec_is_exact_and_names_its_class():
     codec = enum_codec(Unit)
-    assert codec.exact is True
+    assert codec.accepts_subclasses is False
     assert codec.types == (Unit,)
     assert Unit.__qualname__ in codec.codec_id
 
@@ -152,7 +152,7 @@ def base_codec(cls):
         encode=lambda _v: b"",
         decode=lambda _d: cls(),
         digest=lambda _v: "constant",
-        exact=True,
+        accepts_subclasses=False,
     )
 
 
@@ -169,6 +169,6 @@ def test_a_non_exact_codec_accepts_a_subclass():
     class MyPath(pathlib.PurePosixPath):
         pass
 
-    assert PATH.exact is False
+    assert PATH.accepts_subclasses is True
     tree = resolve_structure(ref("wt_task.cache:PATH"))
     assert tree.digest(MyPath("/a/b"))
