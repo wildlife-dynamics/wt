@@ -402,7 +402,7 @@ class DagCompiler(BaseModel):
         """Whether the generated DAG wraps its steps in the step cache."""
         return self.caching != "off"
 
-    def get_dag_config(self, dag_type: DagTypes, mock_io: bool) -> dict[str, Any]:  # noqa: ARG002  # subclasses dispatch on dag_type
+    def get_dag_config(self, dag_type: DagTypes, mock_io: bool) -> dict[str, Any]:
         """Get configuration dict for rendering a DAG.
 
         Args:
@@ -416,8 +416,10 @@ class DagCompiler(BaseModel):
             exclude={"jinja_templates_dir"},
             context={"mock_io": mock_io},
         )
-        config["cache"] = self.caching_enabled
-        if self.caching_enabled:
+        # Only the sequential DAG caches: an async method hands back a future,
+        # which has no stored form.
+        config["cache"] = self.caching_enabled and dag_type == "sequential"
+        if config["cache"]:
             config["cache_specs"] = self._cache_specs()
         return config
 

@@ -374,13 +374,13 @@ class _Task(Generic[P, R, K, V]):
                     executor=PythonExecutor(),
                 )
             case AsyncExecutor():
+                # An async method hands back a future, which has no stored
+                # form, so the cache spec is not carried over.
                 return AsyncTask(
                     self.func,
                     tags=self.tags,
                     description=self.description,
                     task_instance_id=self.task_instance_id,
-                    cache_spec=self.cache_spec,
-                    encoding=self.encoding,
                     executor=name_or_executor,
                 )
             case SyncExecutor():

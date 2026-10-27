@@ -147,9 +147,12 @@ def test_mocked_io_dag_is_not_cached(demo_spec):
     assert dag.count(".cached(") == 2  # the two non-io steps only
 
 
-def test_async_dag_also_emits_cache_specs(demo_spec):
+def test_the_async_dag_is_generated_without_caching(demo_spec):
+    # An async method hands back a future, which has no stored form.
     dag = DagCompiler(spec=demo_spec, caching="report").render_dag("async")
-    assert ".cached(" in dag
+    assert ".cached(" not in dag
+    assert "run_scope" not in dag
+    assert "CacheSpec" not in dag
 
 
 # --- opting out ------------------------------------------------------------

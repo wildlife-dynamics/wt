@@ -30,7 +30,7 @@ one by default.
 Three limits are worth knowing up front:
 
 - **Sequential DAGs only.** An async method hands back a future, which has no
-  stored form, so async runs report every step as `uncacheable`.
+  stored form, so the async DAG is generated without caching.
 - **Mocked tasks are never cached.** They return canned fixtures; storing one
   under an identity that claims to describe real work would be a lie.
 - **A task must come from an installed distribution.** The cache pins code to a

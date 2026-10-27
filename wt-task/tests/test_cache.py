@@ -33,6 +33,7 @@ from wt_task.cache._key import (
     step_identity,
     step_params,
 )
+from wt_task.executors.base import AsyncExecutor
 from wt_task.executors.python import PythonExecutor
 from wt_task.skip import SKIP_SENTINEL
 
@@ -142,6 +143,23 @@ def test_set_executor_preserves_the_cache_spec(executor):
     moved = add.set_task_instance_id("step").cached(spec()).set_executor(executor)
     assert moved.cache_spec.signature == "signature-1"
     assert moved.encoding.function == "add"
+    assert moved.task_instance_id == "step"
+
+
+class _NoopAsyncExecutor(AsyncExecutor):
+    def call(self, func, *args, **kwargs):
+        raise NotImplementedError
+
+    def map(self, func, iterable):
+        raise NotImplementedError
+
+
+def test_an_async_executor_drops_the_cache_spec():
+    # An async method hands back a future, which has no stored form.
+    add, _ = counting_task()
+    moved = add.set_task_instance_id("step").cached(spec()).set_executor(_NoopAsyncExecutor())
+    assert moved.cache_spec is None
+    assert moved.encoding is None
     assert moved.task_instance_id == "step"
 
 

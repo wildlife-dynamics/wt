@@ -16,8 +16,8 @@
 
 Compiled with `--with-caching`. The cache is located by `WT_CACHE__STORE`; with it
 unset every step simply runs. Only the sequential DAG caches — an async method
-hands back a future, which has no stored form — so a run in async mode reports
-every step as uncacheable. Each run writes `cache-report.json` beside
+hands back a future, which has no stored form — so the async DAG is generated
+without caching. Each run writes `cache-report.json` beside
 `result.json` — even when the run fails — saying what each step's cache did
 and why, and where a failed run stopped.
 
