@@ -140,10 +140,10 @@ def test_a_real_dict_shaped_like_a_tag_is_escaped(value):
     assert roundtrip(DYNAMIC, value) == value
 
 
-def test_a_payload_in_the_previous_format_reads_as_a_miss():
+def test_a_payload_in_another_format_reads_as_a_miss():
     # Bumping the payload format must cost a recompute, never a decode that
     # hands back lists where the writer meant tuples.
-    stale = b"wt.tree/v1\n" + b'[["a","b"]]' + b"\n"
+    stale = b"wt.tree/v0\n" + b'[["a","b"]]' + b"\n"
     with pytest.raises(StructureMismatch, match="this build writes"):
         tree(DYNAMIC).decode(stale)
 
@@ -264,8 +264,8 @@ def test_a_tree_can_be_the_leaf_codec_of_another_tree():
 
 def test_the_wire_format_version_is_part_of_the_content_digest():
     # The header covers the leaf codecs but not how this tree frames them, so
-    # without the version a future tree/v3 encoding of the same value would
-    # land on the v2 bytes.
+    # without the version a future tree/v2 encoding of the same value would
+    # land on the v1 bytes.
     structure = {"k": "list", "of": BYTES}
     assert tree(structure).digest([b"a"]) != Tree(structure, codec_id="tree/v3").digest([b"a"])
 

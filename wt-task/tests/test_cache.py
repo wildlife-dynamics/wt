@@ -67,7 +67,7 @@ def cache_dir(tmp_path, monkeypatch):
 SKIP_REF = {"k": "ref", "ref": "wt_task.cache:SKIP", "type": None}
 
 _IS_HEX = re.compile(r"[0-9a-f]{64}")
-_IN_TREE_DIR = re.compile(r"tree/v2/[0-9a-f]{64}")
+_IN_TREE_DIR = re.compile(r"tree/v1/[0-9a-f]{64}")
 
 
 def frame_like(codec_id):
@@ -1090,13 +1090,13 @@ def test_a_leaf_rooted_step_files_under_its_codec(cache_dir):
         (cache_dir / "keys" / stored(cache_dir, "keys")[0]).read_bytes()
     )
     assert entry.content_id == content_id
-    assert entry.codec_id == "tree/v2"
+    assert entry.codec_id == "tree/v1"
     assert frame.set_task_instance_id("step").cached(spec()).call() == {"rows": [1]}
 
 
 @pytest.mark.parametrize(
     ("annotation", "expected"),
-    [(Frame, "test.frame/v1"), (Path, "path/v1"), (list[Frame], "tree/v2"), (int, "tree/v2")],
+    [(Frame, "test.frame/v1"), (Path, "path/v1"), (list[Frame], "tree/v1"), (int, "tree/v1")],
 )
 def test_the_root_codec_is_the_one_declared_leaf_or_else_the_tree(annotation, expected):
     def f() -> int: ...
@@ -1105,7 +1105,7 @@ def test_the_root_codec_is_the_one_declared_leaf_or_else_the_tree(annotation, ex
     encoding = resolve_task(f)
     assert encoding.root_codec == expected
     # The map methods always wrap the value in a list.
-    assert encoding.content_dir("map", encoding.tree("map")) == "tree/v2"
+    assert encoding.content_dir("map", encoding.tree("map")) == "tree/v1"
     assert encoding.content_dir("call", encoding.tree("call")) == expected
 
 
@@ -1125,7 +1125,7 @@ def test_nothing_is_sharded(cache_dir):
     add.set_task_instance_id("a").cached(spec()).call(1, 2)
     add.set_task_instance_id("b").cached(spec(fixed_inputs="other")).call(3, 4)
     assert all("/" not in key for key in stored(cache_dir, "keys"))
-    assert {c.rpartition("/")[0] for c in stored(cache_dir, "content")} == {"tree/v2"}
+    assert {c.rpartition("/")[0] for c in stored(cache_dir, "content")} == {"tree/v1"}
 
 
 def test_an_entry_pointing_outside_content_is_a_miss(cache_dir):
@@ -1144,7 +1144,7 @@ def test_an_entry_pointing_outside_content_is_a_miss(cache_dir):
 
 def test_no_stored_path_contains_a_colon(cache_dir):
     # Object stores and Windows both dislike them, and the `sha256:` and
-    # `tree/v2/` namespaces were the only sources.
+    # `tree/v1/` namespaces were the only sources.
     add, _ = counting_task()
     add.set_task_instance_id("step").cached(spec()).call(1, 2)
     assert [p for p in cache_dir.rglob("*") if ":" in p.name] == []
@@ -1156,7 +1156,7 @@ def test_the_entry_points_at_its_codec_dir_and_content_digest(cache_dir):
     raw = next(p for p in (cache_dir / "keys").rglob("*") if p.is_file())
     entry = CacheEntry.model_validate_json(raw.read_bytes())
     assert _IN_TREE_DIR.fullmatch(entry.content_id)
-    assert entry.codec_id == "tree/v2"
+    assert entry.codec_id == "tree/v1"
     assert entry.media_type == "application/vnd.wt.tree"
 
 

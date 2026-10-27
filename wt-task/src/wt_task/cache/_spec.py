@@ -161,9 +161,9 @@ def resolve_task(func: Callable[..., Any]) -> TaskEncoding:
         >>> encoding.function
         'add'
         >>> encoding.tree("call").codec_id
-        'tree/v2'
+        'tree/v1'
         >>> encoding.root_codec
-        'tree/v2'
+        'tree/v1'
     """
     anchor = getattr(func, "__module__", "") or ""
     function = getattr(func, "__name__", "") or ""

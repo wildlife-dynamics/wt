@@ -31,10 +31,10 @@ if TYPE_CHECKING:
     Leaf = Callable[["Codec | Tree", Any], Any]
 
 MAGIC_PREFIX = b"wt.tree/"
-# v2 tags tuples inside a `dynamic` node; a v1 payload decodes to lists and
-# would hand a downstream step an unhashable key, so it has to miss instead.
-MAGIC = MAGIC_PREFIX + b"v2\n"
-TREE_CODEC_ID = "tree/v2"
+# Bump on any change to the payload layout: a payload in another format must
+# miss rather than decode, e.g. into lists where the writer meant tuples.
+MAGIC = MAGIC_PREFIX + b"v1\n"
+TREE_CODEC_ID = "tree/v1"
 TREE_MEDIA_TYPE = "application/vnd.wt.tree"
 
 # One-key dicts tag what JSON cannot express. `$d` escapes a real dict that
@@ -416,8 +416,8 @@ class Tree:
 
         The wire-format version is folded in because the digest addresses the
         payload directly: the header covers the leaf codecs but not how this
-        tree frames them, so without it a future `tree/v3` encoding of the same
-        value would land on the v2 bytes. It also keeps a format bump moving
+        tree frames them, so without it a future `tree/v2` encoding of the same
+        value would land on the v1 bytes. It also keeps a format bump moving
         every downstream key, since this is what `record` promotes.
 
         Raises:
@@ -461,7 +461,7 @@ def resolve_structure(structure: dict[str, Any] | None) -> Tree | None:
         >>> resolve_structure(None) is None
         True
         >>> resolve_structure({"k": "json"}).codec_id
-        'tree/v2'
+        'tree/v1'
     """
     if structure is None:
         return None
@@ -510,7 +510,7 @@ def content_dir(structure: dict[str, Any], tree: Tree) -> str:
         >>> content_dir({"k": "ref", "ref": "wt_task.cache:PATH"}, Tree({"k": "json"}))
         'path/v1'
         >>> content_dir({"k": "list", "of": {"k": "json"}}, Tree({"k": "json"}))
-        'tree/v2'
+        'tree/v1'
     """
     if structure.get("k") == "ref":
         node = _compile(structure)

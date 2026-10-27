@@ -95,7 +95,7 @@ def test_resolve_structure_handles_every_node_kind():
         {"k": "dict", "key": {"k": "json"}, "of": {"k": "json"}},
         {"k": "union", "of": [{"k": "json"}, ref("wt_task.cache:SKIP")]},
     ):
-        assert resolve_structure(node).codec_id == "tree/v2"
+        assert resolve_structure(node).codec_id == "tree/v1"
 
 
 def test_resolve_structure_is_inert_for_an_undeclared_return():

@@ -468,16 +468,16 @@ For example:
 ```
 content/
   ecoscope.frame/v1/9c41…    a step returning one frame
-  tree/v2/3f2a…              a step returning a list, a dict, a dataclass, …
+  tree/v1/3f2a…              a step returning a list, a dict, a dataclass, …
 ```
 
 Keys are flat. Payloads are filed under the step's **root codec**: when its
 return type is one declared leaf — a `CodecRef` alias, a `Cacheable` class, or a
 builtin like `PATH` — that leaf codec's id, nested at each `/`; for anything
-structural, and for mapped steps, the tree's own `tree/v2`. That keeps a store's
+structural, and for mapped steps, the tree's own `tree/v1`. That keeps a store's
 frames together, so lifecycle rules and size accounting can target them. A
 codec id that is not a safe relative path (an empty segment, `..`, anything
-beyond letters, digits, `.`, `_` and `-`) falls back to `tree/v2`.
+beyond letters, digits, `.`, `_` and `-`) falls back to `tree/v1`.
 
 An entry's `content_id` is `<codec>/<hex>`, and it is what a step promotes to
 its dependents' keys. The same value encoded under two root codecs therefore
