@@ -203,6 +203,31 @@ Trade-offs against the default path:
   the current interpreter, so this suits images built for a single platform
   version.
 
+#### Why the binding is exact, not the spec's range
+
+A spec may declare a range such as `ecoscope-platform >=2.23,<3`, but the
+compiled package records the one version it was compiled against, and any
+other version means recompiling. That isn't caution for its own sake. A
+compiled package is a snapshot of the task signatures it was compiled
+against:
+
+- the rendered DAG calls each task with that version's parameter names;
+- `params.json` and `rjsf.json`, which validate run configs and drive the
+  config form, are generated from that version's parameter schemas.
+
+Nothing about a version range keeps those signatures fixed. If 2.24 renames or
+adds a required parameter, a package compiled against 2.23 calls the task with
+arguments it no longer accepts, or accepts configs the task will reject. A
+range-pinned spec doesn't avoid the recompile. It only hides when one is
+needed, and the failure shows up mid-run instead of at startup.
+
+So "this workflow works on 2.24" can only be established by recompiling
+against 2.24, and exact pins make that requirement explicit. Revisit this only
+if the task libraries commit to keeping task signatures stable within a
+version range (for example, signature changes only in major versions), and
+only once that commitment is enforced: a release check that diffs the
+registry's schemas between versions.
+
 ### Functions
 
 | Function | Description |
