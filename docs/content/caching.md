@@ -55,9 +55,9 @@ A step's key is a digest over six things. Any one of them moving is a miss.
 | **`upstream_inputs`** | the **output digests** of the steps feeding this one |
 | **`env`** | the values of the environment variables bound to arguments |
 | **`params`** | the run's parameters for this step |
+| **Scope** | `WT_CACHE__SCOPE`, so nothing computed for one principal is served to another |
 
-Plus `WT_CACHE__SCOPE`, but only for [io-tagged](#tags-that-matter) steps —
-which are never served while it is unset.
+[io-tagged](#tags-that-matter) steps are also never served while the scope is unset.
 
 ### Code identity
 
@@ -249,10 +249,14 @@ exist, even when its return value would have been identical.
 
 ### `io`
 
-The step reads the world, so `WT_CACHE__SCOPE` is folded into its key. Derived
-steps are *not* scoped: they are pure functions of their input digests, and
-nobody can reach one without already holding the same content. A fresh token
-therefore costs one source refetch, not a whole cold run.
+The step reads the world, so its entries age under `WT_CACHE__IO_TTL`.
+
+Every step's key carries `WT_CACHE__SCOPE`, io or not, so a new scope is a cold
+run: nothing computed for one principal is served to another. Set the scope to
+the boundary within which everyone sees the same source data — per user is the
+safe default. A derived step could be shared across scopes, since nobody can
+reach one without holding the same input digests, but keeping it scoped keeps
+that argument out of the trust boundary.
 
 With `WT_CACHE__SCOPE` unset, an io step is **never served or stored**: two
 tenants sharing a connection name would otherwise share its key. It still runs
@@ -270,7 +274,7 @@ is found the same way — [verify mode](#verify-mode) against a second principal
 |----------|--------------|
 | `WT_CACHE__STORE` | Store location: a local path or an object-store URL. Unset means the cache is inert and every step runs. A remote URL needs `wt-task[cache]` (obstore). |
 | `WT_CACHE__EPOCH` | Manual invalidator, mixed into every key. For when a version cannot move. |
-| `WT_CACHE__SCOPE` | Folded into io-tagged steps' keys. Separates principals that share a connection name. Unset, io steps always refetch. |
+| `WT_CACHE__SCOPE` | Folded into every step's key, so nothing is served across principals. Unset, io steps always refetch. |
 | `WT_CACHE__IO_TTL` | How long an io-tagged step's stored result may be served: `forever` (default), `never` / `0` to always refetch, or a duration — `90`, `45s`, `30m`, `1h`, `7d`. Derived steps never expire. |
 | `WT_CACHE__VERIFY` | Re-run everything and compare against what is stored, without serving or writing. See below. |
 | `WT_CACHE__STRICT` | Raise on a codec declaration that will not resolve, a setting that will not parse, or a stored payload that will not decode, instead of degrading. |

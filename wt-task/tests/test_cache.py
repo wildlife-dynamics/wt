@@ -267,24 +267,23 @@ def test_scope_separates_tenants_for_a_step_that_reads_the_world(cache_dir, monk
     # scope two tenants sharing a connection name would share cache entries.
     add, calls = counting_task()
     monkeypatch.setenv("WT_CACHE__SCOPE", "tenant-a")
-    add.set_task_instance_id("step").cached(spec(scoped=True)).call(1, 2)
+    add.set_task_instance_id("step").cached(spec(io=True)).call(1, 2)
     monkeypatch.setenv("WT_CACHE__SCOPE", "tenant-b")
-    add.set_task_instance_id("step").cached(spec(scoped=True)).call(1, 2)
+    add.set_task_instance_id("step").cached(spec(io=True)).call(1, 2)
     assert len(calls) == 2
 
 
-def test_scope_is_ignored_by_a_derived_step(cache_dir, monkeypatch):
-    # A derived step is a pure function of its input digests, and nobody can
-    # reach one without already holding the same content. Scoping it would mean
-    # a fresh token costs a cold run rather than one source refetch.
+def test_scope_separates_a_derived_step_too(cache_dir, monkeypatch):
+    # Nothing computed under one principal is served to another, even a step
+    # that only someone holding the same input digests could reach.
     add, calls = counting_task()
     for scope in ("tenant-a", "tenant-b"):
         monkeypatch.setenv("WT_CACHE__SCOPE", scope)
         add.set_task_instance_id("step").cached(spec()).call(1, 2)
-    assert len(calls) == 1
+    assert len(calls) == 2
 
 
-def test_a_new_scope_misses_the_source_and_still_hits_everything_below(cache_dir, monkeypatch):
+def test_a_new_scope_is_a_cold_run(cache_dir, monkeypatch):
     source_calls = []
     derived_calls = []
 
@@ -298,7 +297,7 @@ def test_a_new_scope_misses_the_source_and_still_hits_everything_below(cache_dir
         derived_calls.append(n)
         return n * 2
 
-    source = read_world.set_task_instance_id("source").cached(spec(scoped=True))
+    source = read_world.set_task_instance_id("source").cached(spec(io=True))
     derived = transform.set_task_instance_id("derived").cached(
         spec(upstream_inputs={"n": ["source"]})
     )
@@ -310,14 +309,14 @@ def test_a_new_scope_misses_the_source_and_still_hits_everything_below(cache_dir
             outcomes = (outcome(ids, "source"), outcome(ids, "derived"))
 
     assert source_calls == [1, 1]  # refetched under the new principal
-    assert derived_calls == [42]  # but the step below it hit
-    assert outcomes == ("miss", "hit")
+    assert derived_calls == [42, 42]  # and so is everything below it
+    assert outcomes == ("miss", "miss")
 
 
 def test_an_io_step_with_no_scope_is_never_served_or_stored(cache_dir):
     # Unscoped, every tenant sharing a connection name would share the key.
     add, calls = counting_task()
-    cached = add.set_task_instance_id("step").cached(spec(scoped=True))
+    cached = add.set_task_instance_id("step").cached(spec(io=True))
     with run_scope() as ids:
         cached.call(1, 2)
         cached.call(1, 2)
@@ -339,7 +338,7 @@ def test_an_unscoped_io_step_still_lets_everything_below_hit(cache_dir):
         derived_calls.append(n)
         return n * 2
 
-    source = read_world.set_task_instance_id("source").cached(spec(scoped=True))
+    source = read_world.set_task_instance_id("source").cached(spec(io=True))
     derived = transform.set_task_instance_id("derived").cached(
         spec(upstream_inputs={"n": ["source"]})
     )

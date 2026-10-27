@@ -57,10 +57,9 @@ class CacheSpec:
             for a task its author tagged `no-cache`: it then always executes,
             but still digests and promotes its output, so the claim stays about
             this task rather than silently disabling everything below it.
-        scoped: Whether `WT_CACHE__SCOPE` belongs in this step's key. True only
-            for io-tagged tasks: a step that reads the world can see different
-            data per principal, while a derived step is a pure function of
-            input digests nobody can hold without holding the same content.
+        io: Whether the task is io-tagged: it reads the world, so its entries
+            age under `WT_CACHE__IO_TTL`, and it is never served while
+            `WT_CACHE__SCOPE` is unset.
     """
 
     signature: str
@@ -68,7 +67,7 @@ class CacheSpec:
     upstream_inputs: dict[str, list[str]] = field(default_factory=dict)
     env: list[str] = field(default_factory=list)
     servable: bool = True
-    scoped: bool = False
+    io: bool = False
 
 
 @dataclass(frozen=True)

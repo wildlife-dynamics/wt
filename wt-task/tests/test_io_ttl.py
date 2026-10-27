@@ -34,7 +34,7 @@ def cache_dir(tmp_path, monkeypatch):
 def source(task_instance_id="source", **kwargs):
     """An io-tagged step: the only kind the TTL applies to."""
     kwargs.setdefault("signature", "signature-1")
-    kwargs.setdefault("scoped", True)
+    kwargs.setdefault("io", True)
     return CacheSpec(**kwargs)
 
 
@@ -237,7 +237,7 @@ def test_an_expired_entry_costs_no_payload_read(cache_dir, monkeypatch):
 def test_a_derived_step_is_unaffected_by_any_ttl(cache_dir, monkeypatch):
     monkeypatch.setenv(IO_TTL_ENV_VAR, "never")
     fetch, calls = fetching_task()
-    derived = fetch.set_task_instance_id("derived").cached(source(scoped=False))
+    derived = fetch.set_task_instance_id("derived").cached(source(io=False))
     derived.call()
     age_the_entry(cache_dir, timedelta(days=365))
     derived.call()
@@ -264,7 +264,7 @@ def test_a_refetch_of_identical_content_still_cuts_off_downstream(cache_dir, mon
 
     src = read_world.set_task_instance_id("source").cached(source())
     downstream = transform.set_task_instance_id("derived").cached(
-        source("derived", scoped=False, upstream_inputs={"n": ["source"]})
+        source("derived", io=False, upstream_inputs={"n": ["source"]})
     )
 
     with run_scope():

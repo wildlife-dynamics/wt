@@ -148,7 +148,7 @@ that function with a `functools.partial`.
 
 | Name | Description |
 |------|-------------|
-| `CacheSpec` | What the compiler knows: `signature`, `fixed_inputs`, `upstream_inputs`, `env`, `servable`, `scoped` |
+| `CacheSpec` | What the compiler knows: `signature`, `fixed_inputs`, `upstream_inputs`, `env`, `servable`, `io` |
 | `TaskEncoding` | What `.cached()` works out from the function: anchor, name, a tree and a structure digest per method |
 | `Codec` | One leaf type's `encode` / `decode` / `digest`, plus the types it accepts and whether it accepts their subclasses (`accepts_subclasses`) |
 | `Tree` | The codec for a whole step, built from a declared structure |

@@ -546,17 +546,17 @@ def test_the_epoch_invalidates_everything(workflow, tasks, monkeypatch):
     assert len(tasks.calls()) == 3
 
 
-def test_a_new_scope_costs_one_source_refetch_not_a_cold_run(workflow, tasks, monkeypatch):
-    # The scope reaches io-tagged steps only. A per-request token must not turn
-    # every run into a cold one: the source refetches, finds the same content,
-    # and everything below it hits through early cutoff.
+def test_a_new_scope_is_a_cold_run(workflow, tasks, monkeypatch):
+    # Every key carries the scope, so nothing computed for one principal is
+    # served to another: the whole workflow reruns.
     main, _ = workflow(_build_spec())
     run(main)
+    cold = [c["task"] for c in tasks.calls()]
     tasks.reset()
 
     monkeypatch.setenv("WT_CACHE__SCOPE", "another-tenant")
     run(main)
-    assert [c["task"] for c in tasks.calls()] == ["read_source"]
+    assert [c["task"] for c in tasks.calls()] == cold
 
 
 def test_with_no_scope_the_source_always_refetches(workflow, tasks, monkeypatch):

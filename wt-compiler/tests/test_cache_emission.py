@@ -1,6 +1,7 @@
 """Tests for `--with-caching`: what the compiler emits, and what it leaves alone."""
 
 import json
+import re
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -572,12 +573,12 @@ def test_a_default_step_is_one_short_cached_call(declared_spec):
             assert absent not in call
 
 
-def test_only_io_tagged_steps_are_scoped(declared_spec):
-    # A derived step is a pure function of its input digests, so folding a
-    # per-request scope into its key would make a fresh token a cold run.
+def test_only_io_tagged_steps_are_marked_io(declared_spec):
+    # The flag only drives the io rules (TTL, never served unscoped); every
+    # step's key carries the scope regardless.
     dag = DagCompiler(spec=declared_spec, caching="report").render_dag("sequential")
-    assert dag.count("scoped=True") == 1
-    assert "scoped=False" not in dag
+    assert len(re.findall(r"\bio=True", dag)) == 1
+    assert not re.search(r"\bio=False", dag)
 
 
 # --- the compile-time report -----------------------------------------------

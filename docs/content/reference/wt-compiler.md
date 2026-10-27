@@ -79,7 +79,7 @@ What is emitted per step is only what the runtime cannot work out for itself:
 | `upstream_inputs` | `TaskInstance.cache_upstream_inputs` — argument to upstream task-instance ids |
 | `env` | `TaskInstance.cache_env` — names of environment variables bound to arguments |
 | `servable` | `False` for a `no-cache` task; omitted otherwise |
-| `scoped` | `True` for an `io`-tagged task; omitted otherwise |
+| `io` | `True` for an `io`-tagged task; omitted otherwise |
 
 The return type's structure, the task's module and name, the method and the
 step's parameters are all derived at run time and deliberately absent.

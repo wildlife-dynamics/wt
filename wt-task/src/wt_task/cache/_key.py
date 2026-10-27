@@ -538,13 +538,11 @@ def step_identity(
         "env": {name: os.environ.get(name, "") for name in spec.env},
         "params": params,
         "upstream_inputs": upstream_inputs,
+        # Every step, not only io ones: nothing computed under one principal is
+        # served to another. A derived step could be shared safely, since only
+        # someone holding the same input digests can reach it, but scoping it
+        # costs one cold run per scope and keeps that argument out of the trust
+        # boundary.
+        "scope": active_settings().scope,
     }
-    if spec.scoped:
-        # Only steps that read the world. Credentials reach tasks as env vars
-        # keyed by connection name, so byte-identical params can address
-        # different tenants; a derived step cannot be reached without already
-        # holding the same input digests, so scoping it would only mean that a
-        # fresh token costs a whole cold run instead of one source refetch.
-        key["scope"] = active_settings().scope
-
     return json_digest(key), None

@@ -349,11 +349,8 @@ def _cache_spec_literal(t: TaskInstance) -> str:
         args.append(f"env={t.cache_env}")
     if not t.known_task.is_cacheable:
         args.append("servable=False")
-    # Only a step that reads the world can see different data per principal; a
-    # derived step is a pure function of its input digests, so scoping it would
-    # turn a fresh token into a cold run instead of one source refetch.
     if TaskTag.io in t.known_task.tags:
-        args.append("scoped=True")
+        args.append("io=True")
     return f"CacheSpec({', '.join(args)})"
 
 

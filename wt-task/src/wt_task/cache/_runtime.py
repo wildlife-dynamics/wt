@@ -37,7 +37,7 @@ def _too_old(spec: CacheSpec, entry: CacheEntry) -> str | None:
     digests, so the same key cannot describe different content and its age
     says nothing about freshness.
     """
-    if not spec.scoped:
+    if not spec.io:
         return None
     ttl = active_settings().io_ttl
     if ttl is None:
@@ -100,7 +100,7 @@ def _servable(spec: CacheSpec) -> tuple[bool, str | None]:
     """
     if not spec.servable:
         return False, "no-cache tag"
-    if spec.scoped and not active_settings().scope:
+    if spec.io and not active_settings().scope:
         return False, f"io step with {ENV_PREFIX}SCOPE unset"
     return True, None
 
