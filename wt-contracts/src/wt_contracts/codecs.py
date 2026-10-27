@@ -7,9 +7,22 @@ tree that wt-registry ships and wt-task resolves into codecs. Nothing here
 imports a codec: refs are strings, so the resolver lives in wt-task and this
 module stays pure typing.
 
-Anything the rules below do not recognise resolves to ``None``: not cacheable.
-That is deliberate — this walker is a third type interpreter beside pydantic
-and pandera, and a wrong guess silently mis-encodes a result.
+Resolution order — each node of the return annotation takes the first case
+that matches:
+
+1. ``Annotated[..., CodecRef(ref)]`` — that ref, overriding everything below.
+   An ``Annotated`` without one is unwrapped and its inner type resolved.
+2. A class declaring ``__wt_codec__`` (via :class:`Cacheable`) — that ref.
+3. Builtin leaves: the skip sentinel, ``bytes``, ``pathlib.PurePath``,
+   ``pydantic_core.Url`` and any ``enum.Enum``.
+4. Unions, ``list[X]``, ``tuple[...]`` and ``dict[K, V]`` — if every member
+   resolves.
+5. ``@dataclass`` types — if every field resolves and none is ``init=False``.
+6. JSON scalars (``bool``, ``int``, ``float``, ``str``, ``None``) and ``Literal``.
+7. Anything else — ``None``: not cacheable, and so is anything containing it.
+
+Case 7 is deliberately broad — this walker is a third type interpreter beside
+pydantic and pandera, and a wrong guess silently mis-encodes a result.
 """
 
 from __future__ import annotations
@@ -146,7 +159,7 @@ def declared_structure(target: Any) -> Structure | None:  # noqa: ANN401  # a fu
 
 
 def _structure(annotation: Any) -> Structure | None:  # noqa: ANN401  # walks arbitrary annotations
-    """Resolve one annotation node, applying the rules in declaration order."""
+    """Resolve one annotation node: the first case of the resolution order that matches."""
     if hasattr(annotation, "__metadata__"):
         for meta in annotation.__metadata__:
             if isinstance(meta, CodecRef):
@@ -186,7 +199,7 @@ def _structure(annotation: Any) -> Structure | None:  # noqa: ANN401  # walks ar
 
 
 def _declared_class_ref(cls: type) -> Structure | None:
-    """Resolve rules 2 and 3: a declared codec, or a builtin leaf, for `cls`."""
+    """Resolve cases 2 and 3 of the resolution order: a declared codec, or a builtin leaf."""
     ref = getattr(cls, "__wt_codec__", None)
     if ref is not None:
         if issubclass(cls, ModelDumpCacheable) and issubclass(cls, BaseModel):

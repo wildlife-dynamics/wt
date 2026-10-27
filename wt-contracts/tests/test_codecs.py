@@ -67,7 +67,7 @@ def test_the_mixin_does_not_become_a_pydantic_field():
     assert "__wt_codec__" not in Point.model_fields
 
 
-# --- rule 1: an explicit CodecRef overrides everything below it ------------
+# --- case 1: an explicit CodecRef overrides everything below it ------------
 
 
 def test_an_annotated_alias_resolves_to_its_ref():
@@ -99,7 +99,7 @@ def test_annotated_without_a_ref_walks_through():
     assert declared_structure(Annotated[int, Field(ge=0)]) == {"k": "json"}
 
 
-# --- rule 2: a class attribute -------------------------------------------
+# --- case 2: a class attribute -------------------------------------------
 
 
 def test_a_cacheable_model_resolves_to_its_class_parameterized_codec():
@@ -176,7 +176,7 @@ def test_a_cacheable_non_model_skips_the_structural_check():
     )
 
 
-# --- rule 3: builtin leaves ------------------------------------------------
+# --- case 3: builtin leaves ------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -200,7 +200,7 @@ def test_the_skip_sentinel_is_recognised_without_importing_wt_task():
     assert declared_structure(sentinel) == ref("wt_task.cache:SKIP")
 
 
-# --- rule 4: containers ----------------------------------------------------
+# --- case 4: containers ----------------------------------------------------
 
 
 def test_list_tuple_dict_and_union():
@@ -238,7 +238,7 @@ def test_a_list_of_something_uncacheable_is_not_cacheable():
     assert declared_structure(dict[object, int]) is None
 
 
-# --- rule 5: dataclasses ---------------------------------------------------
+# --- case 5: dataclasses ---------------------------------------------------
 
 
 @dataclass
@@ -278,7 +278,7 @@ def test_a_dataclass_with_an_uncacheable_field_is_not_cacheable():
     assert declared_structure(Holder) is None
 
 
-# --- rule 6 and 7: scalars, and everything else ---------------------------
+# --- cases 6 and 7: scalars, and everything else -------------------------
 
 
 @pytest.mark.parametrize("annotation", [int, float, str, bool, type(None), Literal["a", "b"]])

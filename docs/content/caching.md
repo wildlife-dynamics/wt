@@ -117,7 +117,9 @@ what it found. There is no runtime value inspection and no global registry of
 codecs.
 
 The walk lives in
-[`wt_contracts.codecs`](https://github.com/wildlife-dynamics/wt/blob/main/wt-contracts/src/wt_contracts/codecs.py).
+[`wt_contracts.codecs`](https://github.com/wildlife-dynamics/wt/blob/main/wt-contracts/src/wt_contracts/codecs.py),
+whose docstring lists its resolution order: each node of the return annotation
+takes the first case that matches.
 
 ### What already works
 
