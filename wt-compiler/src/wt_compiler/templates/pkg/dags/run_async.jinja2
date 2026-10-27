@@ -1,4 +1,4 @@
-{% import '_macros.jinja2' as call_task_macros with context %}
+{% import '_macros.jinja2' as call_task_macros %}
 {{ file_header }}
 
 {%- if testing %}
@@ -19,7 +19,6 @@ from wt_task.testing import create_func_magicmock  # 🧪
 
 from wt_contracts import validate as _validate
 from wt_task import task
-{% if cache %}from wt_task.cache import CacheSpec, run_scope{% endif %}
 from ecoscope_workflows_core.graph import DependsOn, DependsOnSequence, Graph, Node
 
 from .. import metadata as _metadata
@@ -34,19 +33,7 @@ from .. import metadata as _metadata
 {% endfor -%}
 
 
-{% set entrypoint = '_main' if cache else 'main' %}
-{% if cache %}
 def main(params: dict[str, Any], validate_params_schema: bool = True):
-    # A task-instance id only names a step within one run, so the id -> digest
-    # table that resolves upstream inputs is per execution. Stored entries are
-    # keyed by content, never by id, so they are still shared across runs and
-    # workflows.
-    with run_scope(params=params):
-        return _main(params, validate_params_schema)
-
-
-{% endif %}
-def {{ entrypoint }}(params: dict[str, Any], validate_params_schema: bool = True):
     {%- if testing %}
     warnings.warn("This test script should not be used in production!")  # 🧪
     {% endif %}
