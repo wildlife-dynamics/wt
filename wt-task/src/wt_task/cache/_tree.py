@@ -170,7 +170,7 @@ def _claims(node: Node, value: Any) -> bool:  # noqa: ANN401  # inspects any run
         case _Seq(_, as_tuple):
             return isinstance(value, tuple if as_tuple else list)
         case _Fixed(of):
-            return isinstance(value, (list, tuple)) and len(value) == len(of)
+            return isinstance(value, tuple) and len(value) == len(of)
         case _Mapping():
             return isinstance(value, dict)
         case _Union(of):

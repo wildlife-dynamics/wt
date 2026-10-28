@@ -176,6 +176,16 @@ def test_bool_is_not_matched_by_a_codec_claiming_int():
     assert roundtrip(structure, True) is True
 
 
+def test_a_list_is_not_claimed_by_a_fixed_tuple_arm():
+    structure = {
+        "k": "union",
+        "of": [{"k": "tuple", "of": [JSON, JSON]}, {"k": "list", "of": JSON}],
+    }
+    assert type(roundtrip(structure, [1, 2])) is list
+    assert type(roundtrip(structure, (1, 2))) is tuple
+    assert tree(structure).digest([1, 2]) != tree(structure).digest((1, 2))
+
+
 def test_no_arm_accepts_the_value_so_the_step_declines():
     with pytest.raises(Undigestible, match="no declared union arm"):
         tree({"k": "union", "of": [BYTES, SKIP]}).digest("a string")
