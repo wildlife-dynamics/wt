@@ -5,7 +5,7 @@ Pydantic models and Python Protocols that define the type-safe interfaces used
 for inter-package communication. Every other wt package depends on
 `wt-contracts`.
 
-**Modules:** `registry` · `task` · `cli`
+**Modules:** `registry` · `task` · `cli` · `codecs`
 
 **Public API** (re-exported from `wt_contracts`):
 
@@ -17,6 +17,11 @@ from wt_contracts import (
     TaskProtocol,
     WorkflowCLIArgs,
     WorkflowCLIEnv,
+    CodecRef,
+    Cacheable,
+    ModelDumpCacheable,
+    CodecDeclarationError,
+    declared_structure,
 )
 ```
 
@@ -51,6 +56,8 @@ A complete registry entry representing a single discovered function.
 | `function_name` | `str` | Function name (e.g. `calculate_mean`) |
 | `import_statement` | `str` | Ready-to-use import statement |
 | `json_schema` | `dict` | JSON Schema derived from function type annotations |
+| `declares_codec` | `bool` | Whether the return type declares a cache codec that resolves (default `False`) |
+| `cache_declaration_error` | `str \| None` | Why the return type's codec declaration could not be resolved, if it could not |
 
 ### `RegistryOutput`
 

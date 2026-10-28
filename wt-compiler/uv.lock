@@ -485,6 +485,21 @@ wheels = [
 ]
 
 [[package]]
+name = "pydantic-settings"
+version = "2.16.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "python-dotenv" },
+    { name = "typing-extensions" },
+    { name = "typing-inspection" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/05/ca/7817b4bf0c4b15c6a6ab8cdf4cb96c268335a8ca2f525de93b6ebe4c7d28/pydantic_settings-2.16.1.tar.gz", hash = "sha256:aff602a1886338c2df3d1e958e2193a8dc33cec75b91f202e83fd98484b4b0da", size = 303436, upload-time = "2026-10-20T11:37:19.024Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3c/74/fdf926afe145d8629c4b2ff57f4ea1d64ed7abc4d84d97463b2517a2547e/pydantic_settings-2.16.1-py3-none-any.whl", hash = "sha256:30f5313340da4e8f1b440d1910b92a5bc3ccbb6b4ba70ec2b8395bc921f418f5", size = 80771, upload-time = "2026-10-20T11:37:17.298Z" },
+]
+
+[[package]]
 name = "pydot"
 version = "4.0.1"
 source = { registry = "https://pypi.org/simple" }
@@ -564,6 +579,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/5e/f7/c933acc76f5208b3b00089573cf6a2bc26dc80a8aece8f52bb7d6b1855ca/pytest_cov-7.0.0.tar.gz", hash = "sha256:33c97eda2e049a0c5298e91f519302a1334c26ac65c1a483d6206fd458361af1", size = 54328, upload-time = "2025-09-09T10:57:02.113Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ee/49/1377b49de7d0c1ce41292161ea0f721913fa8722c19fb9c1e3aa0367eecb/pytest_cov-7.0.0-py3-none-any.whl", hash = "sha256:3b8e9558b16cc1479da72058bdecf8073661c7f57f7d3c5f22a1c23507f2d861", size = 22424, upload-time = "2025-09-09T10:57:00.695Z" },
+]
+
+[[package]]
+name = "python-dotenv"
+version = "1.2.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/74/26/2fbeedb218a787a5eea551c7532cac4e009f83d689dd2faa0d0353473f86/python_dotenv-1.2.4.tar.gz", hash = "sha256:f0d53e69935a851c0dcc78f3ab7aaccd8cabef0b92382b576b824212902873c0", size = 60824, upload-time = "2026-10-01T05:36:10Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/60/d1/38f3a3405989a89ac18390803e70c6ad7c7760da4f9b83cbeca0c44a0c72/python_dotenv-1.2.4-py3-none-any.whl", hash = "sha256:42269a8a5b3fd54ffa6f3d84b18abed50064717576b4ecf03dc4a55d8aa04fdc", size = 23266, upload-time = "2026-10-01T05:36:08.633Z" },
 ]
 
 [[package]]
@@ -848,6 +872,7 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff" },
     { name = "types-jsonschema" },
+    { name = "wt-task" },
 ]
 
 [package.metadata]
@@ -883,6 +908,7 @@ dev = [
     { name = "pytest-cov", specifier = ">=4.0.0" },
     { name = "ruff", specifier = ">=0.1.0" },
     { name = "types-jsonschema" },
+    { name = "wt-task", editable = "../wt-task" },
 ]
 
 [[package]]
@@ -919,4 +945,37 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/1a/bd/c9254c369031708805c95f7dc53ed856581d73198a03b1b73c48a9e6f32a/wt_registry-0.2.2.tar.gz", hash = "sha256:24be6288e8a938691da3a9e14ac5b50112b30c49cec6da01309a255a1611de18", size = 101984, upload-time = "2026-05-13T16:18:10.368Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/80/61/02285d5eb1ac70f5c77b6632a0dc85cb9cd1bf90f1073515420e498f4ac1/wt_registry-0.2.2-py3-none-any.whl", hash = "sha256:ea426851f799aac4f5a9a83f23b1803a6848908ce9ae1705b71a075a6e9e2344", size = 16712, upload-time = "2026-05-13T16:18:11.239Z" },
+]
+
+[[package]]
+name = "wt-task"
+source = { editable = "../wt-task" }
+dependencies = [
+    { name = "packaging" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "wt-contracts" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "obstore", marker = "extra == 'cache'", specifier = ">=0.6.0" },
+    { name = "opentelemetry-api", marker = "extra == 'gcp'", specifier = ">=1.20.0" },
+    { name = "opentelemetry-exporter-gcp-trace", marker = "extra == 'gcp'", specifier = ">=1.6.0" },
+    { name = "opentelemetry-sdk", marker = "extra == 'gcp'", specifier = ">=1.20.0" },
+    { name = "packaging", specifier = ">=23.0" },
+    { name = "pydantic", specifier = ">=2.0.0,<3.0.0" },
+    { name = "pydantic-settings", specifier = ">=2.3.0,<3.0.0" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'", specifier = ">=4.0.0" },
+    { name = "wt-contracts", editable = "../wt-contracts" },
+]
+provides-extras = ["cache", "gcp"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.0.0" },
+    { name = "pytest", specifier = ">=7.0.0" },
+    { name = "pytest-asyncio", specifier = ">=0.21.0" },
+    { name = "pytest-cov", specifier = ">=4.0.0" },
+    { name = "ruff", specifier = ">=0.1.0" },
 ]

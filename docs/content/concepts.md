@@ -48,6 +48,10 @@ contains three fields:
 - **`trace`** — the Python traceback string if the workflow errored, otherwise
   `null`.
 
+A workflow compiled with `--with-caching` returns the same envelope, and also
+writes `cache-report.json` beside `result.json`: one row per step saying what
+the cache did and why. See [Caching](caching.md).
+
 The output format is identical regardless of how the workflow is executed —
 CLI, REST API, or Cloud Batch.
 

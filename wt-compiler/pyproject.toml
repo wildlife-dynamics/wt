@@ -68,6 +68,9 @@ dev = [
     "build>=1.0.0",
     "hatchling>=1.18.0",
     "types-jsonschema",
+    # The compiler emits code that imports wt-task; the end-to-end cache test
+    # executes a generated DAG, so it needs the real runtime, not a stub.
+    "wt-task",
 ]
 
 [tool.setuptools.packages.find]
@@ -89,6 +92,7 @@ git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--mat
 # Development override - uses local editable wt-contracts
 # Published packages will reference PyPI version normally
 wt-contracts = { path = "../wt-contracts", editable = true }
+wt-task = { path = "../wt-task", editable = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

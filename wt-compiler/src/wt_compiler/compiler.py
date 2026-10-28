@@ -6,9 +6,10 @@ import json
 import logging
 import os
 import pathlib
+from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, Literal, NamedTuple
 
 import jsonschema
 import pydot as dot
@@ -338,6 +339,40 @@ class Fingerprint(BaseModel):
         return stream.getvalue()
 
 
+def _cache_spec_literal(t: TaskInstance) -> str:
+    """Spell one step's `CacheSpec`, naming only what differs from the default.
+
+    Everything the runtime can work out for itself — the task's module and
+    name, its return structure, which method it runs, the parameters it was
+    given — is deliberately absent.
+    """
+    args = [f'signature="{t.known_task.signature}"', f'fixed_inputs="{t.cache_fixed_inputs}"']
+    if t.cache_upstream_inputs:
+        args.append(f"upstream_inputs={t.cache_upstream_inputs}")
+    if t.cache_env:
+        args.append(f"env={t.cache_env}")
+    if not t.known_task.is_cacheable:
+        args.append("servable=False")
+    if TaskTag.io in t.known_task.tags:
+        args.append("io=True")
+    return f"CacheSpec({', '.join(args)})"
+
+
+class CacheabilityRow(NamedTuple):
+    """One step's compile-time cache verdict.
+
+    Attributes:
+        task_instance_id: The step's id in the spec.
+        status: `cacheable`, `unservable` (runs but is never served), or
+            `uncacheable` (nothing below it can be served either).
+        reason: Why, for anything but `cacheable`.
+    """
+
+    task_instance_id: str
+    status: str
+    reason: str | None
+
+
 class DagCompiler(BaseModel):
     """Main compiler class for converting workflow specs to DAG artifacts.
 
@@ -359,8 +394,16 @@ class DagCompiler(BaseModel):
     jinja_templates_dir: pathlib.Path = TEMPLATES
     pkg_name_prefix: str = "wt"
     results_env_var: str = "WT_RESULTS"
+    # `report` wraps every step and logs the cache report; `strict` also fails
+    # the compile on a codec declaration a return type cannot honour.
+    caching: Literal["off", "report", "strict"] = "off"
 
-    def get_dag_config(self, dag_type: DagTypes, mock_io: bool) -> dict[str, Any]:  # noqa: ARG002  # subclasses dispatch on dag_type
+    @property
+    def caching_enabled(self) -> bool:
+        """Whether the generated DAG wraps its steps in the step cache."""
+        return self.caching != "off"
+
+    def get_dag_config(self, dag_type: DagTypes, mock_io: bool) -> dict[str, Any]:
         """Get configuration dict for rendering a DAG.
 
         Args:
@@ -370,9 +413,99 @@ class DagCompiler(BaseModel):
         Returns:
             Configuration dictionary for template rendering
         """
-        return self.model_dump(
+        config = self.model_dump(
             exclude={"jinja_templates_dir"},
             context={"mock_io": mock_io},
+        )
+        # Only the sequential DAG caches: an async method hands back a future,
+        # which has no stored form.
+        config["cache"] = self.caching_enabled and dag_type == "sequential"
+        if config["cache"]:
+            config["cache_specs"] = self._cache_specs()
+        return config
+
+    def _cache_specs(self) -> dict[str, str]:
+        """Per-task-instance `CacheSpec(...)` literal, for the DAG templates.
+
+        Rendered here rather than in the template so that the defaults can be
+        left out without a trailing comma, which the formatter would read as a
+        request to explode the call across lines.
+
+        Passed beside the dumped spec rather than as computed fields on the
+        spec models: `Spec.sha256` hashes the serialized spec, so a new
+        serialized field would move every existing workflow's fingerprint.
+        """
+        return {t.id: _cache_spec_literal(t) for t in self.spec.flat_workflow}
+
+    def cacheability_report(self) -> list[CacheabilityRow]:
+        """Which steps this spec can cache, and why the rest cannot.
+
+        A claim about declared return types, computed before anything runs.
+        What a *value* did at run time — a union with no matching arm, a codec
+        that declined — is `wt_task.cache.run_report()` instead.
+
+        Returns:
+            One row per step, in workflow order.
+        """
+        rows: list[CacheabilityRow] = []
+        blocked: set[str] = set()
+        for t in self.spec.flat_workflow:
+            known = t.known_task
+            upstream = next(
+                (d for d in self.spec.task_instance_dependencies[t.id] if d in blocked), None
+            )
+            if known.cache_declaration_error is not None:
+                status, reason = "uncacheable", known.cache_declaration_error
+            elif not known.declares_codec:
+                status, reason = "uncacheable", "return type has no codec"
+            elif upstream is not None:
+                status, reason = "uncacheable", f"upstream {upstream} uncacheable"
+            elif not known.is_cacheable:
+                status, reason = "unservable", "no-cache tag"
+            else:
+                status, reason = "cacheable", None
+            if status == "uncacheable":
+                # Only uncacheability propagates: an unservable step still
+                # digests and promotes its output, so its dependents keep
+                # hitting.
+                blocked.add(t.id)
+            rows.append(CacheabilityRow(task_instance_id=t.id, status=status, reason=reason))
+        return rows
+
+    def _check_cache_declarations(self) -> None:
+        """Fail the compile if a task in this spec declares a codec it cannot honour.
+
+        Only under `--with-caching=strict`: a bad declaration may sit in a task
+        library the spec author does not own, so by default it is a report row
+        and the step runs uncached.
+
+        Raises:
+            ValueError: Naming the task and the field that breaks the round trip.
+        """
+        broken = {
+            t.known_task.importable_reference: t.known_task.cache_declaration_error
+            for t in self.spec.flat_workflow
+            if t.known_task.cache_declaration_error is not None
+        }
+        if broken:
+            detail = "; ".join(f"{ref}: {err}" for ref, err in sorted(broken.items()))
+            raise ValueError(f"Cannot compile with caching: {detail}")
+
+    def log_cacheability_report(self) -> None:
+        """Log one line per step, with the reason for any it cannot serve, plus a summary count."""
+        rows = self.cacheability_report()
+        for row in rows:
+            if row.status == "cacheable":
+                logger.info("cache: %s is cacheable", row.task_instance_id)
+            else:
+                logger.warning("cache: %s is %s (%s)", row.task_instance_id, row.status, row.reason)
+        counts = Counter(row.status for row in rows)
+        logger.info(
+            "cache: %d of %d steps cacheable, %d unservable, %d uncacheable",
+            counts["cacheable"],
+            len(rows),
+            counts["unservable"],
+            counts["uncacheable"],
         )
 
     def _resolved_feature(
@@ -962,6 +1095,11 @@ class DagCompiler(BaseModel):
             >>> # compiler = DagCompiler(spec=spec)  # doctest: +SKIP
             >>> # artifacts = compiler.compile("path/to/spec.yaml")  # doctest: +SKIP
         """
+        if self.caching_enabled:
+            self.log_cacheability_report()
+        if self.caching == "strict":
+            self._check_cache_declarations()
+
         if on_progress is not None:
             on_progress("Generating schemas...")
         # Generate parameter schemas (both flat and hierarchical)
@@ -1009,6 +1147,7 @@ class DagCompiler(BaseModel):
                         r.name: str(r.version.version).removeprefix("==")
                         for r in compiled_against or []
                     },
+                    cache=self.caching_enabled,
                 ),
                 "dispatch.py": self.ruffrender("pkg/dispatch.jinja2"),
                 "metadata.py": self.ruffrender("pkg/metadata.jinja2"),
@@ -1097,6 +1236,7 @@ class DagCompiler(BaseModel):
             fingerprint=fingerprint.to_yaml(),
             spec_id=self.spec.id,
             release_name=self.release_name,
+            cache=self.caching_enabled,
         )
         artifacts.readme_md = readme_md
 

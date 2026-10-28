@@ -110,6 +110,14 @@ class RegistryEntry(BaseModel):
     function_name: str = Field(..., description="Function name")
     import_statement: str = Field(..., description="Complete import statement")
     json_schema: dict[str, object] = Field(..., description="JSON Schema for signature")
+    declares_codec: bool = Field(
+        default=False,
+        description="Whether the return type declares a cache codec that resolves",
+    )
+    cache_declaration_error: str | None = Field(
+        default=None,
+        description="Why the return type's codec declaration could not be resolved, if it could not",
+    )
 
 
 class RegistryOutput(BaseModel):
