@@ -542,7 +542,7 @@ wt-compiler compile --spec spec.yaml --from-env
 # ...importing an extra module for task registration
 wt-compiler compile --spec spec.yaml --from-env --discover-package my_tasks.extra
 
-# Rebuild the DAG in a baked image, carrying over the existing pixi.lock
+# Rebuild the DAG in a baked image and bump the version; no pixi.lock is carried or solved
 wt-compiler compile --spec spec.yaml --from-env --clobber --update
 ```
 

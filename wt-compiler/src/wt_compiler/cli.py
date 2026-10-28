@@ -374,8 +374,8 @@ def main() -> None:
             "Discover tasks from the registry installed in the current environment "
             "instead of solving an ephemeral one. Skips the dependency solve entirely; "
             "intended for images that bake in the wt stack and task libraries. Combine "
-            "with --clobber --update to rebuild the DAG while carrying over an existing "
-            "pixi.lock."
+            "with --clobber --update to rebuild the DAG and bump the version from an existing "
+            "build; no pixi.lock is carried over or solved, since the environment lives elsewhere."
         ),
     )
     compile_parser.add_argument(
@@ -536,12 +536,12 @@ def _compile(args: argparse.Namespace) -> None:
             )
 
         # Write artifacts to disk
-        artifacts.dump(clobber=args.clobber, update=args.update)
+        artifacts.dump(clobber=args.clobber, update=args.update, carry_lockfile=not args.from_env)
 
         if args.install:
             artifacts.install()
         elif args.update and not args.from_env:
-            # --from-env is solve-free: keep the pixi.lock dump() carried over.
+            # --from-env is solve-free: there is no lock to update, and pixi would solve one.
             artifacts.update()
 
         print(f"Compiled workflow to: {artifacts.release_dir}")

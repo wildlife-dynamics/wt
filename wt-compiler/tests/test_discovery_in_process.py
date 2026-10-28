@@ -6,9 +6,11 @@ import types
 from unittest.mock import MagicMock, patch
 
 import pytest
+import ruamel.yaml
 from wt_contracts.registry import RegistryOutput
 
 from wt_compiler.artifacts import WorkflowArtifacts
+from wt_compiler.cli import main
 from wt_compiler.compiler import compile_workflow_from_env
 from wt_compiler.discovery import (
     DiscoveryResult,
@@ -246,3 +248,57 @@ workflow: []
             compile_workflow_from_env(spec_yaml, progress=False, discover_packages=["pkg.tasks"])
 
         assert pop.call_args.kwargs["packages"] == ["pkg.tasks"]
+
+
+class TestFromEnvUpdate:
+    """`--update` against a build whose environment lives elsewhere."""
+
+    SPEC = (
+        "id: test_workflow\n"
+        "requirements:\n"
+        "  - {name: python, version: '>=3.10', channel: conda-forge}\n"
+        "workflow: []\n"
+    )
+
+    @pytest.fixture
+    def spec_yaml(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        spec_yaml = tmp_path / "spec.yaml"
+        spec_yaml.write_text(self.SPEC)
+        with patch(
+            "wt_compiler.compiler.populate_known_tasks_in_process",
+            return_value=DiscoveryResult(tasks={}, records=[]),
+        ):
+            yield spec_yaml
+
+    def _compile(self, spec_yaml, *flags):
+        argv = ["wt-compiler", "compile", "--spec", str(spec_yaml), "--from-env", "--no-progress"]
+        with patch.object(sys, "argv", [*argv, *flags]):
+            main()
+
+    def test_bumps_the_version_without_a_lockfile(self, spec_yaml):
+        self._compile(spec_yaml)
+        [release_dir] = [p for p in spec_yaml.parent.iterdir() if p.is_dir()]
+        assert not (release_dir / "pixi.lock").exists()  # a --from-env build never has one
+
+        with patch.object(WorkflowArtifacts, "update") as pixi_update:
+            self._compile(spec_yaml, "--clobber", "--update")
+
+        pixi_update.assert_not_called()  # it would solve a lock from scratch
+        assert not (release_dir / "pixi.lock").exists()
+        assert ruamel.yaml.YAML(typ="safe").load((release_dir / "VERSION.yaml").read_text()) == {
+            "MAJ": 0,
+            "MIN": 1,
+            "PATCH": 0,
+        }
+
+    def test_default_update_still_requires_and_carries_the_lockfile(self, spec_yaml):
+        artifacts = compile_workflow_from_env(spec_yaml, progress=False)
+        artifacts.dump()
+        with pytest.raises(FileNotFoundError, match=r"pixi\.lock"):
+            artifacts.dump(clobber=True, update=True)
+
+        artifacts.dump(clobber=True)
+        (artifacts.release_dir / "pixi.lock").write_text("prior lock")
+        artifacts.dump(clobber=True, update=True)
+        assert (artifacts.release_dir / "pixi.lock").read_text() == "prior lock"

@@ -174,7 +174,9 @@ class TestCompileCommand:
             pkg_name_prefix="wt",
             results_env_var="WT_RESULTS",
         )
-        mock_artifacts.dump.assert_called_once_with(clobber=False, update=False)
+        mock_artifacts.dump.assert_called_once_with(
+            clobber=False, update=False, carry_lockfile=True
+        )
 
         captured = capsys.readouterr()
         assert "Compiled workflow to:" in captured.out
@@ -195,7 +197,7 @@ class TestCompileCommand:
         ):
             main()
 
-        mock_artifacts.dump.assert_called_once_with(clobber=True, update=False)
+        mock_artifacts.dump.assert_called_once_with(clobber=True, update=False, carry_lockfile=True)
 
     def test_compile_with_update(self, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
         """Test compilation with --update flag."""
@@ -215,7 +217,7 @@ class TestCompileCommand:
         ):
             main()
 
-        mock_artifacts.dump.assert_called_once_with(clobber=True, update=True)
+        mock_artifacts.dump.assert_called_once_with(clobber=True, update=True, carry_lockfile=True)
 
     def test_compile_file_exists_error(
         self, capsys: pytest.CaptureFixture[str], tmp_path: Path
@@ -274,7 +276,9 @@ class TestCompileCommand:
         ):
             main()
 
-        mock_artifacts.dump.assert_called_once_with(clobber=False, update=False)
+        mock_artifacts.dump.assert_called_once_with(
+            clobber=False, update=False, carry_lockfile=True
+        )
         mock_artifacts.install.assert_called_once()
         mock_artifacts.update.assert_not_called()
 
@@ -298,7 +302,7 @@ class TestCompileCommand:
         ):
             main()
 
-        mock_artifacts.dump.assert_called_once_with(clobber=True, update=True)
+        mock_artifacts.dump.assert_called_once_with(clobber=True, update=True, carry_lockfile=True)
         mock_artifacts.update.assert_called_once()
         mock_artifacts.install.assert_not_called()
 
@@ -330,7 +334,7 @@ class TestCompileCommand:
         ):
             main()
 
-        mock_artifacts.dump.assert_called_once_with(clobber=True, update=True)
+        mock_artifacts.dump.assert_called_once_with(clobber=True, update=True, carry_lockfile=False)
         mock_artifacts.update.assert_not_called()
         mock_artifacts.install.assert_not_called()
 
