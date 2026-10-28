@@ -88,12 +88,6 @@ async def run(
 Executes workflows as local subprocesses using pixi environments. Suitable for
 development, testing, and small-scale deployments.
 
-`pixi_env` selects which pre-solved environment of the pixi workspace to run
-in, so one image can carry several workflows, each in its own environment.
-Runs always go through `pixi run`, not a direct interpreter path, because
-conda activation scripts set variables the geospatial stack needs (`PROJ_LIB`,
-`GDAL_DATA`).
-
 ### Attributes
 
 | Attribute | Type | Description |
@@ -101,8 +95,6 @@ conda activation scripts set variables the geospatial stack needs (`PROJ_LIB`,
 | `matchspec` | `MatchSpec` | Workflow MatchSpec |
 | `results_env_var` | `str` | Environment variable for results URL |
 | `cwd` | `Path` | Working directory for subprocess execution |
-| `pixi_env` | `str` | Pixi environment to run in (default `"default"`) |
-| `manifest_path` | `Path \| None` | Explicit path to the workspace's pixi manifest |
 | `terminate_grace_seconds` | `float` | Time between SIGTERM and SIGKILL for a stopped run (default 10) |
 
 ### Environment Variables
@@ -110,7 +102,6 @@ conda activation scripts set variables the geospatial stack needs (`PROJ_LIB`,
 | Variable | Description |
 |----------|-------------|
 | `WT_INVOKERS__LOCAL_SUBPROCESS_INVOKER__CWD` | Default working directory |
-| `WT_INVOKERS__LOCAL_SUBPROCESS_INVOKER__PIXI_ENV` | Default pixi environment |
 | `WT_INVOKERS__SUBPROCESS__TERMINATE_GRACE_SECONDS` | Default `terminate_grace_seconds` (shared with `CompiledPackageInvoker`) |
 
 ### Properties

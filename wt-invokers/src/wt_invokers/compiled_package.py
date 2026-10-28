@@ -35,9 +35,11 @@ class CompiledPackageInvoker(SubprocessInvokerBase):
         release_dir: Directory containing the compiled package (placed on
             ``PYTHONPATH``).
         pixi_env: Optional named pixi environment to run in. When set, the
-            command is prefixed with ``pixi run -e <env>``; when unset the
-            running interpreter is used, which assumes the ambient environment
-            already carries the workflow's runtime dependencies.
+            command is prefixed with ``pixi run -e <env>`` rather than calling
+            the env's interpreter directly, because conda activation scripts set
+            ``PROJ_LIB`` and ``GDAL_DATA`` for the geospatial stack. When unset
+            the running interpreter is used, which assumes the ambient
+            environment already carries the workflow's runtime dependencies.
         manifest_path: Optional explicit path to the workspace's pixi manifest.
         cwd: Optional working directory for the workflow subprocess.
 

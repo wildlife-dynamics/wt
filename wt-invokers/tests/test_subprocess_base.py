@@ -258,42 +258,9 @@ async def test_results_dir_is_created_for_file_urls(tmp_path: Path) -> None:
     assert results.is_dir()
 
 
-class TestLocalSubprocessPixiEnv:
-    """pixi_env is what makes N pre-solved environments addressable."""
-
-    def test_defaults_to_the_default_environment(self):
-        invoker = LocalSubprocessInvoker(matchspec=MatchSpec("my-workflow>=1.0.0"))
-        assert invoker.entrypoint == "pixi run -e default my-workflow"
-
-    def test_named_environment(self):
-        invoker = LocalSubprocessInvoker(
-            matchspec=MatchSpec("ecoscope-workflows-events-workflow==1.2.0"),
-            pixi_env="events",
-        )
-        assert invoker._entrypoint_argv() == [
-            "pixi",
-            "run",
-            "-e",
-            "events",
-            "ecoscope-workflows-events-workflow",
-        ]
-
-    def test_manifest_path_is_threaded_through(self):
-        invoker = LocalSubprocessInvoker(
-            matchspec=MatchSpec("my-workflow>=1.0.0"),
-            pixi_env="patrols",
-            manifest_path=Path("/app/pixi.toml"),
-        )
-        assert invoker.entrypoint == (
-            "pixi run --manifest-path /app/pixi.toml -e patrols my-workflow"
-        )
-
-    def test_env_var_supplies_the_default(self, monkeypatch):
-        monkeypatch.setenv(
-            "WT_INVOKERS__LOCAL_SUBPROCESS_INVOKER__PIXI_ENV", "subject-tracking"
-        )
-        invoker = LocalSubprocessInvoker(matchspec=MatchSpec("my-workflow>=1.0.0"))
-        assert invoker.pixi_env == "subject-tracking"
+def test_local_invoker_runs_the_default_environment() -> None:
+    invoker = LocalSubprocessInvoker(matchspec=MatchSpec("my-workflow>=1.0.0"))
+    assert invoker.entrypoint == "pixi run -e default my-workflow"
 
 
 def test_terminate_grace_env_var_supplies_the_default(

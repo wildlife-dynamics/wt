@@ -9,12 +9,8 @@ from __future__ import annotations
 import os
 import subprocess
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
 from ._subprocess import SubprocessInvokerBase
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 @dataclass
@@ -24,22 +20,12 @@ class LocalSubprocessInvoker(SubprocessInvokerBase):
     This invoker executes workflows using pixi environments on the local
     machine. It's ideal for development, testing, and small-scale deployments.
 
-    ``pixi_env`` selects which pre-solved environment of the pixi workspace to
-    run in. A workspace declaring one environment per workflow -- an image that
-    bakes N catalog workflows instead of one -- is addressed by varying this
-    field. It must go through ``pixi run`` rather than a direct interpreter
-    path: conda ``activate.d`` scripts set the geospatial stack's ``PROJ_LIB``
-    and ``GDAL_DATA``.
-
     Attributes:
         matchspec: Rattler MatchSpec specifying the workflow package
         cwd: Optional working directory for subprocess execution
-        pixi_env: Name of the pixi environment to run in (default: ``default``)
-        manifest_path: Optional explicit path to the workspace's pixi manifest
 
     Environment Variables:
         WT_INVOKERS__LOCAL_SUBPROCESS_INVOKER__CWD: Default working directory
-        WT_INVOKERS__LOCAL_SUBPROCESS_INVOKER__PIXI_ENV: Default pixi environment
 
     Examples:
         Creating and using a local subprocess invoker:
@@ -75,12 +61,6 @@ class LocalSubprocessInvoker(SubprocessInvokerBase):
             "WT_INVOKERS__LOCAL_SUBPROCESS_INVOKER__CWD"
         )
     )
-    pixi_env: str = field(
-        default_factory=lambda: os.environ.get(
-            "WT_INVOKERS__LOCAL_SUBPROCESS_INVOKER__PIXI_ENV", "default"
-        )
-    )
-    manifest_path: Path | None = None
 
     @property
     def entrypoint(self) -> str:
@@ -98,20 +78,11 @@ class LocalSubprocessInvoker(SubprocessInvokerBase):
             ... )
             >>> invoker.entrypoint
             'pixi run -e default my-workflow'
-
-            Selecting a named environment:
-
-            >>> invoker = LocalSubprocessInvoker(
-            ...     matchspec=MatchSpec("my-workflow>=1.0.0"),
-            ...     pixi_env="events",
-            ... )
-            >>> invoker.entrypoint
-            'pixi run -e events my-workflow'
         """
         return " ".join(self._entrypoint_argv())
 
     def _entrypoint_argv(self) -> list[str]:
-        """Return ``pixi run [--manifest-path M] -e <env> <workflow-name>``.
+        """Return ``pixi run -e default <workflow-name>``.
 
         Raises:
             ValueError: If the matchspec has no package name.
@@ -119,11 +90,7 @@ class LocalSubprocessInvoker(SubprocessInvokerBase):
         name = self.matchspec.name
         if name is None:
             raise ValueError("MatchSpec must have a package name")
-        argv = ["pixi", "run"]
-        if self.manifest_path is not None:
-            argv += ["--manifest-path", str(self.manifest_path)]
-        argv += ["-e", self.pixi_env, name.normalized]
-        return argv
+        return ["pixi", "run", "-e", "default", name.normalized]
 
     async def is_installed(self) -> bool:
         """Check if the workflow is installed.
