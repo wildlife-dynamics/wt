@@ -1,6 +1,7 @@
 """Tests for the generated workflow CLI's span flushing on exit and SIGTERM."""
 
 import ast
+import importlib.metadata
 import signal
 import subprocess
 import sys
@@ -88,3 +89,49 @@ def test_flush_timeout_fits_inside_invoker_grace() -> None:
     )
 
     assert timeout_ms / 1000 < 10
+
+
+def _release_version_in(release_dir: Path, version_yaml: str | None, release_name: str) -> str:
+    """Run the generated `_release_version` from a package in `release_dir`, via PYTHONPATH."""
+    pkg = release_dir / "wt_demo_workflow"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("")
+    (pkg / "probe.py").write_text(
+        "from importlib.metadata import PackageNotFoundError, version\n"
+        "from pathlib import Path\n"
+        f"RELEASE_NAME = {release_name!r}\n"
+        f"{_function_source(_render_cli(), '_release_version')}\n"
+        "print(_release_version())\n"
+    )
+    if version_yaml is not None:
+        (release_dir / "VERSION.yaml").write_text(version_yaml)
+    out = subprocess.run(
+        [sys.executable, "-m", "wt_demo_workflow.probe"],
+        env={"PYTHONPATH": str(release_dir)},
+        cwd=release_dir.parent.parent,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return out.stdout.strip()
+
+
+def test_version_falls_back_to_version_yaml_when_not_installed(tmp_path: Path) -> None:
+    """A compiled package run from its release dir has no installed metadata to read."""
+    version = _release_version_in(
+        tmp_path / "rel", "{MAJ: 19, MIN: 1, PATCH: 0}\n", "wt-demo-workflow"
+    )
+
+    assert version == "19.1.0"
+
+
+def test_version_is_unknown_without_version_yaml(tmp_path: Path) -> None:
+    assert _release_version_in(tmp_path / "rel", None, "wt-demo-workflow") == "unknown"
+    assert _release_version_in(tmp_path / "bad", "[1, 2]\n", "wt-demo-workflow") == "unknown"
+
+
+def test_installed_metadata_takes_precedence(tmp_path: Path) -> None:
+    """An installed distribution's version wins over VERSION.yaml."""
+    installed = _release_version_in(tmp_path / "rel", "{MAJ: 0, MIN: 0}\n", "pydantic")
+
+    assert installed == importlib.metadata.version("pydantic")

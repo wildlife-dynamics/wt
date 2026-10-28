@@ -71,6 +71,22 @@ def _flush_spans() -> None:
         force_flush(timeout_millis=SPAN_FLUSH_TIMEOUT_MILLIS)
 
 
+def _release_version() -> str:
+    try:
+        return version(RELEASE_NAME)
+    except PackageNotFoundError:
+        pass
+    # Not installed: run with `python -m` from the release directory, or from
+    # PYTHONPATH. Read the VERSION.yaml the installed metadata is built from.
+    import ruamel.yaml
+
+    try:
+        data = ruamel.yaml.YAML(typ="safe").load(Path(__file__).resolve().parents[1] / "VERSION.yaml")
+        return f"{data['MAJ']}.{data['MIN']}.{data.get('PATCH', 0)}"
+    except (OSError, TypeError, KeyError):
+        return "unknown"
+
+
 @click.group()
 def cli() -> None:
     pass
@@ -173,10 +189,7 @@ def run(
     results_url = os.environ.get("{{ results_env_var }}")
     if not results_url:
         raise ValueError("Environment variable {{ results_env_var }} is required.")
-    try:
-        _version = version(RELEASE_NAME)
-    except PackageNotFoundError:
-        _version = "unknown"
+    _version = _release_version()
     otel_exporter_kws: dict = {}
     if otel_exporter == "console" and otel_console_exporter_dst == "file":
         parsed_results_url = urlparse(results_url)
