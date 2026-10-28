@@ -8,6 +8,7 @@ direct Python import dependencies on task libraries.
 
 import asyncio
 import errno
+import importlib
 import platform as plat
 import shutil
 import subprocess
@@ -39,6 +40,67 @@ class DiscoveryResult(NamedTuple):
 
     tasks: dict[str, dict[str, KnownTask]]
     records: list[Any]  # list[RepoDataRecord] from rattler solve()
+
+
+def _registry_output_to_known_tasks(
+    registry_output: RegistryOutput,
+) -> dict[str, dict[str, KnownTask]]:
+    """Convert parsed wt-registry CLI output into a known-tasks mapping.
+
+    This is the shared conversion used by every discovery path (the
+    ephemeral-solve path and the current-environment path). It maps the
+    typed :class:`~wt_contracts.registry.RegistryOutput` into the nested
+    ``{function_name: {public_module_path: KnownTask}}`` structure the
+    compiler indexes tasks by, disambiguating functions that share a name
+    across modules via an incrementing ``registry_ref``.
+
+    Args:
+        registry_output: Parsed output of ``wt-registry --format json``.
+
+    Returns:
+        Mapping of task function name to ``{public_module_path: KnownTask}``.
+
+    Examples:
+        >>> from wt_contracts.registry import RegistryOutput
+        >>> out = RegistryOutput(entries={}, version="1.0.0")
+        >>> _registry_output_to_known_tasks(out)
+        {}
+    """
+    discovered_tasks: dict[str, dict[str, KnownTask]] = {}
+
+    for entry in registry_output.entries.values():
+        # entry is typed as RegistryEntry from wt-contracts
+        # Use public_module_path for imports (via __init__.py re-exports)
+        public_module_path = entry.public_module_path
+        function_name = entry.function_name
+        metadata = entry.metadata
+        json_schema = dict(entry.json_schema)
+
+        # Build importable reference using public path
+        importable_reference = f"{public_module_path}.{function_name}"
+
+        # Parse tags - filter to only known TaskTag values
+        tags = [TaskTag(tag) for tag in metadata.tags if tag in [t.value for t in TaskTag]]
+
+        # Create KnownTask from typed RegistryEntry
+        known_task = KnownTask(
+            importable_reference=importable_reference,
+            tags=tags,
+            registry_ref=0,
+            json_schema=json_schema,
+            description=metadata.description or None,
+        )
+
+        # Add to discovered_tasks dict
+        if function_name not in discovered_tasks:
+            # First occurrence of this function name
+            discovered_tasks[function_name] = {public_module_path: known_task}
+        else:
+            # Function name already seen from another module - needs disambiguation
+            known_task.registry_ref = len(discovered_tasks[function_name])
+            discovered_tasks[function_name][public_module_path] = known_task
+
+    return discovered_tasks
 
 
 async def discover_tasks_from_requirements(
@@ -204,40 +266,8 @@ async def discover_tasks_from_requirements(
         # Parse and validate JSON output using wt-contracts schema
         registry_output = RegistryOutput.model_validate_json(result.stdout)
 
-        # Convert to KnownTask instances and populate known_tasks dict
-        discovered_tasks: dict[str, dict[str, KnownTask]] = {}
-
-        for entry in registry_output.entries.values():
-            # entry is typed as RegistryEntry from wt-contracts
-            # Use public_module_path for imports (via __init__.py re-exports)
-            public_module_path = entry.public_module_path
-            function_name = entry.function_name
-            metadata = entry.metadata
-            json_schema = dict(entry.json_schema)
-
-            # Build importable reference using public path
-            importable_reference = f"{public_module_path}.{function_name}"
-
-            # Parse tags - filter to only known TaskTag values
-            tags = [TaskTag(tag) for tag in metadata.tags if tag in [t.value for t in TaskTag]]
-
-            # Create KnownTask from typed RegistryEntry
-            known_task = KnownTask(
-                importable_reference=importable_reference,
-                tags=tags,
-                registry_ref=0,
-                json_schema=json_schema,
-                description=metadata.description or None,
-            )
-
-            # Add to discovered_tasks dict
-            if function_name not in discovered_tasks:
-                # First occurrence of this function name
-                discovered_tasks[function_name] = {public_module_path: known_task}
-            else:
-                # Function name already seen from another module - needs disambiguation
-                known_task.registry_ref = len(discovered_tasks[function_name])
-                discovered_tasks[function_name][public_module_path] = known_task
+        # Convert to KnownTask instances keyed by function name
+        discovered_tasks = _registry_output_to_known_tasks(registry_output)
 
         return DiscoveryResult(tasks=discovered_tasks, records=records)
 
@@ -393,6 +423,91 @@ async def populate_known_tasks(
         on_progress=on_progress,
         **kwargs,
     )
+    known_tasks.clear()
+    known_tasks.update(result.tasks)
+    return result
+
+
+def discover_tasks_in_process(
+    packages: list[str] | None = None,
+) -> DiscoveryResult:
+    """Discover tasks by importing the registry *in the current process*.
+
+    Performs no dependency solve and creates no ephemeral environment: the
+    task libraries are imported into the running interpreter via
+    ``auto_discover()`` and the in-memory registry is read directly. The
+    heavy import happens once, so a long-lived process (an on-the-fly
+    compile server) pays the ``ecoscope.platform`` cost at startup and
+    serves subsequent compilations for free.
+
+    Working with the in-memory :class:`RegistryOutput` also sidesteps JSON
+    serialization gaps in individual task schemas (e.g. non-serializable
+    parameter defaults), which would fail a CLI round-trip.
+
+    Args:
+        packages: Optional dotted module paths to import for task
+            registration, in addition to entry-point auto-discovery.
+
+    Returns:
+        DiscoveryResult with the discovered tasks and an empty ``records``
+        list -- there is no solve, so there are no pinned versions to report.
+
+    Raises:
+        ImportError: If ``wt-registry`` is not installed in the current
+            environment.
+
+    Examples:
+        In an environment with wt-registry and the task libraries installed::
+
+            result = discover_tasks_in_process()
+    """
+    # wt-registry (and the task libraries) are optional at import time; only
+    # a process that intends in-process discovery needs them installed.
+    from wt_registry.cli import (  # noqa: PLC0415  # optional dep, scoped to in-process discovery
+        auto_discover,
+        serialize_entries,
+    )
+    from wt_registry.registry import (  # noqa: PLC0415  # optional dep, scoped to in-process discovery
+        get_registry,
+    )
+
+    discovered_modules = auto_discover()
+    all_packages: list[str] = list(discovered_modules)
+    for package in packages or []:
+        importlib.import_module(package)
+        if package not in all_packages:
+            all_packages.append(package)
+
+    # get_registry() hands back an immutable view; serialize_entries only reads it
+    # but is typed `dict`, so materialize rather than cast.
+    registry = dict(get_registry())
+    registry_output = serialize_entries(registry, packages=all_packages or None)
+    tasks = _registry_output_to_known_tasks(registry_output)
+    return DiscoveryResult(tasks=tasks, records=[])
+
+
+def populate_known_tasks_in_process(
+    packages: list[str] | None = None,
+) -> DiscoveryResult:
+    """Discover tasks in-process and populate the global ``known_tasks`` dict.
+
+    Solve-free sibling of :func:`populate_known_tasks`: discovers via
+    :func:`discover_tasks_in_process`, then replaces the global
+    ``known_tasks`` dict in ``spec.py``.
+
+    Args:
+        packages: Optional dotted module paths to import for task
+            registration, in addition to entry-point auto-discovery.
+
+    Returns:
+        DiscoveryResult with the discovered tasks and an empty ``records`` list.
+
+    Examples:
+        Populate the registry before validating a Spec::
+
+            populate_known_tasks_in_process()
+    """
+    result = discover_tasks_in_process(packages=packages)
     known_tasks.clear()
     known_tasks.update(result.tasks)
     return result

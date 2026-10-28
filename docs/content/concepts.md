@@ -60,7 +60,9 @@ decorated with `@register` from `wt-registry`. Registration serves two
 purposes:
 
 1. **Discovery without imports.** The compiler discovers tasks by running
-   `wt-registry` as a subprocess in an ephemeral environment.
+   `wt-registry` as a subprocess in an ephemeral environment. Images that
+   already bake in the task libraries can opt into in-process discovery with
+   `--from-env` instead.
 
     !!! info "Why subprocess discovery?"
         Importing task code directly would force the compiler to install every

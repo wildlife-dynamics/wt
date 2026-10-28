@@ -564,7 +564,11 @@ DictOrVarsOrInlineValue = Annotated[
 ]
 VariableValuesList.model_rebuild()
 VariableValuesDict.model_rebuild()
-type PartialKwargs = dict[KnownTaskArgName, DictOrVarsOrInlineValue]
+# NB: a plain alias, not a PEP 695 `type` statement. pydantic <2.10 cannot build
+# a schema for a `type`-aliased field (TypeAliasType), and wt-compiler declares
+# support for pydantic>=2.0 -- this keeps spec.py importable under e.g. 2.8.2,
+# which released ecoscope-platform versions pin.
+PartialKwargs = dict[KnownTaskArgName, DictOrVarsOrInlineValue]
 SpecId = Annotated[str, AfterValidator(_is_not_reserved), AfterValidator(_is_valid_spec_name)]
 ParallelOpArgNames = Annotated[list[KnownTaskArgName], BeforeValidator(_singleton_or_list_aslist)]
 

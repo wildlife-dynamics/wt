@@ -5,7 +5,8 @@ produces a self-contained workflow package containing executable Python DAG
 code, JSON parameter schemas, CLI entry point, pixi configuration, Dockerfile,
 tests, and a dependency graph visualization.
 
-The compiler operates without importing task code — see
+By default the compiler operates without importing task code. The opt-in
+`--from-env` mode reads tasks from the current environment instead — see
 [Task Discovery](#task-discovery) below.
 
 **Modules:** `compiler` · `spec` · `discovery` · `artifacts` · `cli` ·
@@ -60,7 +61,22 @@ compile_workflow(spec, **kwargs) -> WorkflowArtifacts
 
 # Recommended entry point — handles the complete pipeline
 compile_workflow_from_yaml(spec_path, **kwargs) -> WorkflowArtifacts
+
+# Solve-free entry point — discovers tasks from the current environment
+compile_workflow_from_env(spec_path, discover_packages=None, **kwargs) -> WorkflowArtifacts
 ```
+
+A caller that owns its own build loop (for example a long-lived compile
+service) can compose a solve-free compile from public pieces: populate the
+registry once with `populate_known_tasks_in_process()`, then call
+`compile_workflow()` with a `merged_default_feature` built from
+`load_default_injections()` and `compute_merged_default_feature()`. Such a
+caller should also run `resolve_installed_requirements()` first and pass its
+result as `compile_workflow()`'s `installed_requirements` and
+`compiled_against`, as `compile_workflow_from_env()` does. Nothing else checks
+the resident environment.
+`params_sha256_from_readme()` reads the parameter fingerprint back out of a
+compiled package's README.
 
 ---
 
@@ -149,6 +165,69 @@ tight pins, not strict byte equality — but the coupled override flow is
 meaningfully stronger than feeding two independent dep sets into
 discovery and runtime.
 
+### In-process discovery (`--from-env`)
+
+For an image that already bakes in the wt stack and the task libraries, the
+discovery solve is wasted work: the tasks are installed in the current
+environment. `--from-env` (or `compile_workflow_from_env()`) skips the solve
+entirely. It imports the task libraries into the compiler process through
+entry-point auto-discovery (plus any `--discover-package` modules) and reads
+the in-memory registry directly.
+
+This needs `wt-registry` importable, which is the `hot` extra:
+
+```bash
+pip install "wt-compiler[hot]"
+```
+
+Trade-offs against the default path:
+
+- **Versions come from the environment, not a solve.** Generated schemas
+  match whatever is installed. That's the point when the image is also the
+  runtime, but it means the compiler process carries the task libraries'
+  dependencies and import side effects.
+- **The environment must satisfy the spec.** Before discovery, every
+  `spec.yaml requirements:` entry is checked against what is installed
+  (`conda-meta`, then Python distributions). A missing package or a version
+  the spec doesn't admit fails the compile, listing every problem. The
+  installed versions become the README fingerprint's `installed_requirements`.
+  The emitted `pixi.toml` is still generated from the bundled defaults,
+  `spec.yaml requirements:` and any `--env-overrides`.
+- **The package is bound to that environment.** The generated CLI records the
+  installed versions and `run` refuses to start where they differ, naming each
+  mismatch. A workflow compiled against one platform version can't silently
+  run against another whose task signatures changed: recompile it with
+  `--from-env` in the new environment. Compiles on the default path don't
+  carry this check.
+- **One process, one version set.** Everything discovered has to coexist in
+  the current interpreter, so this suits images built for a single platform
+  version.
+
+#### Why the binding is exact, not the spec's range
+
+A spec may declare a range such as `ecoscope-platform >=2.23,<3`, but the
+compiled package records the one version it was compiled against, and any
+other version means recompiling. That isn't caution for its own sake. A
+compiled package is a snapshot of the task signatures it was compiled
+against:
+
+- the rendered DAG calls each task with that version's parameter names;
+- `params.json` and `rjsf.json`, which validate run configs and drive the
+  config form, are generated from that version's parameter schemas.
+
+Nothing about a version range keeps those signatures fixed. If 2.24 renames or
+adds a required parameter, a package compiled against 2.23 calls the task with
+arguments it no longer accepts, or accepts configs the task will reject. A
+range-pinned spec doesn't avoid the recompile. It only hides when one is
+needed, and the failure shows up mid-run instead of at startup.
+
+So "this workflow works on 2.24" can only be established by recompiling
+against 2.24, and exact pins make that requirement explicit. Revisit this only
+if the task libraries commit to keeping task signatures stable within a
+version range (for example, signature changes only in major versions), and
+only once that commitment is enforced: a release check that diffs the
+registry's schemas between versions.
+
 ### Functions
 
 | Function | Description |
@@ -156,6 +235,9 @@ discovery and runtime.
 | `discover_tasks_from_requirements()` | Primary async function for task discovery |
 | `populate_known_tasks()` | Discover tasks and update global state |
 | `discover_tasks_from_spec_requirements()` | Discover from `SpecRequirement` objects |
+| `discover_tasks_in_process()` | Discover from the registry in the current process; no solve |
+| `resolve_installed_requirements()` | Check spec requirements against the current environment; return `==` pins or raise `InstalledRequirementsError` |
+| `populate_known_tasks_in_process()` | In-process discovery, then update global state |
 
 ### Exceptions
 
@@ -165,6 +247,8 @@ discovery and runtime.
 | `RegistryExecutionError` | `wt-registry` returned non-zero exit code |
 | `EnvironmentCreationError` | py-rattler failed to solve or install |
 | `PyPIInstallError` | The bulk `uv pip install` failed; the failure is shared across every requirement in the batch |
+| `InstalledRequirementsError` | `--from-env` only: the current environment is missing a spec requirement or has a version the spec doesn't admit |
+| `ImportError` | In-process discovery only: `wt-registry` is not installed in the current environment (install the `hot` extra) |
 
 ---
 
@@ -450,6 +534,16 @@ wt-compiler compile --spec spec.yaml --variant gcp
 # See "Injected Dependencies" above for the full layering and override file format.
 wt-compiler compile --spec spec.yaml \
     --env-overrides=wt-compiler-env-overrides.toml
+
+# Discover tasks from the current environment instead of solving one
+# (needs the `hot` extra; see "In-process discovery" above)
+wt-compiler compile --spec spec.yaml --from-env
+
+# ...importing an extra module for task registration
+wt-compiler compile --spec spec.yaml --from-env --discover-package my_tasks.extra
+
+# Rebuild the DAG in a baked image and bump the version; no pixi.lock is carried or solved
+wt-compiler compile --spec spec.yaml --from-env --clobber --update
 ```
 
 ---
