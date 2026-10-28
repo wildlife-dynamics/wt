@@ -880,7 +880,8 @@ class TaskInstance(_ForbidExtra):
         must move the key, or a warm run would replay a URL into a directory
         that no longer exists.
         """
-        seen = {var.value for dep in self.partial.values() for var in _find_env_vars(dep)}
+        bound = [*self.partial.values(), self.map.argvalues, self.mapvalues.argvalues]
+        seen = {var.value for dep in bound for var in _find_env_vars(dep)}
         return sorted(seen)
 
     @property

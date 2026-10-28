@@ -344,6 +344,16 @@ def test_cache_env_lists_referenced_variables():
     assert t.cache_env == ["WT_RESULTS"]
 
 
+@pytest.mark.parametrize("method", ["map", "mapvalues"])
+def test_cache_env_lists_variables_mapped_over(method):
+    t = wt_spec.TaskInstance(
+        id="x",
+        task="chart",
+        **{method: {"argnames": "data", "argvalues": ["${{ env.A }}", "${{ workflow.b.return }}"]}},
+    )
+    assert t.cache_env == ["A"]
+
+
 def test_cache_env_is_empty_without_env_references():
     assert wt_spec.TaskInstance(id="x", task="chart", partial={"title": "A"}).cache_env == []
 
