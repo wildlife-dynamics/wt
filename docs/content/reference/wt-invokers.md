@@ -1,10 +1,10 @@
 # wt-invokers
 
 `wt-invokers` provides the execution layer for the wt ecosystem. It defines
-an abstract `AbstractInvoker` interface with two concrete implementations for
+an abstract `AbstractInvoker` interface with concrete implementations for
 running compiled workflows.
 
-**Modules:** `abstract` · `local` · `cloud_batch`
+**Modules:** `abstract` · `local` · `compiled_package` · `cloud_batch`
 
 **Public API:**
 
@@ -12,6 +12,7 @@ running compiled workflows.
 from wt_invokers import (
     AbstractInvoker,
     LocalSubprocessInvoker,
+    CompiledPackageInvoker,
     CloudBatchInvoker,
     InvokerError,
     InvocationTimeoutError,
@@ -22,6 +23,7 @@ from wt_invokers import (
 | Invoker | Execution Target | Supports Waiting |
 |---------|-----------------|-----------------|
 | `LocalSubprocessInvoker` | Local machine via pixi | Yes |
+| `CompiledPackageInvoker` | Local machine, a compiled package on `PYTHONPATH` | Yes |
 | `CloudBatchInvoker` | Google Cloud Batch containers | No |
 
 ---
@@ -93,6 +95,14 @@ development, testing, and small-scale deployments.
 | `matchspec` | `MatchSpec` | Workflow MatchSpec |
 | `results_env_var` | `str` | Environment variable for results URL |
 | `cwd` | `Path` | Working directory for subprocess execution |
+| `terminate_grace_seconds` | `float` | Time between SIGTERM and SIGKILL for a stopped run (default 10) |
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `WT_INVOKERS__LOCAL_SUBPROCESS_INVOKER__CWD` | Default working directory |
+| `WT_INVOKERS__SUBPROCESS__TERMINATE_GRACE_SECONDS` | Default `terminate_grace_seconds` (shared with `CompiledPackageInvoker`) |
 
 ### Properties
 
@@ -100,6 +110,7 @@ development, testing, and small-scale deployments.
 |----------|-------|-------------|
 | `entrypoint` | `str` | Pixi command (e.g. `pixi run -e default my-workflow`) |
 | `is_waitable` | `True` | Always supports waiting |
+| `last_log_tail` | `str` | Last 8KB of the most recent finished run's output; survives `wait()` |
 
 ### Methods
 
@@ -108,8 +119,55 @@ development, testing, and small-scale deployments.
 | `is_installed()` | Check if workflow is available in the pixi environment |
 | `install()` | Raises `NotImplementedError` |
 | `run(**kwargs)` | Launch workflow in a subprocess |
-| `wait()` | Block until subprocess completes, return exit code |
+| `wait()` | Wait for the subprocess and return its exit code (see [Subprocess runs](#subprocess-runs)) |
 | `check_output()` | Run a one-off command and capture stdout |
+
+---
+
+## CompiledPackageInvoker
+
+Runs a compiled workflow package that is already on disk, by putting
+`release_dir` on `PYTHONPATH` and invoking its generated CLI. Used for
+packages compiled on the fly, without publishing them first.
+
+### Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `matchspec` | `MatchSpec` | Identifies the build; its package name gives the importable package |
+| `release_dir` | `Path` | Directory containing the compiled package |
+| `pixi_env` | `str \| None` | Pixi environment to run in. When unset, the running interpreter is used, so the ambient environment must carry the workflow's runtime dependencies |
+| `manifest_path` | `Path \| None` | Explicit path to the workspace's pixi manifest |
+| `cwd` | `str \| None` | Working directory for subprocess execution |
+| `terminate_grace_seconds` | `float` | Time between SIGTERM and SIGKILL for a stopped run (default 10) |
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `WT_INVOKERS__COMPILED_PACKAGE_INVOKER__CWD` | Default working directory |
+| `WT_INVOKERS__SUBPROCESS__TERMINATE_GRACE_SECONDS` | Default `terminate_grace_seconds` |
+
+---
+
+## Subprocess runs
+
+`LocalSubprocessInvoker` and `CompiledPackageInvoker` share how they run and
+wait for the workflow process.
+
+- **Output.** The child's stdout and stderr are drained continuously and
+  forwarded to this process's stderr, so they reach the host's log collector
+  (Cloud Logging on Cloud Run). The last 8KB is kept as `last_log_tail` for
+  error reporting. Draining also stops a chatty workflow from filling the pipe
+  and blocking.
+- **Waiting.** `wait()` waits on a worker thread, so concurrent runs sharing
+  one event loop don't block each other.
+- **Timeouts and cancellation.** If `wait(timeout=...)` expires, or the task
+  awaiting it is cancelled, the child is sent SIGTERM, given
+  `terminate_grace_seconds` to exit, then sent SIGKILL. A timeout still raises
+  `InvocationTimeoutError` once the child is gone. The generated workflow CLI
+  flushes its spans on SIGTERM within 5 seconds, so keep the grace window
+  above that if you change it.
 
 ---
 

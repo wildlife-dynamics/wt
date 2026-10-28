@@ -126,6 +126,15 @@ versions of the same package. In a single process, only one version can be
 loaded. The subprocess approach lets each discovery happen in its own isolated
 environment.
 
+### The exception: baked images
+
+These problems assume the compiler's environment and the task libraries'
+environment are different. In an image that bakes in the wt stack and the
+task libraries for one platform version, they're the same environment, and
+the solve only reinstalls what's already there. `--from-env`
+(`wt_compiler.discovery.discover_tasks_in_process`) imports the registry in
+process for that case. The subprocess path stays the default.
+
 ### How it works in practice
 
 The `wt-registry` package provides both a decorator (`@register`) and a CLI

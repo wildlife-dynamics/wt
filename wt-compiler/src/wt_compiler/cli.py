@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, TypeGuard, cast
 
 import questionary
 
-from wt_compiler.compiler import compile_workflow_from_yaml
+from wt_compiler.compiler import compile_workflow_from_env, compile_workflow_from_yaml
 from wt_compiler.wizard import DefaultWizardProvider
 from wt_compiler.wizard import providers as wt_providers
 
@@ -368,6 +368,28 @@ def main() -> None:
         help="Generate a new pixi lockfile and install all dependencies after compilation",
     )
     compile_parser.add_argument(
+        "--from-env",
+        action="store_true",
+        help=(
+            "Discover tasks from the registry installed in the current environment "
+            "instead of solving an ephemeral one. Skips the dependency solve entirely; "
+            "intended for images that bake in the wt stack and task libraries. Combine "
+            "with --clobber --update to rebuild the DAG and bump the version from an existing "
+            "build; no pixi.lock is carried over or solved, since the environment lives elsewhere."
+        ),
+    )
+    compile_parser.add_argument(
+        "--discover-package",
+        action="append",
+        dest="discover_packages",
+        default=None,
+        metavar="MODULE",
+        help=(
+            "With --from-env, an extra dotted module path to import for task registration, "
+            "in addition to entry-point auto-discovery. May be given multiple times."
+        ),
+    )
+    compile_parser.add_argument(
         "--no-progress",
         action="store_true",
         help="Disable the progress spinner during compilation",
@@ -496,20 +518,30 @@ def _compile(args: argparse.Namespace) -> None:
         compiler_kwargs["results_env_var"] = args.results_env_var
         if args.env_overrides is not None:
             compiler_kwargs["env_overrides_path"] = Path(args.env_overrides).resolve()
-        artifacts = asyncio.run(
-            compile_workflow_from_yaml(
+        if args.from_env:
+            # Solve-free discovery against the current (baked-in) environment.
+            artifacts = compile_workflow_from_env(
                 str(spec_path),
                 progress=not args.no_progress,
+                discover_packages=args.discover_packages,
                 **compiler_kwargs,
             )
-        )
+        else:
+            artifacts = asyncio.run(
+                compile_workflow_from_yaml(
+                    str(spec_path),
+                    progress=not args.no_progress,
+                    **compiler_kwargs,
+                )
+            )
 
         # Write artifacts to disk
-        artifacts.dump(clobber=args.clobber, update=args.update)
+        artifacts.dump(clobber=args.clobber, update=args.update, carry_lockfile=not args.from_env)
 
         if args.install:
             artifacts.install()
-        elif args.update:
+        elif args.update and not args.from_env:
+            # --from-env is solve-free: there is no lock to update, and pixi would solve one.
             artifacts.update()
 
         print(f"Compiled workflow to: {artifacts.release_dir}")
