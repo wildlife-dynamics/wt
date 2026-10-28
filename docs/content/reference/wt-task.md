@@ -126,6 +126,10 @@ result = (
 
 ## Caching
 
+!!! warning "Unstable"
+    Codec declarations and key derivation may change between releases.
+    See [Caching](../caching.md).
+
 ```python
 from wt_task.cache import CacheSpec, Codec, Tree, run_scope, run_report
 ```

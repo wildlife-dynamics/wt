@@ -111,6 +111,10 @@ Pydantic's `TypeAdapter` under the hood).
 
 ## Caching
 
+!!! warning "Unstable"
+    Codec declarations and key derivation may change between releases.
+    See [Caching](../caching.md).
+
 Each entry also carries what the step cache needs to know about the function's
 return type. Both fields are computed lazily, like `json_schema`, and appear in
 the CLI's JSON output.

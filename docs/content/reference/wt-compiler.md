@@ -66,6 +66,10 @@ compile_workflow_from_yaml(spec_path, **kwargs) -> WorkflowArtifacts
 
 ## Caching
 
+!!! warning "Unstable"
+    Codec declarations and key derivation may change between releases.
+    See [Caching](../caching.md).
+
 `--with-caching` wraps every step of the generated sequential DAG in
 `.cached(CacheSpec(...))`. At run time the cache is located by `WT_CACHE__STORE`; with
 it unset the emitted code is inert. See [Caching](../caching.md).

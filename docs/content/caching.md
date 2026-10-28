@@ -7,6 +7,20 @@ stored result is returned instead.
 This page describes the behaviour and the contracts. For implementation detail,
 follow the links to the source modules.
 
+!!! warning "Unstable"
+    Two parts of step caching will change faster than the rest of wt, without a
+    deprecation period:
+
+    - **Codec declarations** (`Cacheable`, `CodecRef`, `ModelDumpCacheable` in
+      `wt_contracts`, and how return types are read): task libraries that
+      declare codecs may need updating when wt is upgraded.
+    - **Key derivation and payload format**: an upgrade may change how keys
+      and stored payloads are built. Existing entries then miss and recompute;
+      they are not misread.
+
+    The `--with-caching` flag and the `WT_CACHE__*` settings are expected to
+    stay stable. Workflows compiled without `--with-caching` are unaffected.
+
 ---
 
 ## What it is, and when to use it
