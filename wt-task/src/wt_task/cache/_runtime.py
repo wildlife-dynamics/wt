@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 import warnings
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
@@ -198,6 +199,7 @@ def cached_call(
     encoding: TaskEncoding,
     task_instance_id: str,
     method: str = "call",
+    params: dict[str, Any] | None = None,
 ) -> tuple[R, bool]:
     """Run `run()` through the cache, returning its result and whether it hit.
 
@@ -209,25 +211,36 @@ def cached_call(
     declared structure refuses. A store that will not accept a write is the
     exception: the digest was computed, so dependents still key on it.
     """
+    t0 = time.perf_counter()
+
+    def elapsed_ms() -> float:
+        return round((time.perf_counter() - t0) * 1000, 1)
+
     store = open_store()
     if store is None:
-        record(task_instance_id, None, "inert", "no cache store configured")
-        return run(), False
+        result = run()
+        record(task_instance_id, None, "inert", "no cache store configured", elapsed_ms())
+        return result, False
 
     tree = encoding.tree(method)
     if tree is None:
+        result = run()
         record(
             task_instance_id,
             None,
             encoding.outcome or "uncacheable",
             encoding.reason or f"no codec for the {method!r} method",
+            elapsed_ms(),
         )
-        return run(), False
+        return result, False
 
-    identity, blocked_by = step_identity(spec, encoding, step_params(task_instance_id), method)
+    if params is None:
+        params = step_params(task_instance_id)
+    identity, blocked_by = step_identity(spec, encoding, params, method)
     if identity is None:
-        record(task_instance_id, None, "uncacheable", blocked_by)
-        return run(), False
+        result = run()
+        record(task_instance_id, None, "uncacheable", blocked_by, elapsed_ms())
+        return result, False
 
     verifying = _verifying()
     servable, unservable_reason = _servable(spec)
@@ -238,7 +251,7 @@ def cached_call(
             expired = _too_old(spec, entry)
             loaded = _load(store, entry, identity, tree) if expired is None else None
             if loaded is not None:
-                record(task_instance_id, entry.content_id, "hit")
+                record(task_instance_id, entry.content_id, "hit", ms=elapsed_ms())
                 return cast("R", loaded[0]), True
 
     result = run()
@@ -263,7 +276,7 @@ def cached_call(
             f"({encoding.anchor}.{encoding.function}): {e!r}",
             stacklevel=2,
         )
-        record(task_instance_id, None, "refused", repr(e))
+        record(task_instance_id, None, "refused", repr(e), elapsed_ms())
         return result, False
 
     # A refused write still promotes the digest, which was computed fine: the
@@ -277,5 +290,5 @@ def cached_call(
         outcome, reason = "unservable", "store would not accept the write"
     elif expired is not None:
         outcome, reason = "expired", expired
-    record(task_instance_id, content_id, outcome, reason)
+    record(task_instance_id, content_id, outcome, reason, elapsed_ms())
     return result, False

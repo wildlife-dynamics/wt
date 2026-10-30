@@ -14,7 +14,9 @@ import contextlib
 import functools
 import hashlib
 import importlib.metadata
+import inspect
 import os
+import typing
 import warnings
 from collections import deque
 from collections.abc import Mapping
@@ -24,6 +26,8 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
+from pydantic import BaseModel, TypeAdapter
+from pydantic_core import to_jsonable_python
 
 from wt_task.exceptions import TaskInstanceError
 
@@ -31,7 +35,7 @@ from ._codec import json_digest
 from ._settings import CacheSettings, active_settings, load_settings, use_settings
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Collection, Iterator
 
     from ._spec import CacheSpec, TaskEncoding
 
@@ -48,17 +52,19 @@ class CacheRecord:
             None when this step could not be cached.
         outcome: What the cache did for this step.
         reason: Why, for the outcomes that are not self-explanatory.
+        ms: Wall time of the step: the run on a miss, the load on a hit.
     """
 
     digest: str | None
     outcome: Outcome
     reason: str | None = None
+    ms: float | None = None
 
 
 _RUN_RECORDS: ContextVar[dict[str, CacheRecord]] = ContextVar("_RUN_RECORDS")
 # Per-step form values, as the DAG received them. Passed once at DAG entry
-# rather than baked into every step's spec, and keyed on raw: what the step's
-# wrapper ends up seeing may have been coerced by `validate`.
+# rather than baked into every step's spec. Keyed on raw unless the task is
+# validated, when `normalized_params` keys on what the function receives.
 _RUN_PARAMS: ContextVar[dict[str, Any]] = ContextVar("_RUN_PARAMS")
 
 # The generated CLI writes its cache report after the DAG's scope has closed,
@@ -143,6 +149,79 @@ def run_scope(
         )
 
 
+def normalized_params(
+    func: Callable[..., Any], params: dict[str, Any], upstream: Collection[str] = ()
+) -> dict[str, Any]:
+    """`params` as `func` receives them: validated against its signature, defaults filled.
+
+    Two forms that mean the same call (a default omitted or spelled out, a datetime in
+    another format) then share a key. Arguments supplied elsewhere (partials, upstream
+    outputs) are not filled in, and a value that will not validate keys on its raw
+    form, so this can only merge keys for equal calls, never fail a run.
+
+    Examples:
+        >>> def f(n: int, label: str = "x") -> int:
+        ...     return n
+        >>> normalized_params(f, {"n": "3"})
+        {'n': 3, 'label': 'x'}
+    """
+    target, bound = func, set[str]()
+    while True:
+        if isinstance(target, functools.partial):
+            bound |= set(target.keywords)
+            target = target.func
+        elif (wrapped := getattr(target, "__wrapped__", None)) is not None:
+            target = wrapped
+        else:
+            break
+    try:
+        signature = inspect.signature(target)
+        hints = typing.get_type_hints(target, include_extras=True)
+    except Exception:  # noqa: BLE001  # an unresolvable signature keys on raw params
+        return params
+
+    out = dict(params)
+    for name, parameter in signature.parameters.items():
+        if name in params:
+            value = params[name]
+        elif parameter.default is not inspect.Parameter.empty and name not in bound | set(upstream):
+            value = parameter.default
+        else:
+            continue
+        out[name] = _normalized_value(hints.get(name, Any), value)
+    return out
+
+
+def _normalized_value(annotation: Any, value: Any) -> Any:  # noqa: ANN401  # any declared type
+    try:
+        try:
+            adapter = _adapter(annotation)
+        except TypeError:  # an unhashable annotation can't be memoised
+            adapter = TypeAdapter(annotation)
+        return _jsonable(adapter.validate_python(value))
+    except Exception:  # noqa: BLE001  # unvalidatable: key on what was given
+        with contextlib.suppress(Exception):
+            return _jsonable(value)
+        return value
+
+
+@functools.lru_cache(maxsize=1024)
+def _adapter(annotation: Any) -> TypeAdapter[Any]:  # noqa: ANN401  # any declared type
+    return TypeAdapter(annotation)
+
+
+def _jsonable(value: Any) -> Any:  # noqa: ANN401  # any validated value
+    # Field by field rather than model_dump: an `exclude=True` field still tells
+    # two calls apart, so it must stay in the key.
+    if isinstance(value, BaseModel):
+        return {name: _jsonable(getattr(value, name)) for name in type(value).model_fields}
+    if isinstance(value, dict):
+        return {k: _jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(v) for v in value]
+    return to_jsonable_python(value)
+
+
 def step_params(task_instance_id: str) -> dict[str, Any]:
     """Return the parameters this run gave one step, or an empty dict.
 
@@ -160,6 +239,7 @@ def record(
     digest: str | None,
     outcome: Outcome,
     reason: str | None = None,
+    ms: float | None = None,
 ) -> None:
     """Record what `task_instance_id` contributes to its dependents' keys.
 
@@ -168,10 +248,10 @@ def record(
     """
     records = _RUN_RECORDS.get(None)
     if records is not None:
-        records[task_instance_id] = CacheRecord(digest, outcome, reason)
+        records[task_instance_id] = CacheRecord(digest, outcome, reason, ms)
 
 
-def run_report() -> dict[str, dict[str, str | None]]:
+def run_report() -> dict[str, dict[str, str | float | None]]:
     """Per-step cache outcomes for this run, as JSON-able rows.
 
     The compile-time report is a claim about declared types; this is what
@@ -181,12 +261,12 @@ def run_report() -> dict[str, dict[str, str | None]]:
         >>> with run_scope():
         ...     record("a", None, "refused", "no union arm")
         ...     run_report()
-        {'a': {'digest': None, 'outcome': 'refused', 'reason': 'no union arm'}}
+        {'a': {'digest': None, 'outcome': 'refused', 'reason': 'no union arm', 'ms': None}}
     """
     records = _RUN_RECORDS.get(None)
     table = records if records is not None else _LAST_RUN
     return {
-        step: {"digest": row.digest, "outcome": row.outcome, "reason": row.reason}
+        step: {"digest": row.digest, "outcome": row.outcome, "reason": row.reason, "ms": row.ms}
         for step, row in table.items()
     }
 

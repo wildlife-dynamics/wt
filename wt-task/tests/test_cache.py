@@ -5,6 +5,7 @@ import inspect
 import re
 import sys
 import warnings
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -1276,9 +1277,8 @@ def test_a_declaration_error_raises_under_strict_mode(monkeypatch):
         resolve_task(make.func)
 
 
-def test_the_key_uses_the_raw_params_the_dag_was_given(cache_dir):
-    # `validate` coerces what the function receives; the key is taken from the
-    # run's own parameters instead, so it does not depend on that coercion.
+def test_a_validated_task_keys_on_what_it_receives(cache_dir):
+    # `validate` hands the function 2 either way, so "2" and 2 are the same call.
     calls = []
 
     @task
@@ -1290,7 +1290,92 @@ def test_the_key_uses_the_raw_params_the_dag_was_given(cache_dir):
     with run_scope(params={"step": {"b": "2"}}):
         assert cached.call(a=1, b="2") == 3
     with run_scope(params={"step": {"b": 2}}):
-        cached.call(a=1, b="2")
+        cached.call(a=1, b=2)
 
-    # The coerced argument is identical either way; the raw param is not.
-    assert calls == [(1, 2), (1, 2)]
+    assert calls == [(1, 2)]
+
+
+def test_an_unvalidated_task_keys_on_the_raw_params(cache_dir):
+    # Without `validate` the function sees "2" and 2 as given, so they must not merge.
+    calls = []
+
+    @task
+    def echo(b: Any) -> Json:
+        calls.append(b)
+        return b
+
+    cached = echo.set_task_instance_id("step").cached(spec())
+    with run_scope(params={"step": {"b": "2"}}):
+        cached.call(b="2")
+    with run_scope(params={"step": {"b": 2}}):
+        cached.call(b=2)
+
+    assert calls == ["2", 2]
+
+
+def test_a_spelled_out_default_shares_the_key_of_an_omitted_one(cache_dir):
+    calls = []
+
+    @task
+    def scale(n: int, factor: int = 3) -> int:
+        calls.append((n, factor))
+        return n * factor
+
+    cached = scale.validate().set_task_instance_id("step").cached(spec())
+    with run_scope(params={"step": {"n": 2}}):
+        cached.call(n=2)
+    with run_scope(params={"step": {"n": 2, "factor": 3}}):
+        cached.call(n=2, factor=3)
+
+    assert calls == [(2, 3)]
+
+
+def test_equal_datetimes_in_different_spellings_share_a_key(cache_dir):
+    calls = []
+
+    @task
+    def since(at: datetime) -> str:
+        calls.append(at)
+        return at.isoformat()
+
+    cached = since.validate().set_task_instance_id("step").cached(spec())
+    for spelled in ("2026-01-01T12:00", "2026-01-01T12:00:00"):
+        with run_scope(params={"step": {"at": spelled}}):
+            cached.call(at=spelled)
+
+    assert len(calls) == 1
+
+
+def test_an_excluded_field_still_tells_two_calls_apart(cache_dir):
+    class Opts(BaseModel):
+        shown: int = 0
+        hidden: int = Field(default=0, exclude=True)
+
+    calls = []
+
+    @task
+    def use(opts: Opts) -> int:
+        calls.append(opts.hidden)
+        return opts.hidden
+
+    cached = use.validate().set_task_instance_id("step").cached(spec())
+    for hidden in (1, 2):
+        with run_scope(params={"step": {"opts": {"hidden": hidden}}}):
+            cached.call(opts={"hidden": hidden})
+
+    assert calls == [1, 2]
+
+
+def test_the_report_carries_each_steps_wall_time(cache_dir):
+    add, _ = counting_task()
+    cached = add.set_task_instance_id("step").cached(spec())
+    with run_scope():
+        cached.call(1, 2)
+        miss = run_report()["step"]
+    with run_scope():
+        cached.call(1, 2)
+        hit = run_report()["step"]
+
+    assert (miss["outcome"], hit["outcome"]) == ("miss", "hit")
+    assert miss["ms"] is not None
+    assert hit["ms"] is not None
