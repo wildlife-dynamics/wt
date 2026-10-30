@@ -18,6 +18,7 @@ from jinja2 import Environment, FileSystemLoader
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 from rattler import Channel, MatchSpec, NamelessMatchSpec
 from wt_contracts import ValidationError
+from wt_contracts.params import LATEST_RULES as CANONICAL_PARAMS_RULES
 
 from wt_compiler.artifacts import (
     Dags,
@@ -973,7 +974,10 @@ class DagCompiler(BaseModel):
         env = Environment(loader=loader)  # noqa: S701  # rendering Python code, not HTML
         template = env.get_template(f"run_{dag_type}.jinja2")
         return template.render(
-            self.get_dag_config(dag_type, mock_io=mock_io) | {"testing": mock_io}
+            self.get_dag_config(dag_type, mock_io=mock_io)
+            # Pinned at emit time, so an installed wt-contracts upgrade can't change
+            # what an already-compiled workflow runs.
+            | {"testing": mock_io, "canonical_params_rules": CANONICAL_PARAMS_RULES}
         )
 
     @ruff_formatted
