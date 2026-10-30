@@ -13,7 +13,15 @@ Runtime knobs live in `CacheSettings`, read once per `run_scope`.
 
 from ._codec import BYTES, JSON, PATH, SKIP, URL, Codec, Undigestible, enum_codec
 from ._entry import CacheEntry
-from ._key import CacheRecord, record, run_report, run_scope, step_identity, step_params
+from ._key import (
+    CacheRecord,
+    normalized_params,
+    record,
+    run_report,
+    run_scope,
+    step_identity,
+    step_params,
+)
 from ._report import REPORT_NAME, cache_report, put_cache_report
 from ._runtime import CacheCorruptionError, CacheMismatchWarning, cached_call
 from ._settings import CacheSettings, load_settings
@@ -43,6 +51,7 @@ __all__ = [
     "cached_call",
     "enum_codec",
     "load_settings",
+    "normalized_params",
     "open_store",
     "put_cache_report",
     "record",

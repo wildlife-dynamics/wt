@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 from pydantic import validate_call
 
-from .cache import cached_call, resolve_task
+from .cache import cached_call, normalized_params, resolve_task, step_params
 from .exceptions import handle_errors as handle_errors_fn
 from .executors import AsyncExecutor, SyncExecutor
 from .executors.python import PythonExecutor
@@ -75,6 +75,9 @@ class _Task(Generic[P, R, K, V]):
     # kw_only so that a default here does not force one onto `AsyncTask.executor`,
     # which has no sensible default.
     cache_spec: CacheSpec | None = field(default=None, kw_only=True)
+    # Set by `validate`: the function then receives validated arguments, so the
+    # cache can key on them instead of on their raw spelling.
+    validated: bool = field(default=False, kw_only=True)
     encoding: TaskEncoding | None = field(default=None, kw_only=True, repr=False, compare=False)
 
     def set_task_instance_id(self, task_instance_id: str, /) -> Self:
@@ -162,6 +165,7 @@ class _Task(Generic[P, R, K, V]):
                 validate_return=True,
                 config={"arbitrary_types_allowed": True},
             ),
+            validated=True,
         )
 
     def with_tracing(self) -> Self:
@@ -302,8 +306,14 @@ class _Task(Generic[P, R, K, V]):
         """
         if self.cache_spec is None or self.encoding is None:
             return run()
+        task_instance_id = self.task_instance_id or ""
+        params = step_params(task_instance_id)
+        if self.validated:
+            # Only then is the validated value what the function receives; an
+            # unvalidated task may behave differently for "2" and 2.
+            params = normalized_params(self.func, params, self.cache_spec.upstream_inputs)
         result, hit = cached_call(
-            self.cache_spec, run, self.encoding, self.task_instance_id or "", method
+            self.cache_spec, run, self.encoding, task_instance_id, method, params
         )
         if span is not None:
             span.set_attribute("cache.hit", hit)

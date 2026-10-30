@@ -64,7 +64,7 @@ def test_a_completed_run(store_settings):
     assert "failed_step" not in report
     assert report["summary"] == {"hit": 1, "miss": 1}
     assert report["steps"]["a"]["outcome"] == "miss"
-    assert set(report["steps"]["a"]) == {"digest", "outcome", "reason"}
+    assert set(report["steps"]["a"]) == {"digest", "outcome", "reason", "ms"}
 
 
 def test_a_failed_run_keeps_the_rows_before_the_failure_and_names_the_step(store_settings):
