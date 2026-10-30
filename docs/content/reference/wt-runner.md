@@ -168,6 +168,16 @@ Traces propagate through the execution chain using W3C trace context headers:
 HTTP request → wt-runner → workflow subprocess → wt-task
 ```
 
+### Span flushing in the workflow process
+
+The generated workflow CLI flushes its tracer provider when the run ends,
+including when it fails or receives SIGTERM, with a 5-second flush timeout.
+Without this, spans still buffered by the batch processor, and the run's
+still-open root span (`{release}.cli`), are lost whenever the process is
+stopped. The local invokers send SIGTERM before SIGKILL with a 10-second grace
+window, which leaves room for the flush. A SIGKILL can't be caught, so a run
+killed outright still loses its unflushed spans.
+
 ---
 
 ## Testing Utilities
