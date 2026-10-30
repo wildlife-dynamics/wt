@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from rattler import MatchSpec
+from wt_contracts.params import LATEST_RULES as CANONICAL_PARAMS_RULES
 
 from wt_compiler import spec as wt_spec
 from wt_compiler.cli import main
@@ -113,6 +114,18 @@ def test_run_scope_wraps_the_dag_body(cached_dag):
     # The run's parameters go in once, here, rather than into every step.
     assert "with run_scope(params=params):" in cached_dag
     assert "return _main(params, validate_params_schema)" in cached_dag
+
+
+def test_params_are_canonicalised_at_entry_with_pinned_rules(cached_dag):
+    # Before run_scope, so every step's key sees one spelling per meaning; the
+    # rules version is the one this compiler shipped with, not whatever is installed.
+    entry = cached_dag.index("canonical_params(params,")
+    assert entry < cached_dag.index("with run_scope(params=params)")
+    assert f"rules={CANONICAL_PARAMS_RULES})" in cached_dag
+
+
+def test_without_caching_params_are_not_canonicalised(demo_spec):
+    assert "canonical_params" not in DagCompiler(spec=demo_spec).render_dag("sequential")
 
 
 def test_dependencies_are_emitted_as_upstream_task_ids(cached_dag):
