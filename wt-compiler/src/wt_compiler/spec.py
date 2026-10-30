@@ -8,6 +8,7 @@ the workflow specification (spec.yaml) input format.
 import builtins
 import copy
 import hashlib
+import json
 import keyword
 from enum import StrEnum
 from pathlib import Path
@@ -45,6 +46,7 @@ class TaskTag(StrEnum):
     """Tags for categorizing tasks."""
 
     io = "io"
+    no_cache = "no-cache"
 
 
 class KnownTask(BaseModel):
@@ -60,6 +62,12 @@ class KnownTask(BaseModel):
     registry_ref: int = 0
     json_schema: dict[str, Any] = Field(default_factory=dict)
     description: str | None = None
+    # `exclude=True` is load-bearing: `Spec.sha256` dumps the model, so a
+    # serialized field here would move every existing workflow's fingerprint.
+    # Nothing re-parses a dumped `KnownTask` — the builder rebuilds it from the
+    # global `known_tasks` table.
+    declares_codec: bool = Field(default=False, exclude=True)
+    cache_declaration_error: str | None = Field(default=None, exclude=True)
 
     @property
     def anchor(self) -> str:
@@ -82,6 +90,42 @@ class KnownTask(BaseModel):
             if self.registry_ref > 0
             else self.function_name
         )
+
+    @property
+    def signature(self) -> str:
+        """Hash identifying this task's code *shape* for the step cache.
+
+        Deliberately not a `computed_field`: `Spec.sha256` dumps the model, so
+        a new serialized field would move every workflow's fingerprint and force
+        a version bump across every downstream repo.
+
+        The schema is included because a distribution version only moves on
+        release — a signature change within a release still has to invalidate.
+        """
+        return hashlib.sha256(
+            json.dumps(
+                {
+                    "anchor": self.anchor,
+                    "function": self.function_name,
+                    "json_schema": self.json_schema,
+                },
+                sort_keys=True,
+            ).encode()
+        ).hexdigest()[:16]
+
+    @property
+    def is_cacheable(self) -> bool:
+        """Whether a stored result may be served for this task.
+
+        The `no-cache` tag is the author's claim that their function returns
+        something a stored copy cannot stand in for. It says nothing about the
+        steps below it: an opted-out task still digests and promotes its output,
+        so its dependents keep hitting.
+
+        Deliberately not a `computed_field`, for the same reason as its
+        neighbours: `Spec.sha256` dumps the model.
+        """
+        return TaskTag.no_cache not in self.tags
 
     def parameters_jsonschema(self, omit_args: list[str] | None = None) -> dict[str, Any]:
         """Get JSON schema for task parameters.
@@ -597,6 +641,68 @@ def _find_task_id_vars(
                 yield from _find_task_id_vars(elem)
 
 
+def _find_env_vars(v: Any) -> "Generator[EnvVariable, None, None]":
+    """Recursively extract EnvVariable from nested structures.
+
+    The sibling of `_find_task_id_vars`, for the other kind of reference a
+    partial argument can hold.
+
+    Args:
+        v: A value from a partial argument (DictOrVarsOrInlineValue)
+
+    Yields:
+        EnvVariable instances found in the structure
+    """
+    match v:
+        case EnvVariable():
+            yield v
+        case VariableValuesDict():
+            for dict_val in v.value.values():
+                yield from _find_env_vars(dict_val)
+        case VariableValuesList():
+            for list_item in v.value:
+                yield from _find_env_vars(list_item)
+        case list():
+            for elem in v:
+                yield from _find_env_vars(elem)
+
+
+_DEP_MARKER = "$dep"
+
+
+def _fixed_input_shape(v: Any) -> Any:
+    """Render one bound argument without naming any upstream task instance.
+
+    The sibling of `_find_task_id_vars`, and it must walk in the same order:
+    the upstream *values* already reach the key as ordered digests under
+    `upstream_inputs`, so all `cache_fixed_inputs` records is where a reference sits —
+    the nth marker here is the nth digest there. Hence one constant marker
+    rather than a deletion, which would collide `{x: ref}` with `{y: ref}`.
+
+    Nested dicts become ordered key/value pairs because the enclosing hash
+    sorts keys, and sorted keys would let two different bindings of the same
+    two upstreams share a key. Literals are tagged so that a literal string
+    can never be read as a marker or as a dict key.
+    """
+    match v:
+        case TaskIdVariable():
+            return _DEP_MARKER
+        case EnvVariable():
+            # Left as-is: env names are not workflow-specific, and their values
+            # reach the key separately through `cache_env`.
+            return v.serialize()
+        case InlineValue():
+            return {"lit": v.value}
+        case VariableValuesDict():
+            return [[k, _fixed_input_shape(inner)] for k, inner in v.value.items()]
+        case VariableValuesList():
+            return [_fixed_input_shape(inner) for inner in v.value]
+        case list():
+            return [_fixed_input_shape(inner) for inner in v]
+        case _:
+            return {"lit": v}
+
+
 class _ParallelOperation(_ForbidExtra):
     """Base class for parallel operations (map and mapvalues)."""
 
@@ -757,6 +863,68 @@ class TaskInstance(_ForbidExtra):
             | self.mapvalues.all_dependencies_dict
         )
 
+    @property
+    def cache_upstream_inputs(self) -> dict[str, list[str]]:
+        """Argument name to the task-instance ids supplying it.
+
+        Args bound only to literals or environment variables are omitted; they
+        are covered by `cache_fixed_inputs` and `cache_env` instead.
+        """
+        return {arg: ids for arg, ids in self.all_dependencies_dict.items() if ids}
+
+    @property
+    def cache_env(self) -> list[str]:
+        """Names of environment variables bound to this instance's arguments.
+
+        Their *values* go into the key at run time: a per-run results directory
+        must move the key, or a warm run would replay a URL into a directory
+        that no longer exists.
+        """
+        bound = [*self.partial.values(), self.map.argvalues, self.mapvalues.argvalues]
+        seen = {var.value for dep in bound for var in _find_env_vars(dep)}
+        return sorted(seen)
+
+    @property
+    def cache_fixed_inputs(self) -> str:
+        """Compile-time hash of how this instance's arguments are bound.
+
+        Covers literal values, the shape of the binding (which dependency sits
+        in which position), the parallel-operation argnames, and the skipif
+        conditions — everything about the call that is fixed at compile time.
+        The conditions decide whether a step returns the skip sentinel at all,
+        so two bindings that differ only there must not share an entry.
+
+        Deliberately id-free: upstream steps appear as `$dep` markers rather
+        than by name, so two workflows that bind the same task to the same
+        values share an entry however their specs happen to name the steps.
+        What those upstreams produced is already in the key, as digests.
+        """
+        return hashlib.sha256(
+            json.dumps(
+                {
+                    "partial": {arg: _fixed_input_shape(dep) for arg, dep in self.partial.items()},
+                    "map": {
+                        "argnames": self.map.argnames,
+                        "argvalues": _fixed_input_shape(self.map.argvalues),
+                    },
+                    "mapvalues": {
+                        "argnames": self.mapvalues.argnames,
+                        "argvalues": _fixed_input_shape(self.mapvalues.argvalues),
+                    },
+                    "skipif": None
+                    if self.skipif is None
+                    else {
+                        "conditions": [
+                            f"{k.anchor}.{k.function_name}" for k in self.skipif.known_tasks
+                        ],
+                        "unpack_depth": self.skipif.unpack_depth,
+                    },
+                },
+                sort_keys=True,
+                default=str,
+            ).encode()
+        ).hexdigest()[:16]
+
     @model_validator(mode="after")
     def check_does_not_depend_on_self(self) -> "TaskInstance":
         """Validate that a task doesn't depend on itself."""
@@ -797,6 +965,30 @@ class TaskInstance(_ForbidExtra):
             _ = self.known_task
         except ValueError as e:
             raise e
+        return self
+
+    @model_validator(mode="after")
+    def check_unfillable_required_args_are_bound(self) -> "TaskInstance":
+        """Validate that every required arg hidden from the form is bound in the spec.
+
+        A required arg that the task's schema leaves out of `properties` (an
+        `exclude=True` field) cannot come from the run's parameters either, so
+        an unbound one would only fail when the step is finally called, after
+        every step before it has run.
+        """
+        schema = self.known_task.json_schema
+        bound = {*self.partial, *self.map.argnames, *self.mapvalues.argnames}
+        missing = [
+            arg
+            for arg in schema.get("required", [])
+            if arg not in schema.get("properties", {}) and arg not in bound
+        ]
+        if missing:
+            raise ValueError(
+                f"Task instance `{self.id}` ({self.known_task_name}) does not bind required "
+                f"argument(s) {missing}, which the run's parameters cannot supply. "
+                "Bind them under `partial`, `map` or `mapvalues`."
+            )
         return self
 
     @computed_field  # type: ignore[prop-decorator]

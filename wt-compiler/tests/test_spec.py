@@ -560,6 +560,38 @@ class TestTaskInstance:
         finally:
             known_tasks.clear()
 
+    @pytest.fixture
+    def hidden_required_arg(self):
+        """`root_path` is required but, like an `exclude=True` field, not a form property."""
+        known_tasks["dashboard"] = {
+            "mod": KnownTask(
+                importable_reference="mod.dashboard",
+                json_schema={
+                    "properties": {"title": {"type": "string"}},
+                    "required": ["title", "root_path"],
+                },
+            )
+        }
+        yield
+        known_tasks.clear()
+
+    def test_an_unbound_hidden_required_arg_fails_at_compile_time(self, hidden_required_arg):
+        with pytest.raises(ValueError, match=r"`dash` .* \['root_path'\]"):
+            TaskInstance(id="dash", task="mod.dashboard")
+
+    def test_a_required_form_property_may_stay_unbound(self, hidden_required_arg):
+        """`title` is a form property: the run's parameters can supply it."""
+        TaskInstance(
+            id="dash", task="mod.dashboard", partial={"root_path": "${{ env.WT_RESULTS }}"}
+        )
+
+    def test_a_hidden_required_arg_may_be_bound_by_map(self, hidden_required_arg):
+        TaskInstance(
+            id="dash",
+            task="mod.dashboard",
+            map={"argnames": ["root_path"], "argvalues": "${{ workflow.roots.return }}"},
+        )
+
 
 class TestInlineValue:
     """Tests for InlineValue.serialize()."""

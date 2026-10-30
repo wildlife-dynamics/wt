@@ -1,0 +1,628 @@
+"""A step's cache key, and the per-run state it reads.
+
+Every argument a step receives is content-exact in its key: literals through
+`fixed_inputs`, environment reads through `env`, form values through the
+params `run_scope` was given, and upstream outputs through `upstream_inputs`,
+as the digests their producers recorded. A warm run stays cheap because those
+digests are read from run state rather than recomputed from values the step is
+not going to decode.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import functools
+import hashlib
+import importlib.metadata
+import inspect
+import os
+import typing
+import warnings
+from collections import deque
+from collections.abc import Mapping
+from contextvars import ContextVar
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Literal
+
+from packaging.requirements import InvalidRequirement, Requirement
+from packaging.utils import canonicalize_name
+from pydantic import BaseModel, TypeAdapter
+from pydantic_core import to_jsonable_python
+
+from wt_task.exceptions import TaskInstanceError
+
+from ._codec import json_digest
+from ._settings import CacheSettings, active_settings, load_settings, use_settings
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Collection, Iterator
+
+    from ._spec import CacheSpec, TaskEncoding
+
+
+Outcome = Literal["hit", "miss", "expired", "unservable", "refused", "uncacheable", "inert"]
+
+
+@dataclass(frozen=True)
+class CacheRecord:
+    """What one step contributed to the run, and why.
+
+    Attributes:
+        digest: The content digest downstream steps fold into their keys, or
+            None when this step could not be cached.
+        outcome: What the cache did for this step.
+        reason: Why, for the outcomes that are not self-explanatory.
+        ms: Wall time of the step: the run on a miss, the load on a hit.
+    """
+
+    digest: str | None
+    outcome: Outcome
+    reason: str | None = None
+    ms: float | None = None
+
+
+_RUN_RECORDS: ContextVar[dict[str, CacheRecord]] = ContextVar("_RUN_RECORDS")
+# Per-step form values, as the DAG received them. Passed once at DAG entry
+# rather than baked into every step's spec. Keyed on raw unless the task is
+# validated, when `normalized_params` keys on what the function receives.
+_RUN_PARAMS: ContextVar[dict[str, Any]] = ContextVar("_RUN_PARAMS")
+
+# The generated CLI writes its cache report after the DAG's scope has closed,
+# so the last table outlives it. One run per process, so one slot is enough.
+_LAST_RUN: dict[str, CacheRecord] = {}
+
+
+@dataclass
+class _Exit:
+    """How the last `run_scope` ended, for a report built after it closed.
+
+    Strings rather than the exception itself, which would keep every frame of
+    the failed run alive.
+    """
+
+    settings: CacheSettings | None = None
+    error: str | None = None
+    failed_step: str | None = None
+
+
+_LAST_EXIT = _Exit()
+
+
+def _failed_step(error: BaseException) -> str | None:
+    """The task instance an error came from, if anything in its chain says."""
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        if isinstance(current, TaskInstanceError):
+            return current.task_instance_id
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+    return None
+
+
+@contextlib.contextmanager
+def run_scope(
+    params: dict[str, Any] | None = None,
+    settings: CacheSettings | None = None,
+) -> Iterator[dict[str, CacheRecord]]:
+    """Scope a fresh record table, this run's parameters and its settings.
+
+    Entered once at DAG entry. The table maps task-instance ids to this run's
+    digests, and an id only names a step within one run, so it must not leak
+    between runs; stored entries are keyed by content and are shared regardless.
+    Settings are read here once rather than per step.
+
+    Args:
+        params: The whole run's parameters, keyed by task-instance id, exactly
+            as the DAG received them.
+        settings: Explicit settings. Loaded from the environment and its file
+            sources when omitted.
+
+    Examples:
+        >>> with run_scope() as records:
+        ...     record("a", "deadbeef", "miss")
+        ...     records["a"].digest
+        'deadbeef'
+    """
+    table: dict[str, CacheRecord] = {}
+    resolved = settings if settings is not None else load_settings()
+    token = _RUN_RECORDS.set(table)
+    params_token = _RUN_PARAMS.set(params or {})
+    error: str | None = None
+    failed_step: str | None = None
+    try:
+        with use_settings(resolved):
+            yield table
+    except Exception as e:
+        error, failed_step = str(e) or type(e).__name__, _failed_step(e)
+        raise
+    finally:
+        _RUN_RECORDS.reset(token)
+        _RUN_PARAMS.reset(params_token)
+        # Kept on failure too: what ran before the error is the useful part.
+        _LAST_RUN.clear()
+        _LAST_RUN.update(table)
+        _LAST_EXIT.settings, _LAST_EXIT.error, _LAST_EXIT.failed_step = (
+            resolved,
+            error,
+            failed_step,
+        )
+
+
+def normalized_params(
+    func: Callable[..., Any], params: dict[str, Any], upstream: Collection[str] = ()
+) -> dict[str, Any]:
+    """`params` as `func` receives them: validated against its signature, defaults filled.
+
+    Two forms that mean the same call (a default omitted or spelled out, a datetime in
+    another format) then share a key. Arguments supplied elsewhere (partials, upstream
+    outputs) are not filled in, and a value that will not validate keys on its raw
+    form, so this can only merge keys for equal calls, never fail a run.
+
+    Examples:
+        >>> def f(n: int, label: str = "x") -> int:
+        ...     return n
+        >>> normalized_params(f, {"n": "3"})
+        {'n': 3, 'label': 'x'}
+    """
+    target, bound = func, set[str]()
+    while True:
+        if isinstance(target, functools.partial):
+            bound |= set(target.keywords)
+            target = target.func
+        elif (wrapped := getattr(target, "__wrapped__", None)) is not None:
+            target = wrapped
+        else:
+            break
+    try:
+        signature = inspect.signature(target)
+        hints = typing.get_type_hints(target, include_extras=True)
+    except Exception:  # noqa: BLE001  # an unresolvable signature keys on raw params
+        return params
+
+    out = dict(params)
+    for name, parameter in signature.parameters.items():
+        if name in params:
+            value = params[name]
+        elif parameter.default is not inspect.Parameter.empty and name not in bound | set(upstream):
+            value = parameter.default
+        else:
+            continue
+        out[name] = _normalized_value(hints.get(name, Any), value)
+    return out
+
+
+def _normalized_value(annotation: Any, value: Any) -> Any:  # noqa: ANN401  # any declared type
+    try:
+        try:
+            adapter = _adapter(annotation)
+        except TypeError:  # an unhashable annotation can't be memoised
+            adapter = TypeAdapter(annotation)
+        return _jsonable(adapter.validate_python(value))
+    except Exception:  # noqa: BLE001  # unvalidatable: key on what was given
+        with contextlib.suppress(Exception):
+            return _jsonable(value)
+        return value
+
+
+@functools.lru_cache(maxsize=1024)
+def _adapter(annotation: Any) -> TypeAdapter[Any]:  # noqa: ANN401  # any declared type
+    return TypeAdapter(annotation)
+
+
+def _jsonable(value: Any) -> Any:  # noqa: ANN401  # any validated value
+    # Field by field rather than model_dump: an `exclude=True` field still tells
+    # two calls apart, so it must stay in the key.
+    if isinstance(value, BaseModel):
+        return {name: _jsonable(getattr(value, name)) for name in type(value).model_fields}
+    if isinstance(value, dict):
+        return {k: _jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(v) for v in value]
+    return to_jsonable_python(value)
+
+
+def step_params(task_instance_id: str) -> dict[str, Any]:
+    """Return the parameters this run gave one step, or an empty dict.
+
+    Examples:
+        >>> with run_scope(params={"a": {"n": 1}}):
+        ...     step_params("a")
+        {'n': 1}
+    """
+    params = _RUN_PARAMS.get(None) or {}
+    return params.get(task_instance_id) or {}
+
+
+def record(
+    task_instance_id: str,
+    digest: str | None,
+    outcome: Outcome,
+    reason: str | None = None,
+    ms: float | None = None,
+) -> None:
+    """Record what `task_instance_id` contributes to its dependents' keys.
+
+    A no-op outside a `run_scope`, so a task called directly in a test or a REPL
+    behaves exactly as it does today.
+    """
+    records = _RUN_RECORDS.get(None)
+    if records is not None:
+        records[task_instance_id] = CacheRecord(digest, outcome, reason, ms)
+
+
+def run_report() -> dict[str, dict[str, str | float | None]]:
+    """Per-step cache outcomes for this run, as JSON-able rows.
+
+    The compile-time report is a claim about declared types; this is what
+    actually happened — which steps were served, which refused, and why.
+
+    Examples:
+        >>> with run_scope():
+        ...     record("a", None, "refused", "no union arm")
+        ...     run_report()
+        {'a': {'digest': None, 'outcome': 'refused', 'reason': 'no union arm', 'ms': None}}
+    """
+    records = _RUN_RECORDS.get(None)
+    table = records if records is not None else _LAST_RUN
+    return {
+        step: {"digest": row.digest, "outcome": row.outcome, "reason": row.reason, "ms": row.ms}
+        for step, row in table.items()
+    }
+
+
+def _upstream_digest(task_instance_id: str) -> str | None:
+    records = _RUN_RECORDS.get(None)
+    if records is None:
+        return None
+    row = records.get(task_instance_id)
+    return row.digest if row is not None else None
+
+
+@dataclass(frozen=True)
+class _Installed:
+    """One distribution's metadata, read once."""
+
+    version: str
+    requires: tuple[str, ...]
+    extras: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _Unreadable:
+    """A distribution whose metadata raised; looking it up re-raises."""
+
+    error: Exception
+
+
+@functools.cache
+def _index() -> tuple[
+    dict[str, _Installed | _Unreadable], tuple[tuple[importlib.metadata.Distribution, str], ...]
+]:
+    """Read every installed distribution's metadata in one pass.
+
+    Per-name `importlib.metadata` calls rescan every path entry and re-parse
+    METADATA each time, which across a few hundred distributions cost seconds
+    per process. Returns the first distribution per PEP 503 name — the one a
+    by-name lookup would find — plus every distribution with its `Name`, for
+    the top-level module lookup.
+    """
+    by_name: dict[str, _Installed | _Unreadable] = {}
+    every: list[tuple[importlib.metadata.Distribution, str]] = []
+    for dist in importlib.metadata.distributions():
+        try:
+            meta = dist.metadata
+            name = meta["Name"]
+            if name is None:
+                continue
+            requires = meta.get_all("Requires-Dist")
+            if requires is None and dist.read_text("requires.txt") is not None:
+                requires = dist.requires  # egg-info, as `Distribution.requires` falls back
+            entry: _Installed | _Unreadable = _Installed(
+                meta["Version"], tuple(requires or ()), tuple(meta.get_all("Provides-Extra") or ())
+            )
+        except Exception as e:  # re-raised on lookup, which fails closed
+            # The directory name is all we have left; without even that, no
+            # lookup could find this distribution, so nothing can be trusted.
+            stem: str | None = getattr(dist, "_normalized_name", None)
+            if stem is None:
+                raise
+            name, entry = stem, _Unreadable(e)
+        else:
+            every.append((dist, name))
+        by_name.setdefault(canonicalize_name(name), entry)
+    return by_name, tuple(every)
+
+
+def _installed(name: str) -> _Installed | None:
+    """Indexed metadata of an installed distribution, or None if it is not installed."""
+    entry = _index()[0].get(canonicalize_name(name))
+    if isinstance(entry, _Unreadable):
+        raise entry.error
+    return entry
+
+
+def _top_level_declared_310(dist: importlib.metadata.Distribution) -> list[str]:
+    return (dist.read_text("top_level.txt") or "").split()
+
+
+def _top_level_inferred_310(dist: importlib.metadata.Distribution) -> set[str]:
+    return {
+        f.parts[0] if len(f.parts) > 1 else f.with_suffix("").name
+        for f in dist.files or ()
+        if f.suffix == ".py"
+    }
+
+
+# Stdlib's own per-distribution halves of `packages_distributions`, from 3.11.
+# 3.10's reads only `top_level.txt`, which hatchling and flit never write, so
+# pydantic or packaging would resolve to nothing; the backports are 3.11's.
+_TOP_LEVEL_DECLARED: Any = getattr(
+    importlib.metadata, "_top_level_declared", _top_level_declared_310
+)
+_TOP_LEVEL_INFERRED: Any = getattr(
+    importlib.metadata, "_top_level_inferred", _top_level_inferred_310
+)
+
+
+class _LazyPackagesDistributions(Mapping[str, list[str]]):
+    """`importlib.metadata.packages_distributions()`, computed one key at a time.
+
+    The full mapping infers top-level names from `dist.files` for every
+    distribution without a `top_level.txt`, which parses every RECORD. A
+    distribution can only infer a name its RECORD text contains, so the others
+    are skipped unparsed. Inference itself stays stdlib's, which differs by
+    Python version.
+    """
+
+    def __init__(self) -> None:
+        self._found: dict[str, list[str]] = {}
+
+    @functools.cached_property
+    def _full(self) -> Mapping[str, list[str]]:
+        return importlib.metadata.packages_distributions()
+
+    def __getitem__(self, top_level: str) -> list[str]:
+        if top_level not in self._found:
+            self._found[top_level] = [
+                name for dist, name in _index()[1] if self._provides(dist, top_level)
+            ]
+        if not self._found[top_level]:
+            raise KeyError(top_level)
+        return self._found[top_level]
+
+    def _provides(self, dist: importlib.metadata.Distribution, top_level: str) -> bool:
+        declared = _TOP_LEVEL_DECLARED(dist)
+        if declared:
+            return top_level in declared
+        record = dist.read_text("RECORD")
+        if record and top_level not in record:
+            return False
+        return top_level in set(_TOP_LEVEL_INFERRED(dist))
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._full)
+
+    def __len__(self) -> int:
+        return len(self._full)
+
+
+@functools.lru_cache(maxsize=1)
+def _packages_distributions() -> Mapping[str, list[str]]:
+    return _LazyPackagesDistributions()
+
+
+def _installed_version(name: str) -> str | None:
+    """Version of an installed distribution, or None if it is not installed."""
+    installed = _installed(name)
+    return installed.version if installed is not None else None
+
+
+@functools.cache
+def _requirements(name: str) -> tuple[Requirement, ...]:
+    """Parsed requirements of one distribution, skipping any it spells wrongly."""
+    installed = _installed(name)
+    parsed = []
+    for raw in installed.requires if installed is not None else ():
+        try:
+            parsed.append(Requirement(raw))
+        except InvalidRequirement:  # noqa: PERF203  # per-requirement isolation; lists are short
+            continue
+    return tuple(parsed)
+
+
+def _extras(name: str) -> list[str]:
+    installed = _installed(name)
+    return list(installed.extras) if installed is not None else []
+
+
+def _gating_extras(req: Requirement, extras: list[str]) -> list[str]:
+    """Which of `extras` switch `req` on.
+
+    Empty both for an ordinary requirement and for one this environment
+    excludes outright, which is why callers must test the marker first.
+    """
+    if req.marker is None or req.marker.evaluate({"extra": ""}):
+        return []
+    return [extra for extra in extras if req.marker.evaluate({"extra": extra})]
+
+
+@functools.cache
+def _gated_requirements(name: str) -> tuple[tuple[Requirement, tuple[str, ...] | None], ...]:
+    """Each requirement of `name`, with the extras that switch it on or None if always on.
+
+    Evaluated once per distribution: marker evaluation is what the walk spends
+    its time on once metadata is indexed.
+    """
+    extras = _extras(name)
+    return tuple(
+        (
+            req,
+            None
+            if req.marker is None or req.marker.evaluate({"extra": ""})
+            else tuple(_gating_extras(req, extras)),
+        )
+        for req in _requirements(name)
+    )
+
+
+def _wanted(parent: str, gating: tuple[str, ...] | None) -> bool:
+    """Whether a requirement is part of this environment, and so part of the closure."""
+    if gating is None:
+        return True
+    # No extra switches it on either, so the marker excluded it for some other
+    # reason — a platform or a Python version this environment is not.
+    return any(_extra_is_installed(parent, extra) for extra in gating)
+
+
+@functools.cache
+def _extra_is_installed(name: str, extra: str) -> bool:
+    """Whether every requirement this extra switches on is present.
+
+    The rule for extras, which no installed-package metadata records: an extra
+    counts as in use when all of its own requirements are installed. That picks
+    up `ecoscope[platform]` in a platform environment and leaves `[gcp]` out of
+    a local one, without asking the workflow which extras it asked for.
+    """
+    members = [req for req, gating in _gated_requirements(name) if gating and extra in gating]
+    return all(_installed_version(req.name) is not None for req in members)
+
+
+@functools.cache
+def _closure_fingerprint(roots: tuple[str, ...]) -> str:
+    """Digest the installed distributions transitively reachable from `roots`.
+
+    A task's own version only moves on its own release, so without this a new
+    pandas or geopandas under an unchanged `ecoscope` would serve results the
+    new code would not produce. Only installed requirements are followed: a
+    missing optional dependency is not part of this environment.
+
+    Which extras of a root are in use is unrecorded, so `_wanted` infers them.
+    Below the roots, an extra is followed only when a requirement that reached
+    the distribution names it. Inferring there too pulls in `pandas[xml]` or a
+    `[test]` extra whenever an unrelated package happens to install lxml or
+    pytest, giving every workflow with extra tooling a private cache.
+    """
+    found: dict[str, str] = {}
+    followed: dict[str, set[str]] = {}
+    queue: deque[tuple[str, frozenset[str] | None]] = deque((root, None) for root in roots)
+    while queue:
+        raw, requested = queue.popleft()
+        name = canonicalize_name(raw)
+        version = _installed_version(name)
+        if version is None:
+            continue
+        first = name not in found
+        found[name] = version
+        if requested is None:
+            if not first:
+                continue
+            wanted = [req for req, gating in _gated_requirements(name) if _wanted(name, gating)]
+        else:
+            new = requested - followed.setdefault(name, set())
+            if not first and not new:
+                continue
+            followed[name] |= new
+            wanted = [
+                req
+                for req, gating in _gated_requirements(name)
+                if (gating is None and first)
+                or (gating and new & {canonicalize_name(e) for e in gating})
+            ]
+        queue.extend(
+            (req.name, frozenset(canonicalize_name(e) for e in req.extras)) for req in wanted
+        )
+
+    lines = "\n".join(f"{name}=={version}" for name, version in sorted(found.items()))
+    return hashlib.sha256(lines.encode("utf-8")).hexdigest()[:12]
+
+
+@functools.cache
+def distribution_fingerprint(anchor: str) -> str | None:
+    """Return a version string for the distribution providing `anchor`, else None.
+
+    None means "do not cache this step". Failing closed is the point: without a
+    version, a code change would not move the key and the cache would serve the
+    old result indefinitely. A module can map to more than one distribution, so
+    all of them are folded in, sorted for stability, followed by a digest of
+    their whole installed dependency closure.
+
+    The closure rather than the workflow's lock hash: every workflow resolves
+    its own environment, so a lock hash would give each one a private cache.
+    """
+    top_level = anchor.split(".")[0]
+    dists = _packages_distributions().get(top_level)
+    if not dists:
+        return None
+    roots = tuple(sorted(set(dists)))
+    try:
+        versions = [_installed_version(d) for d in roots]
+        if None in versions:
+            return None
+        own = ";".join(f"{d}=={v}" for d, v in zip(roots, versions, strict=True))
+        return f"{own}+deps:{_closure_fingerprint(roots)}"
+    except Exception as e:  # noqa: BLE001  # unreadable metadata must not serve stale results
+        warnings.warn(
+            f"Could not fingerprint the dependencies of {', '.join(roots)} ({e!r}); "
+            f"steps from {top_level!r} will not be cached.",
+            stacklevel=2,
+        )
+        return None
+
+
+def task_identity(spec: CacheSpec, encoding: TaskEncoding) -> str | None:
+    """Identify the code a step runs, or None if it cannot be pinned.
+
+    The `epoch` setting is the manual invalidator, for when a distribution version
+    cannot move: development against editable installs, or an unreleased task
+    stack. Derive it from the *task library* build — the image layer or lock
+    hash the tasks come from — not from the per-workflow image, or two
+    workflows shipping the same library would never share an entry.
+    """
+    version = distribution_fingerprint(encoding.anchor)
+    if version is None:
+        return None
+    epoch = active_settings().epoch
+    return f"{encoding.anchor}.{encoding.function}@{version}#{spec.signature}#{epoch}"
+
+
+def step_identity(
+    spec: CacheSpec, encoding: TaskEncoding, params: dict[str, Any], method: str = "call"
+) -> tuple[str | None, str | None]:
+    """Compute this step's cache key, or None and the reason it has none.
+
+    The key is None when the code cannot be pinned, or when any upstream step
+    was itself uncacheable — uncacheability propagates down the DAG, because a
+    key that omits an unknown input would collide across genuinely different
+    runs. `params` are the step's own run parameters; no task-instance id
+    reaches the key, which is what lets workflows share entries.
+    """
+    task = task_identity(spec, encoding)
+    if task is None:
+        return None, f"no distribution version for {encoding.anchor!r}"
+
+    upstream_inputs: dict[str, list[str]] = {}
+    for argname, dep_ids in spec.upstream_inputs.items():
+        digests = []
+        for dep_id in dep_ids:
+            digest = _upstream_digest(dep_id)
+            if digest is None:
+                return None, f"upstream {dep_id!r} uncacheable"
+            digests.append(digest)
+        upstream_inputs[argname] = digests
+
+    key = {
+        "task": task,
+        "structure": encoding.structures.get(method),
+        "fixed_inputs": spec.fixed_inputs,
+        "env": {name: os.environ.get(name, "") for name in spec.env},
+        "params": params,
+        "upstream_inputs": upstream_inputs,
+        # Every step, not only io ones: nothing computed under one principal is
+        # served to another. A derived step could be shared safely, since only
+        # someone holding the same input digests can reach it, but scoping it
+        # costs one cold run per scope and keeps that argument out of the trust
+        # boundary.
+        "scope": active_settings().scope,
+    }
+    return json_digest(key), None
