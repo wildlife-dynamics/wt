@@ -168,6 +168,12 @@ wait for the workflow process.
   `InvocationTimeoutError` once the child is gone. The generated workflow CLI
   flushes its spans on SIGTERM within 5 seconds, so keep the grace window
   above that if you change it.
+- **Cancelling by marker.** `wt_invokers.cancel.wait_unless_cancelled(invoker,
+  results_url)` waits like `wait()` but returns `None` once a `cancel` object
+  appears at the run's `results_url`, cancelling the wait so the child is
+  stopped as above. The caller and the host running the workflow need share
+  nothing but that location. Object-store URLs need `obstore`, from the `gcp`
+  extra or `wt-invokers-gcp`; without it such runs can't be cancelled.
 
 ---
 
