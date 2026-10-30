@@ -140,6 +140,25 @@ async def test_run_in_named_pixi_env_with_manifest() -> None:
 
 
 @pytest.mark.asyncio
+async def test_run_resolves_a_relative_manifest_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`pixi run` reads --manifest-path against the child's cwd, which may differ from ours."""
+    monkeypatch.chdir(tmp_path)
+    invoker = _invoker(pixi_env="events", manifest_path=Path("pixi.toml"), cwd="/")
+    with patch.object(subprocess, "Popen", return_value=MagicMock()) as popen:
+        await invoker.run(
+            workflow_run_id="r1",
+            config_text="{}",
+            results_url="file:///tmp/results",
+            execution_mode="sequential",
+            mock_io=False,
+        )
+    cmd = popen.call_args[0][0]
+    assert cmd[2:4] == ["--manifest-path", str(tmp_path / "pixi.toml")]
+
+
+@pytest.mark.asyncio
 async def test_run_sets_pythonpath_and_results_env() -> None:
     invoker = _invoker()
     with patch.object(subprocess, "Popen", return_value=MagicMock()) as popen:

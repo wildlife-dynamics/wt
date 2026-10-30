@@ -124,7 +124,9 @@ class CompiledPackageInvoker(SubprocessInvokerBase):
             return [sys.executable, *module_args]
         argv = ["pixi", "run"]
         if self.manifest_path is not None:
-            argv += ["--manifest-path", str(self.manifest_path)]
+            # Resolved for the same reason as release_dir: `pixi run` reads it
+            # against the child's cwd.
+            argv += ["--manifest-path", str(Path(self.manifest_path).resolve())]
         return [*argv, "-e", self.pixi_env, "python", *module_args]
 
     def _run_env_overrides(self) -> dict[str, str]:
