@@ -252,6 +252,10 @@ A task instance is a single invocation of a registered task function.
 Binds keyword arguments to a task. Keys must match the task function's
 parameter names.
 
+A required parameter that the task hides from the form (an `exclude=True`
+field) can only come from the spec, so it must be bound here, or by `map` or
+`mapvalues`. Leaving one unbound fails validation.
+
 ```yaml
 - id: create_chart
   task: create_bar_chart
