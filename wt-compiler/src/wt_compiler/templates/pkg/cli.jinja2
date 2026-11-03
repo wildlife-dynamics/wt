@@ -81,6 +81,9 @@ def run(
         configure_tracer,
         make_otel_console_exporter_file_dst_kws,
     )
+    {%- if cache %}
+    from wt_task.cache import put_cache_report
+    {%- endif %}
     try:
         from opentelemetry import trace
         _HAS_OTEL = True
@@ -146,6 +149,11 @@ def run(
         with tracer.start_as_current_span(f"{RELEASE_NAME}.cli", attributes=tracer_attributes):
             response = dispatch(execution_mode, mock_io, params, validate_params_schema=False)
             result_store = obstore.store.from_url(results_url)
+            {%- if cache %}
+            # First, and never raises: the report exists however the run or the
+            # result write turn out, and cannot replace the run's own error.
+            put_cache_report(result_store, error=response.error)
+            {%- endif %}
             result_bytes = response.model_dump_json().encode("utf-8")
             put_result = result_store.put("result.json", result_bytes)
             if not put_result:
@@ -153,6 +161,11 @@ def run(
     else:
         response = dispatch(execution_mode, mock_io, params, validate_params_schema=False)
         result_store = obstore.store.from_url(results_url)
+        {%- if cache %}
+        # First, and never raises: the report exists however the run or the
+        # result write turn out, and cannot replace the run's own error.
+        put_cache_report(result_store, error=response.error)
+        {%- endif %}
         result_bytes = response.model_dump_json().encode("utf-8")
         put_result = result_store.put("result.json", result_bytes)
         if not put_result:

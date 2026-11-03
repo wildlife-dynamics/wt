@@ -25,10 +25,17 @@ classifiers = [
 dependencies = [
     "wt-contracts>=0.1.0,<1.0.0",
     "pydantic>=2.0.0,<3.0.0",
+    # Parses the requirement metadata the cache key's dependency fingerprint walks.
+    "packaging>=23.0",
+    # Backs CacheSettings: env, .env and pyproject.toml sources for the cache knobs.
+    "pydantic-settings>=2.3.0,<3.0.0",
     "typing-extensions>=4.0.0; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
+cache = [
+    "obstore>=0.6.0",
+]
 gcp = [
     "opentelemetry-api>=1.20.0",
     "opentelemetry-sdk>=1.20.0",
@@ -86,6 +93,13 @@ warn_no_return = true
 module = [
     "opentelemetry",
     "opentelemetry.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "obstore",
+    "obstore.*",
 ]
 ignore_missing_imports = true
 
@@ -178,4 +192,6 @@ pip = "*"
 [tool.pixi.package.run-dependencies]
 python = ">=3.10,<3.16"
 pydantic = ">=2.0.0,<3.0.0"
+packaging = ">=23.0"
+pydantic-settings = ">=2.3.0,<3.0.0"
 wt-contracts = ">=0.1.0,<1.0.0"

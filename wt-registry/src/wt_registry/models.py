@@ -5,6 +5,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 # Import shared contract from wt-contracts
+from wt_contracts.codecs import CodecDeclarationError, declared_structure
 from wt_contracts.registry import RegistryMetadata
 
 from wt_registry.exceptions import SchemaGenerationError
@@ -130,6 +131,72 @@ class RegistryEntry(BaseModel):
 
         # Step 3: Return directly (no caching)
         return schema
+
+    @property
+    def declares_codec(self) -> bool:
+        """Whether the return type declares a cache codec that resolves.
+
+        Lazy like :attr:`json_schema`, and for the same reason: it is only read
+        at export. A bad declaration yields False here and surfaces through
+        :attr:`cache_declaration_error` instead of raising, so one unserializable
+        return type cannot break every non-caching compile against the library.
+
+        Raises:
+            SchemaGenerationError: If the return annotation cannot be resolved
+                at all (an unresolvable forward reference, say).
+
+        Examples:
+            >>> metadata = RegistryMetadata(title="Test", description="Test")
+            >>> def counts() -> int:
+            ...     return 1
+            >>> entry = RegistryEntry(
+            ...     metadata=metadata, module_path="test", function_name="counts"
+            ... )
+            >>> entry._func_ref = counts
+            >>> entry.declares_codec
+            True
+            >>> entry.cache_declaration_error is None
+            True
+        """
+        return self._cache_declaration()[0]
+
+    @property
+    def cache_declaration_error(self) -> str | None:
+        """Why the return type's codec declaration could not be resolved, if so.
+
+        Examples:
+            >>> from pydantic import BaseModel, Field
+            >>> from wt_contracts import ModelDumpCacheable
+            >>> class Broken(BaseModel, ModelDumpCacheable):
+            ...     __wt_codec__ = "mylib.codecs:model_codec"
+            ...     help_text: str = Field(default="", exclude=True)
+            >>> def make() -> Broken:
+            ...     return Broken()
+            >>> entry = RegistryEntry(
+            ...     metadata=RegistryMetadata(), module_path="test", function_name="make"
+            ... )
+            >>> entry._func_ref = make
+            >>> entry.declares_codec
+            False
+            >>> "help_text" in entry.cache_declaration_error
+            True
+        """
+        return self._cache_declaration()[1]
+
+    def _cache_declaration(self) -> tuple[bool, str | None]:
+        if self._func_ref is None:
+            raise AttributeError(
+                f"Cannot resolve cache declaration for {self.fully_qualified_name}: "
+                "function reference not set. Use @register decorator to register functions."
+            )
+        try:
+            return declared_structure(self._func_ref) is not None, None
+        except CodecDeclarationError as e:
+            return False, str(e)
+        except Exception as e:
+            raise SchemaGenerationError(
+                f"Failed to resolve cache declaration for {self.fully_qualified_name}: {e}"
+            ) from e
 
     @property
     def fully_qualified_name(self) -> str:
