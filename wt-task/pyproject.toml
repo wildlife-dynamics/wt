@@ -23,7 +23,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "wt-contracts>=0.1.0,<1.0.0",
+    "wt-contracts>=0.3.0,<1.0.0",
     "pydantic>=2.0.0,<3.0.0",
     # Parses the requirement metadata the cache key's dependency fingerprint walks.
     "packaging>=23.0",
@@ -175,7 +175,7 @@ convention = "google"
 
 [tool.pixi.package]
 name = "wt-task"
-version = "0.1.3"
+version = "0.2.0"
 
 [tool.pixi.package.build]
 backend = { name = "pixi-build-python", version = "*", channels = ["conda-forge", "https://prefix.dev/pixi-build-backends"] }
@@ -194,4 +194,4 @@ python = ">=3.10,<3.16"
 pydantic = ">=2.0.0,<3.0.0"
 packaging = ">=23.0"
 pydantic-settings = ">=2.3.0,<3.0.0"
-wt-contracts = ">=0.1.0,<1.0.0"
+wt-contracts = ">=0.3.0,<1.0.0"

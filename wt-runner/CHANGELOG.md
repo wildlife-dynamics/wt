@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.3.2 — 2026-11-03
+
+- Release to pick up the new `wt-invokers-gcp>=0.7.0` floor in `wt-runner-gcp`; no changes to the Python package contents
+
 ## v0.3.1 — 2026-10-08
 
 - Release to pick up the new `wt-invokers-gcp>=0.6.0` floor in `wt-runner-gcp`; no changes to the Python package contents

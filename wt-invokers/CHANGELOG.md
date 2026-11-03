@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.7.0 — 2026-11-03
+
+- Add `CompiledPackageInvoker`, which runs a compiled workflow package from a pre-solved environment, optionally in a named pixi environment ([#277](https://github.com/wildlife-dynamics/wt/pull/277))
+- On timeout or cancellation, subprocess invokers now send SIGTERM, wait `terminate_grace_seconds` (default 10s), then send SIGKILL, so the child can flush its tracing spans ([#277](https://github.com/wildlife-dynamics/wt/pull/277))
+- Add `wt_invokers.cancel`: a `cancel` marker object written beside a run's results cancels the run. The `gcp` extra now includes `obstore` ([#277](https://github.com/wildlife-dynamics/wt/pull/277))
+
 ## v0.6.0 — 2026-10-08
 
 - Add an optional `timeout` argument (seconds) to `CloudRunJobsSandboxInvoker.run()` that overrides the Cloud Run Job template's task timeout for that execution; `None` keeps the template default ([#257](https://github.com/wildlife-dynamics/wt/pull/257))

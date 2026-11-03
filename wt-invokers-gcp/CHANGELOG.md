@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.7.0 — 2026-11-03
+
+- Lockstep release with wt-invokers v0.7.0
+- Raise the `wt-invokers` floor to `>=0.7.0`, and add `obstore` for cancel markers
+
 ## v0.6.0 — 2026-10-08
 
 - Lockstep release with wt-invokers v0.6.0
