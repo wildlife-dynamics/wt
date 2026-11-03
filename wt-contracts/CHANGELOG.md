@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.0 — 2026-11-03
+
+- Add `wt_contracts.codecs`: `CodecRef`, `Cacheable`, `ModelDumpCacheable`, `declared_structure` and `CodecDeclarationError`, which let a task's return annotation declare how its result is cached ([#275](https://github.com/wildlife-dynamics/wt/pull/275))
+- Add `wt_contracts.params.canonical_params`, which normalizes workflow params against their JSON schema so equivalent configs produce the same cache key ([#275](https://github.com/wildlife-dynamics/wt/pull/275))
+- `RegistryEntry` gains `declares_codec` and `cache_declaration_error` fields ([#275](https://github.com/wildlife-dynamics/wt/pull/275))
+
 ## v0.2.0 — 2026-05-13
 
 - Add `formdata` module: schema-driven conversion helpers `formdata_to_params` / `params_to_formdata`, a `validate` wrapper around `jsonschema.Draft202012Validator`, and `ValidationError` / `ValidationErrorResponse` / `ValidationErrorItem` Pydantic models for FastAPI/OpenAPI use ([#164](https://github.com/wildlife-dynamics/wt/pull/164))

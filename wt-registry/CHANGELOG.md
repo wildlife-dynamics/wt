@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.3.0 — 2026-11-03
+
+- Registry entries now report whether each task's return type declares a resolvable cache codec. A bad declaration is recorded in `cache_declaration_error` instead of failing registry output ([#275](https://github.com/wildlife-dynamics/wt/pull/275))
+- Raise the `wt-contracts` floor to `>=0.3.0`
+
 ## v0.2.2 — 2026-05-13
 
 - Standardize ruff lint config to enforce type annotations and Google-style docstrings; convert docstrings and example scripts accordingly ([#155](https://github.com/wildlife-dynamics/wt/pull/155))

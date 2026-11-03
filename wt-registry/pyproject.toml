@@ -23,7 +23,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "wt-contracts>=0.1.0,<1.0.0",
+    "wt-contracts>=0.3.0,<1.0.0",
     "pydantic>=2.0.0,<3.0.0",
 ]
 
@@ -151,7 +151,7 @@ files = ["src/wt_registry"]
 
 [tool.pixi.package]
 name = "wt-registry"
-version = "0.2.2"
+version = "0.3.0"
 
 [tool.pixi.package.build]
 backend = { name = "pixi-build-python", version = "*", channels = ["conda-forge", "https://prefix.dev/pixi-build-backends"] }
@@ -168,4 +168,4 @@ pip = "*"
 [tool.pixi.package.run-dependencies]
 python = ">=3.10,<3.16"
 pydantic = ">=2.0.0,<3.0.0"
-wt-contracts = ">=0.1.0,<1.0.0"
+wt-contracts = ">=0.3.0,<1.0.0"
