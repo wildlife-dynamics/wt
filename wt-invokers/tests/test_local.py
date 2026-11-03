@@ -144,7 +144,7 @@ async def test_run_results_url_to_path_is_unchanged_on_posix(
     invoker = LocalSubprocessInvoker(matchspec=MatchSpec("test-workflow>=1.0.0"))
 
     with (
-        patch("wt_invokers.local.Path") as mock_path,
+        patch("wt_invokers._subprocess.Path") as mock_path,
         patch.object(subprocess, "Popen", return_value=MagicMock()),
     ):
         await invoker.run(
@@ -352,8 +352,15 @@ async def test_wait_timeout_raises_invocation_timeout_error() -> None:
     invoker._is_running = True
     invoker.run_state["process"] = mock_process
 
-    with pytest.raises(InvocationTimeoutError):
+    # A MagicMock pid coerces to 1: never let it reach a real os.killpg.
+    with (
+        patch(
+            "wt_invokers._subprocess._signal_group", return_value=False
+        ) as signal_group,
+        pytest.raises(InvocationTimeoutError),
+    ):
         await invoker.wait(timeout=10.0, error_msg="Workflow timed out")
+    signal_group.assert_called_once()
 
 
 @pytest.mark.asyncio

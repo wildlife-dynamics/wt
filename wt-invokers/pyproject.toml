@@ -40,6 +40,8 @@ gcp = [
     "google-cloud-batch>=0.19.0",
     "google-cloud-run>=0.10.0",
     "google-auth>=2.0.0",
+    # Reads cancel markers beside object-store results (wt_invokers.cancel).
+    "obstore>=0.6.0,<1.0.0",
 ]
 
 [dependency-groups]
@@ -102,6 +104,8 @@ module = [
     "google.cloud.run_v2.*",
     "stamina",
     "stamina.*",
+    "obstore",
+    "obstore.*",
 ]
 ignore_missing_imports = true
 
