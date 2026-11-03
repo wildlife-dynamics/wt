@@ -104,6 +104,8 @@ module = [
     "google.cloud.run_v2.*",
     "stamina",
     "stamina.*",
+    "obstore",
+    "obstore.*",
 ]
 ignore_missing_imports = true
 
