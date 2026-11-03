@@ -13,6 +13,42 @@ from urllib.request import url2pathname
 import click
 
 RELEASE_NAME = "{{ release_name }}"
+{% if compiled_against %}
+# The installed versions this package was compiled against (`--from-env`). Its
+# DAG and params schema reflect those task signatures, so running against any
+# other version could call tasks with parameters they no longer accept.
+COMPILED_AGAINST = {{ compiled_against | tojson }}
+
+
+def _installed_version(name: str) -> Optional[str]:
+    conda_meta = Path(sys.prefix) / "conda-meta"
+    for record in conda_meta.glob(f"{name}-*.json"):
+        data = json.loads(record.read_text())
+        if data.get("name") == name:
+            return data.get("version")
+    if name == "python":
+        import platform
+
+        return platform.python_version()
+    try:
+        return version(name)
+    except PackageNotFoundError:
+        return None
+
+
+def _check_compiled_against() -> None:
+    mismatches = [
+        f"  - {name}: compiled against {expected}, installed {_installed_version(name)}"
+        for name, expected in COMPILED_AGAINST.items()
+        if _installed_version(name) != expected
+    ]
+    if mismatches:
+        raise click.ClickException(
+            f"{RELEASE_NAME} was compiled against a different environment:\n"
+            + "\n".join(mismatches)
+            + "\nRecompile it with `wt-compiler compile --from-env` in this environment."
+        )
+{% endif %}
 
 
 @click.group()
@@ -73,6 +109,9 @@ def run(
         otel_exporter: Optional[str],
         otel_console_exporter_dst: str,
 ) -> None:
+{%- if compiled_against %}
+    _check_compiled_against()
+{%- endif %}
     import obstore
     import ruamel.yaml
     from wt_contracts import ValidationError, validate

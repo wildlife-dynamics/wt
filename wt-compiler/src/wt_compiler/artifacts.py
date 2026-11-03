@@ -359,7 +359,7 @@ class VersionYaml(BaseModel):
 SHA256 = re.compile(r"^[a-fA-F0-9]{64}$")
 
 
-def _params_sha256_from_readme(readme_md: str) -> str:
+def params_sha256_from_readme(readme_md: str) -> str:
     """Extract params_sha256 from README markdown.
 
     Args:
@@ -480,12 +480,18 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
             },
         )
 
-    def dump(self, clobber: bool = False, update: bool = False) -> None:
+    def dump(
+        self, clobber: bool = False, update: bool = False, carry_lockfile: bool = True
+    ) -> None:
         """Dump the artifacts to disk.
 
         Args:
             clobber: Whether to clobber an existing build directory
-            update: Whether to carry over the lockfile from the clobbered directory
+            update: Whether to bump the version from the clobbered directory, and
+                (with ``carry_lockfile``) carry over its lockfile
+            carry_lockfile: With ``update``, require and carry over the prior
+                ``pixi.lock``. False for a build whose environment lives elsewhere
+                (``--from-env``), which never has a lockfile of its own.
 
         Raises:
             ValueError: If README.md is not set
@@ -510,14 +516,13 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
                 lockfile = self.release_dir.joinpath("pixi.lock")
                 version_yaml = self.release_dir.joinpath("VERSION.yaml")
                 readme_md_file = self.release_dir.joinpath("README.md")
-                if not all(p.exists() for p in (lockfile, version_yaml, readme_md_file)):
-                    raise FileNotFoundError(
-                        f"To update, all of {(lockfile, version_yaml, readme_md_file)} must exist."
-                    )
-                prior_lockfile = lockfile.read_text()
+                required = (version_yaml, readme_md_file) + ((lockfile,) if carry_lockfile else ())
+                if not all(p.exists() for p in required):
+                    raise FileNotFoundError(f"To update, all of {required} must exist.")
+                prior_lockfile = lockfile.read_text() if carry_lockfile else None
                 prior_version_yaml = VersionYaml(**yaml.load(version_yaml.read_text()))
-                prior_params_sha256 = _params_sha256_from_readme(readme_md_file.read_text())
-                new_params_sha256 = _params_sha256_from_readme(self.readme_md)
+                prior_params_sha256 = params_sha256_from_readme(readme_md_file.read_text())
+                new_params_sha256 = params_sha256_from_readme(self.readme_md)
                 new_version = VersionYaml.bump_from(
                     prior_version=prior_version_yaml,
                     prior_params_sha256=prior_params_sha256,
@@ -539,7 +544,8 @@ class WorkflowArtifacts(_AllowArbitraryTypes):
                     stacklevel=2,
                 )
         if update:
-            self.release_dir.joinpath("pixi.lock").write_text(prior_lockfile)
+            if prior_lockfile is not None:
+                self.release_dir.joinpath("pixi.lock").write_text(prior_lockfile)
             new_version.dump(self.release_dir.joinpath("VERSION.yaml"))
         else:
             VersionYaml(MAJ=0, MIN=0).dump(self.release_dir.joinpath("VERSION.yaml"))

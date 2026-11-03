@@ -22,10 +22,10 @@ from wt_compiler.compiler import (
     Fingerprint,
     ParsedRequirements,
     _build_installed_requirements,
-    _load_default_injections,
     _parse_requirements_from_yaml,
     _remove_functionally_irrelevant_keys,
     compute_merged_default_feature,
+    load_default_injections,
 )
 from wt_compiler.env_overrides import load_env_overrides_file
 from wt_compiler.jsonschema import ReactJSONSchemaFormOverrides
@@ -328,7 +328,7 @@ class TestDagCompiler:
             workflow=[],
         )
         merged_default = compute_merged_default_feature(
-            _load_default_injections(),
+            load_default_injections(),
             spec_supplied_names={"python"},
             env_overrides=env_overrides,
         )
@@ -399,7 +399,7 @@ class TestDagCompiler:
             workflow=[],
         )
         merged_default = compute_merged_default_feature(
-            _load_default_injections(),
+            load_default_injections(),
             spec_supplied_names={"pydantic"},
         )
         compiler = DagCompiler(spec=spec)
@@ -434,7 +434,7 @@ class TestDagCompiler:
             workflow=[],
         )
         merged_default = compute_merged_default_feature(
-            _load_default_injections(),
+            load_default_injections(),
             spec_supplied_names={"python"},
             env_overrides=env_overrides,
         )

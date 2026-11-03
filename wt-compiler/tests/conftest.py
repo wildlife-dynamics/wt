@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from wt_compiler.compiler import _load_default_injections, compute_merged_default_feature
+from wt_compiler.compiler import compute_merged_default_feature, load_default_injections
 
 if TYPE_CHECKING:
     from wt_compiler.pixi_toml_fragment import FeatureSection
@@ -25,7 +25,7 @@ def merged_default_feature() -> FeatureSection:
     spec-supplied-suppression paths.
     """
     return compute_merged_default_feature(
-        _load_default_injections(),
+        load_default_injections(),
         spec_supplied_names=set(),
     )
 

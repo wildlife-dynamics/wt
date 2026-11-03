@@ -286,3 +286,29 @@ Dependency resolution failed. This may indicate:
   - Missing or invalid channel configuration"""
 
         return base_msg + guidance
+
+
+class InstalledRequirementsError(Exception):
+    """Raised when the current environment does not satisfy a spec's requirements.
+
+    Attributes:
+        problems: One line per missing or mismatched requirement.
+
+    Examples:
+        >>> print(InstalledRequirementsError(["foo is not installed"]))
+        The current environment does not satisfy the spec's requirements:
+          - foo is not installed
+        Compile in an environment that provides them, or update the spec's requirements.
+    """
+
+    def __init__(self, problems: list[str]) -> None:
+        self.problems = problems
+        super().__init__(str(self))
+
+    def __str__(self) -> str:
+        lines = "\n".join(f"  - {p}" for p in self.problems)
+        return (
+            "The current environment does not satisfy the spec's requirements:\n"
+            f"{lines}\n"
+            "Compile in an environment that provides them, or update the spec's requirements."
+        )
