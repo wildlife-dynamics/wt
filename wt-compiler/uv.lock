@@ -894,7 +894,7 @@ requires-dist = [
     { name = "tomli-w", specifier = ">=1.0.0" },
     { name = "types-jsonschema", marker = "extra == 'dev'" },
     { name = "wt-contracts", editable = "../wt-contracts" },
-    { name = "wt-registry", marker = "extra == 'hot'", specifier = ">=0.1.0,<1.0.0" },
+    { name = "wt-registry", marker = "extra == 'hot'", specifier = ">=0.3.0,<1.0.0" },
 ]
 provides-extras = ["hot", "dev"]
 
@@ -936,15 +936,15 @@ dev = [
 
 [[package]]
 name = "wt-registry"
-version = "0.2.2"
+version = "0.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
     { name = "wt-contracts" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1a/bd/c9254c369031708805c95f7dc53ed856581d73198a03b1b73c48a9e6f32a/wt_registry-0.2.2.tar.gz", hash = "sha256:24be6288e8a938691da3a9e14ac5b50112b30c49cec6da01309a255a1611de18", size = 101984, upload-time = "2026-05-13T16:18:10.368Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/62/b5/172e46185c51f80ef26ce4a467f512fb37d8452e221f85fd2642912c5237/wt_registry-0.3.0.tar.gz", hash = "sha256:40144a432986d7bea6410b6fcedc21dd3c8bbde3cc5275623b7a096769b2caa8", size = 103824, upload-time = "2026-11-03T18:24:38.925Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/80/61/02285d5eb1ac70f5c77b6632a0dc85cb9cd1bf90f1073515420e498f4ac1/wt_registry-0.2.2-py3-none-any.whl", hash = "sha256:ea426851f799aac4f5a9a83f23b1803a6848908ce9ae1705b71a075a6e9e2344", size = 16712, upload-time = "2026-05-13T16:18:11.239Z" },
+    { url = "https://files.pythonhosted.org/packages/8b/79/e960f4356bace9b8487db6bba0bc04aff81ae496dbc0dda8146952cfd385/wt_registry-0.3.0-py3-none-any.whl", hash = "sha256:9ffe91ef5ea446a5b503b6ed8e91c0fea86fa0d0287d9736b9ad7cb341b7dfdc", size = 17376, upload-time = "2026-11-03T18:24:37.886Z" },
 ]
 
 [[package]]

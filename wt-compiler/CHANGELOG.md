@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.11.0 — 2026-11-03
+
+- Add `--with-caching`: each step is wrapped in `.cached()` with a minimal `CacheSpec`, the DAG runs inside `run_scope`, and `cache-report.json` is written beside `result.json`. The result envelope is unchanged. A compile-time cache report lists uncacheable and unservable steps; a codec declaration error fails the compile only under `--with-caching` ([#275](https://github.com/wildlife-dynamics/wt/pull/275))
+- Add `wt-compiler compile --from-env`: discovers tasks from the registry installed in the current interpreter instead of solving an ephemeral environment. `--discover-package` imports extra modules for registration. The compiled package is pinned to the installed versions with `==`: the generated CLI refuses to run where they differ, and a version that doesn't satisfy the spec fails the compile before anything is imported ([#276](https://github.com/wildlife-dynamics/wt/pull/276))
+- Expose `compile_workflow_from_env`, `discover_tasks_in_process`, `populate_known_tasks_in_process` and `load_default_injections` for callers that run their own build loop. In-process discovery needs the new `hot` extra (`wt-registry>=0.3.0`) ([#276](https://github.com/wildlife-dynamics/wt/pull/276))
+- `--from-env --update` bumps `VERSION.yaml` without requiring or writing a `pixi.lock` ([#276](https://github.com/wildlife-dynamics/wt/pull/276))
+- Fix `Spec` construction under pydantic <2.10 by dropping a PEP 695 `type` alias ([#276](https://github.com/wildlife-dynamics/wt/pull/276))
+- Raise the bundled default env-injection floors to `wt-task>=0.2.0` and `wt-runner>=0.3.2`
+- Raise the `wt-contracts` floor to `>=0.3.0`
+
 ## v0.10.3 — 2026-10-16
 
 - Fix `TypeError` when writing `VERSION.yaml` with newer ruamel-yaml releases: `VersionYaml.dump` now opens the file in text mode, because ruamel's C emitter writes `str` even when an encoding is set ([#261](https://github.com/wildlife-dynamics/wt/pull/261))

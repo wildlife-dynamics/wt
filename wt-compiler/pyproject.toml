@@ -20,7 +20,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "wt-contracts>=0.2.0,<1.0.0",
+    "wt-contracts>=0.3.0,<1.0.0",
     "pydantic>=2.0.0,<3.0.0",
     "jinja2>=3.0.0",
     "ruamel.yaml>=0.17.0,<0.19.0",  # <0.19.0 pin; xref src/wt_compiler/default-env-injections.toml for detail
@@ -45,7 +45,7 @@ wt-compiler = "wt_compiler.cli:main"
 # them, so it is an extra rather than a hard dependency -- a plain compile
 # still discovers through an ephemeral solved environment.
 hot = [
-    "wt-registry>=0.1.0,<1.0.0",
+    "wt-registry>=0.3.0,<1.0.0",
 ]
 dev = [
     "pytest>=7.0.0",
@@ -185,7 +185,7 @@ convention = "google"
 
 [tool.pixi.package]
 name = "wt-compiler"
-version = "0.10.3"
+version = "0.11.0"
 
 [tool.pixi.package.build]
 backend = { name = "pixi-build-python", version = "*", channels = ["conda-forge", "https://prefix.dev/pixi-build-backends"] }
@@ -208,5 +208,5 @@ py-rattler = ">=0.22.0,<0.23.0"
 pydot = ">=1.4.0"
 ruff = "==0.16.6"  # strict pin: formats generated code; must match [project.dependencies]
 tomli-w = ">=1.0.0"
-wt-contracts = ">=0.2.0,<1.0.0"
+wt-contracts = ">=0.3.0,<1.0.0"
 questionary = ">=2.0.0,<3.0.0"
