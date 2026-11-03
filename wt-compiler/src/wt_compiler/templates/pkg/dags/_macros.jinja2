@@ -7,6 +7,9 @@ task({{ t.known_task.importable_reference.function }})
 {% endif %}
 .set_task_instance_id("{{ t.id }}")
 .handle_errors()
+{% if cache and not t.known_task.importable_reference.is_mocked %}
+.cached({{ cache_specs[t.id] }})
+{% endif %}
 .with_tracing()
 {% if t.skipif %}
 .skipif(

@@ -109,6 +109,30 @@ Pydantic's `TypeAdapter` under the hood).
 
 ---
 
+## Caching
+
+!!! warning "Unstable"
+    Codec declarations and key derivation may change between releases.
+    See [Caching](../caching.md).
+
+Each entry also carries what the step cache needs to know about the function's
+return type. Both fields are computed lazily, like `json_schema`, and appear in
+the CLI's JSON output.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `declares_codec` | `bool` | Whether the return type declares a cache codec that resolves, per `wt_contracts.declared_structure`. `False` means the step is not cacheable. |
+| `cache_declaration_error` | `str \| None` | Why a declaration could not be resolved, naming the offending field. |
+
+A bad declaration yields `declares_codec=False` plus an error string rather
+than raising: one unserializable return type in a task library must not break
+every non-caching compile against it. `wt-compiler --with-caching` reports it;
+`--with-caching=strict` turns it into a hard failure.
+
+See [Caching](../caching.md) for what a declaration looks like.
+
+---
+
 ## CLI Reference
 
 The `wt-registry` CLI exports the global function registry to stdout. It is

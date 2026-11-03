@@ -232,15 +232,16 @@ class SyncTask(_Task[P, R, K, V]):
             >>> add.partial(a=1).call(b=2)  # this is more readable
             3
         """
+        run = functools.partial(self, *args, **kwargs)
         if TRACING_AVAILABLE:
             tracer = trace.get_tracer(__name__)
             with tracer.start_as_current_span(
                 self.task_instance_id or "",
                 attributes={"method": "call"},
-            ):
-                return self(*args, **kwargs)
+            ) as span:
+                return self._through_cache(run, span, "call")
         else:
-            return self(*args, **kwargs)
+            return self._through_cache(run, method="call")
 
     @overload
     def map(
@@ -305,6 +306,9 @@ class SyncTask(_Task[P, R, K, V]):
         defaults = _get_defaults(self.func)
         kwargs_iterable = _create_kwargs_iterable(argnames, argvalues, defaults)
 
+        def run() -> Sequence[R]:
+            return self.executor.map(lambda kw: self.func(**kw), kwargs_iterable)  # type: ignore[call-arg]
+
         if TRACING_AVAILABLE:
             tracer = trace.get_tracer(__name__)
             with tracer.start_as_current_span(
@@ -313,10 +317,10 @@ class SyncTask(_Task[P, R, K, V]):
                     "ncalls": str(len(kwargs_iterable)),
                     "method": "map",
                 },
-            ):
-                return self.executor.map(lambda kw: self.func(**kw), kwargs_iterable)  # type: ignore[call-arg]
+            ) as span:
+                return self._through_cache(run, span, "map")
         else:
-            return self.executor.map(lambda kw: self.func(**kw), kwargs_iterable)  # type: ignore[call-arg]
+            return self._through_cache(run, method="map")
 
     @overload
     def mapvalues(
@@ -375,6 +379,9 @@ class SyncTask(_Task[P, R, K, V]):
         defaults = _get_defaults(self.func)
         kwargs_iterable = _create_mapvalues_kwargs_iterable(argnames, argvalues, defaults)
 
+        def run() -> Sequence[tuple[K, R]]:
+            return self.executor.map(_wrap_for_mapvalues(self.func), kwargs_iterable)  # type: ignore[return-value, arg-type]
+
         if TRACING_AVAILABLE:
             tracer = trace.get_tracer(__name__)
             with tracer.start_as_current_span(
@@ -383,7 +390,7 @@ class SyncTask(_Task[P, R, K, V]):
                     "ncalls": str(len(kwargs_iterable)),
                     "method": "mapvalues",
                 },
-            ):
-                return self.executor.map(_wrap_for_mapvalues(self.func), kwargs_iterable)  # type: ignore[return-value, arg-type]
+            ) as span:
+                return self._through_cache(run, span, "mapvalues")
         else:
-            return self.executor.map(_wrap_for_mapvalues(self.func), kwargs_iterable)  # type: ignore[return-value, arg-type]
+            return self._through_cache(run, method="mapvalues")

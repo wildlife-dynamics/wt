@@ -215,6 +215,8 @@ def serialize_entries(
             function_name=entry.function_name,
             import_statement=import_statement,
             json_schema=entry.json_schema,  # Triggers lazy generation
+            declares_codec=entry.declares_codec,
+            cache_declaration_error=entry.cache_declaration_error,
         )
         contract_entries[fqn] = contract_entry
 

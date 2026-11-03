@@ -35,6 +35,7 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Concepts: concepts.md
+  - Caching: caching.md
   - Getting Started: getting-started.md
   - How-To Guides: tutorials.md
   - Reference:
