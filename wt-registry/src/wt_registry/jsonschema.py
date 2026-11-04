@@ -39,10 +39,7 @@ class SurfacesDescriptionSchema(GenerateJsonSchema):
                     field_info: FieldInfo = next(
                         arg for arg in annotation_args if isinstance(arg, FieldInfo)
                     )
-                    # The Field default wins over the signature default (tasks declare
-                    # `= None` and re-default in the body), serialised as pydantic would
-                    # have: assigning the raw declaration put live model instances in the
-                    # schema (#283).
+                    # The Field default wins over the signature, serialised as pydantic would have.
                     if field_info.default is not PydanticUndefined:
                         json_schema["properties"][p]["default"] = to_jsonable_python(
                             field_info.default
