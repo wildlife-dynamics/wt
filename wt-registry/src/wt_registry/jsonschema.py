@@ -9,10 +9,10 @@ from collections.abc import Callable
 from inspect import signature
 from typing import Any, Literal, get_args
 
-from pydantic import BaseModel, TypeAdapter
+from pydantic import TypeAdapter
 from pydantic.fields import FieldInfo
 from pydantic.json_schema import GenerateJsonSchema
-from pydantic_core import PydanticUndefined
+from pydantic_core import PydanticUndefined, to_jsonable_python
 
 
 # Workaround for https://github.com/pydantic/pydantic/issues/9404
@@ -39,10 +39,14 @@ class SurfacesDescriptionSchema(GenerateJsonSchema):
                     field_info: FieldInfo = next(
                         arg for arg in annotation_args if isinstance(arg, FieldInfo)
                     )
-                    if isinstance(field_info.default, BaseModel):
-                        json_schema["properties"][p]["default"] = field_info.default.model_dump()
-                    elif field_info.default is not PydanticUndefined:
-                        json_schema["properties"][p]["default"] = field_info.default
+                    # The Field default wins over the signature default (tasks declare
+                    # `= None` and re-default in the body), serialised as pydantic would
+                    # have: assigning the raw declaration put live model instances in the
+                    # schema (#283).
+                    if field_info.default is not PydanticUndefined:
+                        json_schema["properties"][p]["default"] = to_jsonable_python(
+                            field_info.default
+                        )
                     if field_info.description is not None:
                         json_schema["properties"][p]["description"] = field_info.description
                     if field_info.title is not None:
