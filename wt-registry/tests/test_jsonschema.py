@@ -1,5 +1,6 @@
 """Tests for wt_registry.jsonschema - JSON schema generation with Field() metadata."""
 
+import json
 from typing import Annotated
 
 from pydantic import BaseModel, Field
@@ -138,6 +139,28 @@ class TestJsonSchemaFromTaskFunc:
         schema = jsonschema_from_task_func(func)
         assert schema["properties"]["x"]["description"] == "Annotated param"
         assert "y" in schema["properties"]
+
+    def test_annotated_field_list_of_models_is_json(self) -> None:
+        """A list-of-models default is serialised, not left as live instances (#283)."""
+
+        class Point(BaseModel):
+            x: float
+            y: float
+
+        # The signature default is the runtime sentinel; the Field default is the form's.
+        def f(
+            points: Annotated[
+                list[Point] | None, Field(default=[Point(x=0, y=0), Point(x=1, y=1)])
+            ] = None,
+        ) -> int:
+            return len(points or [])
+
+        schema = jsonschema_from_task_func(f)
+        assert schema["properties"]["points"]["default"] == [
+            {"x": 0.0, "y": 0.0},
+            {"x": 1.0, "y": 1.0},
+        ]
+        json.dumps(schema)
 
     def test_annotated_field_model_gets_dumped(self):
         class Model(BaseModel):
