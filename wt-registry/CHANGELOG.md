@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.3.1 — 2026-11-04
+
+- Fix: `Field(default=...)` values surfaced into a task's JSON schema are now serialised the way pydantic would serialise them, so defaults like a list of models produce valid JSON instead of live instances ([#284](https://github.com/wildlife-dynamics/wt/pull/284))
+
 ## v0.3.0 — 2026-11-03
 
 - Registry entries now report whether each task's return type declares a resolvable cache codec. A bad declaration is recorded in `cache_declaration_error` instead of failing registry output ([#275](https://github.com/wildlife-dynamics/wt/pull/275))
