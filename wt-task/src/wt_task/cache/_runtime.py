@@ -94,7 +94,7 @@ class CacheEvictedError(RuntimeError):
     """
 
 
-class Lazy:
+class LazyCachedValue:
     """A served cache hit whose payload has not been read yet.
 
     Handed downstream in place of the value. `materialize` reads it on first use
@@ -144,16 +144,16 @@ class Lazy:
 
     def __repr__(self) -> str:
         state = "loaded" if self._loaded is not None else "unread"
-        return f"Lazy({self._task_instance_id!r}, {self._entry.content_id}, {state})"
+        return f"LazyCachedValue({self._task_instance_id!r}, {self._entry.content_id}, {state})"
 
 
 def materialize(value: Any) -> Any:  # noqa: ANN401  # any task argument
-    """Replace `Lazy`s in a task's argument with their values.
+    """Replace `LazyCachedValue`s in a task's argument with their values.
 
     Recurses through builtin lists, tuples and dicts, the shapes a spec's
     argument literals compile to; anything else is passed through unread.
     """
-    if isinstance(value, Lazy):
+    if isinstance(value, LazyCachedValue):
         return value.get()
     if type(value) is list:
         return [materialize(item) for item in value]
@@ -340,7 +340,9 @@ def cached_call(
                 # Only inside a run: a task called on its own has no DAG to hand the
                 # handle to, so it gets the value.
                 record(task_instance_id, entry.content_id, "hit", ms=elapsed_ms())
-                return cast("R", Lazy(store, entry, identity, tree, task_instance_id)), True
+                return cast(
+                    "R", LazyCachedValue(store, entry, identity, tree, task_instance_id)
+                ), True
             loaded = _load(store, entry, identity, tree) if expired is None else None
             if loaded is not None:
                 record(task_instance_id, entry.content_id, "hit", ms=elapsed_ms())

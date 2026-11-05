@@ -136,7 +136,7 @@ class CacheSettings(_Sources):
             serving or writing.
         strict: Raise where the cache would otherwise degrade to uncacheable —
             an unresolvable codec, a setting that will not parse.
-        lazy: Serve a hit inside a run as a `Lazy` and read its payload only
+        lazy: Serve a hit inside a run as a `LazyCachedValue` and read its payload only
             when a step that runs consumes it; a step that hits never reads its
             upstreams. A compiled DAG materialises its result as it leaves the run
             scope. Off, every hit reads its payload at once, and one that cannot be

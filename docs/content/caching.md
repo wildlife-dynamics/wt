@@ -385,7 +385,7 @@ neighbour cannot hide it; if `strict` itself will not parse, it reads as off.
 
 By default a hit reads and decodes its payload when it is served. With
 `WT_CACHE__LAZY=1`, a hit inside a compiled run is served from its key entry
-alone, as a `Lazy` handle that carries the digest its dependents key
+alone, as a `LazyCachedValue` handle that carries the digest its dependents key
 on. The payload is read only when a step that executes consumes it, and then
 once, however many steps consume it. A warm run whose steps all hit reads
 nothing but the final result; a mapped step that hits never reads the list it

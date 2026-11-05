@@ -1458,7 +1458,7 @@ def test_a_hit_is_served_by_digest_and_its_payload_is_never_read_when_nothing_ru
     with run_scope() as ids:
         result = consumer.call(frame=producer.call(n=1), label="x")
     assert outcome(ids, "producer") == outcome(ids, "consumer") == "hit"
-    assert isinstance(result, _runtime.Lazy)
+    assert isinstance(result, _runtime.LazyCachedValue)
     assert _content_reads(counting_store) == []
     assert ids["producer"].loaded is None
     assert ids["consumer"].loaded is None
@@ -1589,7 +1589,7 @@ def test_a_skip_condition_on_a_miss_sees_the_value_not_the_handle(counting_store
         consumer.call(frame=producer.call(n=1), label="x")
     with run_scope():
         consumer.call(frame=producer.call(n=1), label="y")
-    assert "Lazy" not in seen
+    assert "LazyCachedValue" not in seen
 
 
 def test_map_over_a_hit_reads_it(counting_store):
@@ -1669,7 +1669,7 @@ def test_a_mapped_step_that_hits_never_reads_its_upstream(counting_store):
     with run_scope() as ids:
         result = squares.map("x", producer.call(n=3))
     assert outcome(ids, "squares") == "hit"
-    assert isinstance(result, _runtime.Lazy)
+    assert isinstance(result, _runtime.LazyCachedValue)
     assert _content_reads(counting_store) == []
 
 

@@ -160,8 +160,8 @@ that function with a `functools.partial`.
 | `StructureMismatch` | A stored payload no longer matches the declaration — read as a miss |
 | `CacheCorruptionError` | A payload is present and unreadable; raised under `WT_CACHE__STRICT`, otherwise warned and recomputed (or, for a lazy hit, `CacheEvictedError`) |
 | `CacheEvictedError` | Under `WT_CACHE__LAZY`, a hit's payload could not be read when a dependent needed it; raised wrapped in the consuming step's `TaskInstanceError` |
-| `Lazy` | A hit served under `WT_CACHE__LAZY` without reading its payload; `.get()` reads it once |
-| `materialize(value)` | Replaces `Lazy`s in a value, through builtin lists, tuples and dicts, with their values |
+| `LazyCachedValue` | A hit served under `WT_CACHE__LAZY` without reading its payload; `.get()` reads it once |
+| `materialize(value)` | Replaces `LazyCachedValue`s in a value, through builtin lists, tuples and dicts, with their values |
 | `CacheMismatchWarning` | Warned under `WT_CACHE__VERIFY` when a step did not reproduce |
 | `run_scope(params=..., settings=...)` | Scopes one DAG execution's record table, parameters and settings |
 | `CacheSettings` | The run's knobs — `store`, `epoch`, `scope`, `io_ttl`, `verify`, `strict`, `lazy` — from `WT_CACHE__*`, a `.env` file or `[tool.wt.cache]` |

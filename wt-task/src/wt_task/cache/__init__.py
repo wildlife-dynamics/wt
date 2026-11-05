@@ -27,7 +27,7 @@ from ._runtime import (
     CacheCorruptionError,
     CacheEvictedError,
     CacheMismatchWarning,
-    Lazy,
+    LazyCachedValue,
     cached_call,
     materialize,
 )
@@ -51,7 +51,7 @@ __all__ = [
     "CacheSettings",
     "CacheSpec",
     "Codec",
-    "Lazy",
+    "LazyCachedValue",
     "StructureMismatch",
     "TaskEncoding",
     "Tree",
