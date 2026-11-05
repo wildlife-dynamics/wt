@@ -8,7 +8,7 @@ import warnings
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from ._entry import CacheEntry, utcnow
-from ._key import Outcome, record, step_identity, step_params
+from ._key import Outcome, record, record_loaded, step_identity, step_params
 from ._settings import ENV_PREFIX, active_settings
 from ._store import open_store
 from ._tree import StructureMismatch, is_safe_codec_dir, strict
@@ -81,6 +81,81 @@ class CacheCorruptionError(RuntimeError):
     preferable to losing the run. A declaration that moved raises
     `StructureMismatch` instead, which misses without a warning.
     """
+
+
+class CacheEvictedError(RuntimeError):
+    """Raised when a hit's payload is gone by the time a dependent needs it.
+
+    A lazy hit promotes its digest without reading its payload; the read happens
+    when a step that runs consumes the value. Between the two, the entry can
+    lose its payload (the store's TTL, a corrupt object). Recomputing the
+    upstream from here would mean re-entering its cache call, so for now this
+    names the step and the object, and the run fails rather than guessing.
+    """
+
+
+class Lazy:
+    """A served cache hit whose payload has not been read yet.
+
+    Handed downstream in place of the value. `materialize` reads it on first use
+    and keeps the decoded value, so one hit consumed by several steps is read
+    once. Steps that themselves hit never read it, which is the point: a cached
+    rerun walks its hits by digest and only loads what its misses consume.
+    """
+
+    __slots__ = ("_entry", "_identity", "_loaded", "_store", "_task_instance_id", "_tree")
+
+    def __init__(
+        self, store: Store, entry: CacheEntry, identity: str, tree: Tree, task_instance_id: str
+    ) -> None:
+        self._store = store
+        self._entry = entry
+        self._identity = identity
+        self._tree = tree
+        self._task_instance_id = task_instance_id
+        self._loaded: tuple[Any] | None = None
+
+    @property
+    def content_id(self) -> str:
+        """The digest this hit promotes to its dependents' keys."""
+        return self._entry.content_id
+
+    def get(self) -> Any:  # noqa: ANN401  # the cached task return
+        """The decoded value, read from the store on first call."""
+        if self._loaded is None:
+            t0 = time.perf_counter()
+            loaded = _load(self._store, self._entry, self._identity, self._tree)
+            if loaded is None:
+                raise CacheEvictedError(
+                    f"The cached output of task instance {self._task_instance_id!r} "
+                    f"({_path(CONTENT_PREFIX, self._entry.content_id)}) could not be read "
+                    "back when a dependent needed it."
+                )
+            self._loaded = loaded
+            record_loaded(self._task_instance_id, round((time.perf_counter() - t0) * 1000, 1))
+        return self._loaded[0]
+
+    def __repr__(self) -> str:
+        state = "loaded" if self._loaded is not None else "unread"
+        return f"Lazy({self._task_instance_id!r}, {self._entry.content_id}, {state})"
+
+
+def materialize(value: Any) -> Any:  # noqa: ANN401  # any task argument
+    """Replace `Lazy` handles in a task's argument with their values.
+
+    Walks one level of list, tuple and dict, which is how a DAG hands several
+    upstream results to one argument (`widgets=[a, b]`, `dfs=[x, y]`). Deeper
+    nesting is not a shape the compiler emits.
+    """
+    if isinstance(value, Lazy):
+        return value.get()
+    if isinstance(value, list):
+        return [item.get() if isinstance(item, Lazy) else item for item in value]
+    if isinstance(value, tuple):
+        return tuple(item.get() if isinstance(item, Lazy) else item for item in value)
+    if isinstance(value, dict):
+        return {k: (v.get() if isinstance(v, Lazy) else v) for k, v in value.items()}
+    return value
 
 
 class CacheMismatchWarning(UserWarning):
@@ -249,6 +324,10 @@ def cached_call(
         entry = _read_entry(store, identity)
         if entry is not None:
             expired = _too_old(spec, entry)
+            if expired is None and active_settings().lazy and _is_content_id(entry.content_id):
+                # Served by digest alone; the payload is read if a miss consumes it.
+                record(task_instance_id, entry.content_id, "hit", ms=elapsed_ms())
+                return cast("R", Lazy(store, entry, identity, tree, task_instance_id)), True
             loaded = _load(store, entry, identity, tree) if expired is None else None
             if loaded is not None:
                 record(task_instance_id, entry.content_id, "hit", ms=elapsed_ms())

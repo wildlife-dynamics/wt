@@ -45,6 +45,7 @@ _FAIL_SAFE: dict[str, dict[str, Any]] = {
     "io_ttl": {"io_ttl": timedelta(0)},
     "verify": {"verify": True},
     "strict": {"strict": False},
+    "lazy": {"lazy": False},
 }
 
 
@@ -135,6 +136,11 @@ class CacheSettings(_Sources):
             serving or writing.
         strict: Raise where the cache would otherwise degrade to uncacheable —
             an unresolvable codec, a setting that will not parse.
+        lazy: Serve a hit as a `Lazy` handle and read its payload only when a step
+            that runs consumes it; a step that hits never reads its upstreams. Off
+            by default: a cached step's `call()` then returns the handle to its
+            caller too, so a DAG whose final step is cached must `materialize` its
+            result before the default can flip. The executor turns it on.
 
     Examples:
         >>> CacheSettings(io_ttl="30m").io_ttl
@@ -149,6 +155,7 @@ class CacheSettings(_Sources):
     io_ttl: timedelta | None = None
     verify: bool = False
     strict: bool = False
+    lazy: bool = False
 
     @field_validator("io_ttl", mode="before")
     @classmethod

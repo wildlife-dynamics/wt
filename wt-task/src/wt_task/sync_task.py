@@ -18,6 +18,7 @@ except ImportError:
     TRACING_AVAILABLE = False
 
 from .base import K, P, R, V, _Task
+from .cache import materialize
 from .executors import SyncExecutor, mapvalues_wrapper
 from .executors.python import PythonExecutor
 from .skip import SkipSentinel
@@ -203,7 +204,12 @@ class SyncTask(_Task[P, R, K, V]):
         Returns:
             Result of function execution
         """
-        return self.executor.call(self.func, *args, **kwargs)
+        # A cached upstream arrives as a `Lazy` handle; it is read here, where the
+        # function is about to run, and nowhere earlier. Validation, skip
+        # conditions and the function itself all sit inside `func`.
+        loaded_args: tuple[Any, ...] = tuple(materialize(arg) for arg in args)
+        loaded_kwargs: dict[str, Any] = {name: materialize(value) for name, value in kwargs.items()}
+        return self.executor.call(self.func, *loaded_args, **loaded_kwargs)
 
     def call(self, *args: P.args, **kwargs: P.kwargs) -> R:
         """Execute the task (alias for __call__ for readable chaining).
@@ -299,6 +305,9 @@ class SyncTask(_Task[P, R, K, V]):
             >>> add.partial(a=1).map("b", [2, 3, 4])
             [3, 4, 5]
         """
+        # The values are iterated to build the calls, so a cached upstream is read
+        # here even when this step then hits.
+        argvalues = materialize(argvalues)
         # Special handling for SkipSentinel - return it directly without executing
         if isinstance(argvalues, SkipSentinel):
             return [argvalues]
@@ -372,6 +381,7 @@ class SyncTask(_Task[P, R, K, V]):
             >>> multiply.partial(factor=2).mapvalues("x", [("a", 5), ("b", 10)])
             [('a', 10), ('b', 20)]
         """
+        argvalues = materialize(argvalues)
         # Special handling for SkipSentinel - return it with None key
         if isinstance(argvalues, SkipSentinel):
             return [(None, argvalues)]
