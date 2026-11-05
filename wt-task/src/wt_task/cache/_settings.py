@@ -136,11 +136,12 @@ class CacheSettings(_Sources):
             serving or writing.
         strict: Raise where the cache would otherwise degrade to uncacheable —
             an unresolvable codec, a setting that will not parse.
-        lazy: Serve a hit as a `Lazy` handle and read its payload only when a step
-            that runs consumes it; a step that hits never reads its upstreams. Off
-            by default: a cached step's `call()` then returns the handle to its
-            caller too, so a DAG whose final step is cached must `materialize` its
-            result before the default can flip. The executor turns it on.
+        lazy: Serve a hit inside a run as a `Lazy` and read its payload only
+            when a step that runs consumes it; a step that hits never reads its
+            upstreams. A compiled DAG materialises its result as it leaves the run
+            scope. Off, every hit reads its payload at once, and one that cannot be
+            read is a miss. On, it fails the run with `CacheEvictedError` instead,
+            so turn it on only where the store keeps payloads as long as keys.
 
     Examples:
         >>> CacheSettings(io_ttl="30m").io_ttl

@@ -25,7 +25,7 @@ EXPECTED_SPECS = {
         ("pydantic", ">=2.0.0,<3.0.0", CONDA_FORGE_CHANNEL.base_url),
         ("ruamel.yaml", ">=0.18.0,<0.19.0", CONDA_FORGE_CHANNEL.base_url),
         ("opentelemetry-api", ">=1.20.0,<2.0.0", CONDA_FORGE_CHANNEL.base_url),
-        ("wt-task", ">=0.2.0,<1.0.0", RELEASE_CHANNEL.base_url),
+        ("wt-task", ">=0.3.0,<1.0.0", RELEASE_CHANNEL.base_url),
     ],
     "runner": [
         ("wt-runner", ">=0.3.2,<1.0.0", RELEASE_CHANNEL.base_url),

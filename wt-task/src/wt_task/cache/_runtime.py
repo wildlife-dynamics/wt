@@ -8,7 +8,7 @@ import warnings
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from ._entry import CacheEntry, utcnow
-from ._key import Outcome, record, record_loaded, step_identity, step_params
+from ._key import _RUN_RECORDS, Outcome, record, record_loaded, step_identity, step_params
 from ._settings import ENV_PREFIX, active_settings
 from ._store import open_store
 from ._tree import StructureMismatch, is_safe_codec_dir, strict
@@ -84,13 +84,13 @@ class CacheCorruptionError(RuntimeError):
 
 
 class CacheEvictedError(RuntimeError):
-    """Raised when a hit's payload is gone by the time a dependent needs it.
+    """Raised when a lazy hit's payload cannot be read once a dependent needs it.
 
-    A lazy hit promotes its digest without reading its payload; the read happens
-    when a step that runs consumes the value. Between the two, the entry can
-    lose its payload (the store's TTL, a corrupt object). Recomputing the
-    upstream from here would mean re-entering its cache call, so for now this
-    names the step and the object, and the run fails rather than guessing.
+    A lazy hit is served from its key entry alone, so a payload that is gone or
+    undecodable surfaces only here, after the run has committed to the hit. The
+    run fails rather than recomputing: the key entry stays, so every later lazy
+    run fails the same way until the store is repaired, which is the consumer's
+    to do. The message says how.
     """
 
 
@@ -127,9 +127,16 @@ class Lazy:
             loaded = _load(self._store, self._entry, self._identity, self._tree)
             if loaded is None:
                 raise CacheEvictedError(
-                    f"The cached output of task instance {self._task_instance_id!r} "
-                    f"({_path(CONTENT_PREFIX, self._entry.content_id)}) could not be read "
-                    "back when a dependent needed it."
+                    f"Task instance {self._task_instance_id!r} was served as a lazy cache "
+                    f"hit from {_path(KEYS_PREFIX, self._identity)}, but its payload "
+                    f"{_path(CONTENT_PREFIX, self._entry.content_id)} could not be read "
+                    "when a dependent needed it: it is missing (evicted, or a retention "
+                    "rule that removes payloads before keys), was written in a format "
+                    "this codec no longer decodes, or is corrupt. The key entry is "
+                    "unchanged, so later lazy runs will fail the same way. Delete that "
+                    f"key entry, rerun with {ENV_PREFIX}LAZY=0 (which treats an unreadable "
+                    "payload as a miss and rewrites it), or keep keys from outliving "
+                    "their payloads in the store."
                 )
             self._loaded = loaded
             record_loaded(self._task_instance_id, round((time.perf_counter() - t0) * 1000, 1))
@@ -141,20 +148,19 @@ class Lazy:
 
 
 def materialize(value: Any) -> Any:  # noqa: ANN401  # any task argument
-    """Replace `Lazy` handles in a task's argument with their values.
+    """Replace `Lazy`s in a task's argument with their values.
 
-    Walks one level of list, tuple and dict, which is how a DAG hands several
-    upstream results to one argument (`widgets=[a, b]`, `dfs=[x, y]`). Deeper
-    nesting is not a shape the compiler emits.
+    Recurses through builtin lists, tuples and dicts, the shapes a spec's
+    argument literals compile to; anything else is passed through unread.
     """
     if isinstance(value, Lazy):
         return value.get()
-    if isinstance(value, list):
-        return [item.get() if isinstance(item, Lazy) else item for item in value]
-    if isinstance(value, tuple):
-        return tuple(item.get() if isinstance(item, Lazy) else item for item in value)
-    if isinstance(value, dict):
-        return {k: (v.get() if isinstance(v, Lazy) else v) for k, v in value.items()}
+    if type(value) is list:
+        return [materialize(item) for item in value]
+    if type(value) is tuple:
+        return tuple(materialize(item) for item in value)
+    if type(value) is dict:
+        return {k: materialize(v) for k, v in value.items()}
     return value
 
 
@@ -324,8 +330,15 @@ def cached_call(
         entry = _read_entry(store, identity)
         if entry is not None:
             expired = _too_old(spec, entry)
-            if expired is None and active_settings().lazy and _is_content_id(entry.content_id):
+            if (
+                expired is None
+                and active_settings().lazy
+                and _RUN_RECORDS.get(None) is not None
+                and _is_content_id(entry.content_id)
+            ):
                 # Served by digest alone; the payload is read if a miss consumes it.
+                # Only inside a run: a task called on its own has no DAG to hand the
+                # handle to, so it gets the value.
                 record(task_instance_id, entry.content_id, "hit", ms=elapsed_ms())
                 return cast("R", Lazy(store, entry, identity, tree, task_instance_id)), True
             loaded = _load(store, entry, identity, tree) if expired is None else None

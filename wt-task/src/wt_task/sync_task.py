@@ -18,7 +18,6 @@ except ImportError:
     TRACING_AVAILABLE = False
 
 from .base import K, P, R, V, _Task
-from .cache import materialize
 from .executors import SyncExecutor, mapvalues_wrapper
 from .executors.python import PythonExecutor
 from .skip import SkipSentinel
@@ -204,12 +203,8 @@ class SyncTask(_Task[P, R, K, V]):
         Returns:
             Result of function execution
         """
-        # A cached upstream arrives as a `Lazy` handle; it is read here, where the
-        # function is about to run, and nowhere earlier. Validation, skip
-        # conditions and the function itself all sit inside `func`.
-        loaded_args: tuple[Any, ...] = tuple(materialize(arg) for arg in args)
-        loaded_kwargs: dict[str, Any] = {name: materialize(value) for name, value in kwargs.items()}
-        return self.executor.call(self.func, *loaded_args, **loaded_kwargs)
+        # `call` runs this inside the cache, so a lazy upstream is read only on a miss.
+        return self.executor.call(self._loaded_func(), *self._read(args), **self._read(kwargs))
 
     def call(self, *args: P.args, **kwargs: P.kwargs) -> R:
         """Execute the task (alias for __call__ for readable chaining).
@@ -305,29 +300,29 @@ class SyncTask(_Task[P, R, K, V]):
             >>> add.partial(a=1).map("b", [2, 3, 4])
             [3, 4, 5]
         """
-        # The values are iterated to build the calls, so a cached upstream is read
-        # here even when this step then hits.
-        argvalues = materialize(argvalues)
         # Special handling for SkipSentinel - return it directly without executing
         if isinstance(argvalues, SkipSentinel):
             return [argvalues]
 
-        defaults = _get_defaults(self.func)
-        kwargs_iterable = _create_kwargs_iterable(argnames, argvalues, defaults)
-
-        def run() -> Sequence[R]:
-            return self.executor.map(lambda kw: self.func(**kw), kwargs_iterable)  # type: ignore[call-arg]
+        def run(span: Any = None) -> Sequence[R | SkipSentinel]:  # noqa: ANN401  # an OTel span
+            # The calls are built here, inside the cache, so a step that hits never
+            # reads a lazy upstream; a lazy one can also turn out to be a skip.
+            values = self._read(argvalues)
+            if isinstance(values, SkipSentinel):
+                return [values]
+            func = self._loaded_func()
+            kwargs_iterable = _create_kwargs_iterable(argnames, values, _get_defaults(func))
+            if span is not None:
+                span.set_attribute("ncalls", str(len(kwargs_iterable)))
+            return self.executor.map(lambda kw: func(**kw), kwargs_iterable)  # type: ignore[call-arg]
 
         if TRACING_AVAILABLE:
             tracer = trace.get_tracer(__name__)
             with tracer.start_as_current_span(
                 self.task_instance_id or "",
-                attributes={
-                    "ncalls": str(len(kwargs_iterable)),
-                    "method": "map",
-                },
+                attributes={"method": "map"},
             ) as span:
-                return self._through_cache(run, span, "map")
+                return self._through_cache(lambda: run(span), span, "map")
         else:
             return self._through_cache(run, method="map")
 
@@ -381,26 +376,30 @@ class SyncTask(_Task[P, R, K, V]):
             >>> multiply.partial(factor=2).mapvalues("x", [("a", 5), ("b", 10)])
             [('a', 10), ('b', 20)]
         """
-        argvalues = materialize(argvalues)
         # Special handling for SkipSentinel - return it with None key
         if isinstance(argvalues, SkipSentinel):
             return [(None, argvalues)]
 
-        defaults = _get_defaults(self.func)
-        kwargs_iterable = _create_mapvalues_kwargs_iterable(argnames, argvalues, defaults)
-
-        def run() -> Sequence[tuple[K, R]]:
-            return self.executor.map(_wrap_for_mapvalues(self.func), kwargs_iterable)  # type: ignore[return-value, arg-type]
+        def run(
+            span: Any = None,  # noqa: ANN401  # an OTel span
+        ) -> Sequence[tuple[K, R]] | Sequence[tuple[None, SkipSentinel]]:
+            values = self._read(argvalues)
+            if isinstance(values, SkipSentinel):
+                return [(None, values)]
+            func = self._loaded_func()
+            kwargs_iterable = _create_mapvalues_kwargs_iterable(
+                argnames, values, _get_defaults(func)
+            )
+            if span is not None:
+                span.set_attribute("ncalls", str(len(kwargs_iterable)))
+            return self.executor.map(_wrap_for_mapvalues(func), kwargs_iterable)  # type: ignore[return-value, arg-type]
 
         if TRACING_AVAILABLE:
             tracer = trace.get_tracer(__name__)
             with tracer.start_as_current_span(
                 self.task_instance_id or "",
-                attributes={
-                    "ncalls": str(len(kwargs_iterable)),
-                    "method": "mapvalues",
-                },
+                attributes={"method": "mapvalues"},
             ) as span:
-                return self._through_cache(run, span, "mapvalues")
+                return self._through_cache(lambda: run(span), span, "mapvalues")
         else:
             return self._through_cache(run, method="mapvalues")

@@ -53,7 +53,8 @@ class CacheRecord:
             None when this step could not be cached.
         outcome: What the cache did for this step.
         reason: Why, for the outcomes that are not self-explanatory.
-        ms: Wall time of the step: the run on a miss, the lookup on a hit.
+        ms: Wall time of the step: the run on a miss; on a hit, the lookup and
+            payload read, or the lookup alone when served lazily.
         loaded: For a hit, whether its payload was read: None until a dependent
             that ran consumed it, then the read's wall time.
     """

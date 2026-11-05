@@ -20,7 +20,7 @@ from wt_task.testing import create_func_magicmock  # 🧪
 from wt_contracts import validate as _validate
 from wt_task import task
 {% if cache %}from wt_contracts.params import canonical_params
-from wt_task.cache import CacheSpec, run_scope{% endif %}
+from wt_task.cache import CacheSpec, materialize, run_scope{% endif %}
 
 from .. import metadata as _metadata
 
@@ -45,7 +45,8 @@ def main(params: dict[str, Any], validate_params_schema: bool = True):
     # keyed by content, never by id, so they are still shared across runs and
     # workflows.
     with run_scope(params=params):
-        return _main(params, validate_params_schema)
+        # A cached final step is served as a handle; the caller gets the value.
+        return materialize(_main(params, validate_params_schema))
 
 
 {% endif %}

@@ -11,7 +11,7 @@ import inspect
 import sys
 import warnings
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Generic, Literal, ParamSpec, TypeVar, overload
+from typing import TYPE_CHECKING, Any, Generic, Literal, ParamSpec, TypeVar, cast, overload
 
 if sys.version_info >= (3, 11):
     from typing import Self
@@ -27,7 +27,16 @@ if TYPE_CHECKING:
 
 from pydantic import validate_call
 
-from .cache import cached_call, normalized_params, resolve_task, step_params
+from .cache import (
+    CacheCorruptionError,
+    CacheEvictedError,
+    cached_call,
+    materialize,
+    normalized_params,
+    resolve_task,
+    step_params,
+)
+from .exceptions import TaskInstanceError
 from .exceptions import handle_errors as handle_errors_fn
 from .executors import AsyncExecutor, SyncExecutor
 from .executors.python import PythonExecutor
@@ -291,6 +300,25 @@ class _Task(Generic[P, R, K, V]):
             3
         """
         return replace(self, cache_spec=spec, encoding=resolve_task(inspect.unwrap(self.func)))
+
+    def _read(self, value: T) -> T:
+        """`materialize(value)`, failing as this step if an upstream payload will not read."""
+        try:
+            return cast("T", materialize(value))
+        except (CacheEvictedError, CacheCorruptionError) as e:
+            raise TaskInstanceError(self.task_instance_id or "", e) from e
+
+    def _loaded_func(self) -> Callable[P, R]:
+        """`func` with the upstream results `.partial()` bound to it read.
+
+        Called inside the cached `run()`, so a step that hits never reads them.
+        Chained `.partial()` calls flatten into one `functools.partial`, which is
+        always the outermost wrapper in a compiled DAG.
+        """
+        func = self.func
+        if not isinstance(func, functools.partial):
+            return func
+        return functools.partial(func.func, *self._read(func.args), **self._read(func.keywords))
 
     def _through_cache(
         self,

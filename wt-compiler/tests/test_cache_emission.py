@@ -113,7 +113,8 @@ def test_emitted_dag_is_valid_python(cached_dag):
 def test_run_scope_wraps_the_dag_body(cached_dag):
     # The run's parameters go in once, here, rather than into every step.
     assert "with run_scope(params=params):" in cached_dag
-    assert "return _main(params, validate_params_schema)" in cached_dag
+    # Inside the scope, so a hit's handle is read while the store is still open.
+    assert "return materialize(_main(params, validate_params_schema))" in cached_dag
 
 
 def test_params_are_canonicalised_at_entry_with_pinned_rules(cached_dag):
