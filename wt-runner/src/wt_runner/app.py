@@ -77,6 +77,7 @@ except ImportError:
     ecoscope_get_results_json = None
 
 import obstore
+from obstore.exceptions import AlreadyExistsError
 
 # Invoker registry mapping invoker names to classes
 INVOKERS: dict[str, type[AbstractInvoker]] = {
@@ -92,6 +93,7 @@ TIMEOUT_EXPIRED_ERROR_MSG = (
     "The workflow timed out. Consider reducing the amount of data being processed."
 )
 PUBSUB_ACK_MAX_TIMEOUT = 570  # seconds
+RUN_CLAIM_FILENAME = "started.json"
 
 
 async def get_results_json(results_url: str) -> dict[str, Any]:
@@ -484,6 +486,12 @@ async def run_from_pubsub(
         "run-from-pubsub-endpoint",
         attributes=asdict(span_attributes),
     ):
+        if not await claim_run(invoker_params["results_url"]):
+            logging.info(  # noqa: LOG015  # routed through root logger by design
+                "Skipping redelivered run %s: it already has a claim or a result.",
+                span_attributes.workflow_run_id,
+            )
+            return {"status": "skipped"}
         trace_context = build_context_headers()
         invoker_params["extra_env"] |= {k.upper(): v for k, v in trace_context.items()}
         invoker_params["otel_exporter"] = get_otel_exporter()
@@ -507,7 +515,7 @@ async def run_from_pubsub(
                 timeout = command_payload.invoker_kwargs.get("timeout", PUBSUB_ACK_MAX_TIMEOUT)
                 # Maximum timeout when running from PubSub is 10 minutes.
                 # It's set to a little bit less to have time to cancel and handle the error
-                timeout = min(timeout, max(timeout, PUBSUB_ACK_MAX_TIMEOUT))
+                timeout = min(timeout, PUBSUB_ACK_MAX_TIMEOUT)
                 exit_code = await invoker.wait(timeout=timeout, error_msg=TIMEOUT_EXPIRED_ERROR_MSG)
                 if exit_code != 0:
                     raise RuntimeError(f"Workflow invoker failed with exit code {exit_code}.")
@@ -588,6 +596,28 @@ def prepare_invoker_parameters(
         | invoker_kwargs,
         trace_context,
     )  # Extra kwargs are passed to the invoker
+
+
+async def claim_run(results_url: str) -> bool:
+    """Claim a run for this delivery, or return False if it was already claimed or finished.
+
+    Pub/Sub push delivers at least once, so a run can arrive again after a deploy or a lost ack.
+    A create-only put (GCS ``ifGenerationMatch=0``) lets exactly one delivery win without
+    needing delete permission on the results bucket. A claim is never released, so a delivery
+    whose attempt died is not retried; the server's run timeout covers that case.
+    """
+    store = obstore.store.from_url(results_url)
+    try:
+        await store.head_async("result.json")
+    except FileNotFoundError:
+        pass
+    else:
+        return False  # finished before claims existed, or the claim's attempt wrote it
+    try:
+        await store.put_async(RUN_CLAIM_FILENAME, b"{}", mode="create")
+    except AlreadyExistsError:
+        return False
+    return True
 
 
 async def upload_error_to_gcs(error_details: dict[str, Any], results_url: str) -> None:
