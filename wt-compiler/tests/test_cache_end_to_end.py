@@ -646,7 +646,7 @@ def test_a_failed_run_still_writes_how_far_it_got(workflow, tasks, tmp_path):
 
 def test_generated_package_imports_cleanly(workflow):
     _, dag = workflow(_build_spec())
-    assert "from wt_task.cache import CacheSpec, run_scope" in dag
+    assert "from wt_task.cache import CacheSpec, materialize, run_scope" in dag
     compile(dag, "run_sequential.py", "exec")
 
 

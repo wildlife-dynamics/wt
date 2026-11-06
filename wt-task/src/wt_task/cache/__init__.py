@@ -23,7 +23,14 @@ from ._key import (
     step_params,
 )
 from ._report import REPORT_NAME, cache_report, put_cache_report
-from ._runtime import CacheCorruptionError, CacheMismatchWarning, cached_call
+from ._runtime import (
+    CacheCorruptionError,
+    CacheEvictedError,
+    CacheMismatchWarning,
+    LazyCachedValue,
+    cached_call,
+    materialize,
+)
 from ._settings import CacheSettings, load_settings
 from ._spec import CacheSpec, TaskEncoding, resolve_task
 from ._store import open_store
@@ -38,11 +45,13 @@ __all__ = [
     "URL",
     "CacheCorruptionError",
     "CacheEntry",
+    "CacheEvictedError",
     "CacheMismatchWarning",
     "CacheRecord",
     "CacheSettings",
     "CacheSpec",
     "Codec",
+    "LazyCachedValue",
     "StructureMismatch",
     "TaskEncoding",
     "Tree",
@@ -51,6 +60,7 @@ __all__ = [
     "cached_call",
     "enum_codec",
     "load_settings",
+    "materialize",
     "normalized_params",
     "open_store",
     "put_cache_report",

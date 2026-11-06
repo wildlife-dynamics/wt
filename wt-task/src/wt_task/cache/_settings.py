@@ -45,6 +45,7 @@ _FAIL_SAFE: dict[str, dict[str, Any]] = {
     "io_ttl": {"io_ttl": timedelta(0)},
     "verify": {"verify": True},
     "strict": {"strict": False},
+    "lazy": {"lazy": False},
 }
 
 
@@ -135,6 +136,12 @@ class CacheSettings(_Sources):
             serving or writing.
         strict: Raise where the cache would otherwise degrade to uncacheable —
             an unresolvable codec, a setting that will not parse.
+        lazy: Serve a hit inside a run as a `LazyCachedValue` and read its payload only
+            when a step that runs consumes it; a step that hits never reads its
+            upstreams. A compiled DAG materialises its result as it leaves the run
+            scope. Off, every hit reads its payload at once, and one that cannot be
+            read is a miss. On, it fails the run with `CacheEvictedError` instead,
+            so turn it on only where the store keeps payloads as long as keys.
 
     Examples:
         >>> CacheSettings(io_ttl="30m").io_ttl
@@ -149,6 +156,7 @@ class CacheSettings(_Sources):
     io_ttl: timedelta | None = None
     verify: bool = False
     strict: bool = False
+    lazy: bool = False
 
     @field_validator("io_ttl", mode="before")
     @classmethod

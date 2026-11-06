@@ -11,6 +11,7 @@ not going to decode.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import functools
 import hashlib
 import importlib.metadata
@@ -52,13 +53,17 @@ class CacheRecord:
             None when this step could not be cached.
         outcome: What the cache did for this step.
         reason: Why, for the outcomes that are not self-explanatory.
-        ms: Wall time of the step: the run on a miss, the load on a hit.
+        ms: Wall time of the step: the run on a miss; on a hit, the lookup and
+            payload read, or the lookup alone when served lazily.
+        loaded: For a hit, whether its payload was read: None until a dependent
+            that ran consumed it, then the read's wall time.
     """
 
     digest: str | None
     outcome: Outcome
     reason: str | None = None
     ms: float | None = None
+    loaded: float | None = None
 
 
 _RUN_RECORDS: ContextVar[dict[str, CacheRecord]] = ContextVar("_RUN_RECORDS")
@@ -251,6 +256,13 @@ def record(
         records[task_instance_id] = CacheRecord(digest, outcome, reason, ms)
 
 
+def record_loaded(task_instance_id: str, ms: float) -> None:
+    """Note that a hit's payload was read, and how long that took."""
+    records = _RUN_RECORDS.get(None)
+    if records is not None and (row := records.get(task_instance_id)) is not None:
+        records[task_instance_id] = dataclasses.replace(row, loaded=ms)
+
+
 def run_report() -> dict[str, dict[str, str | float | None]]:
     """Per-step cache outcomes for this run, as JSON-able rows.
 
@@ -261,12 +273,18 @@ def run_report() -> dict[str, dict[str, str | float | None]]:
         >>> with run_scope():
         ...     record("a", None, "refused", "no union arm")
         ...     run_report()
-        {'a': {'digest': None, 'outcome': 'refused', 'reason': 'no union arm', 'ms': None}}
+        {'a': {'digest': None, 'outcome': 'refused', 'reason': 'no union arm', 'ms': None, 'loaded': None}}
     """
     records = _RUN_RECORDS.get(None)
     table = records if records is not None else _LAST_RUN
     return {
-        step: {"digest": row.digest, "outcome": row.outcome, "reason": row.reason, "ms": row.ms}
+        step: {
+            "digest": row.digest,
+            "outcome": row.outcome,
+            "reason": row.reason,
+            "ms": row.ms,
+            "loaded": row.loaded,
+        }
         for step, row in table.items()
     }
 

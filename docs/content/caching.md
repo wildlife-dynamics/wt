@@ -292,10 +292,11 @@ is found the same way — [verify mode](#verify-mode) against a second principal
 | `WT_CACHE__IO_TTL` | How long an io-tagged step's stored result may be served: `forever` (default), `never` / `0` to always refetch, or a duration — `90`, `45s`, `30m`, `1h`, `7d`. Derived steps never expire. |
 | `WT_CACHE__VERIFY` | Re-run everything and compare against what is stored, without serving or writing. See below. |
 | `WT_CACHE__STRICT` | Raise on a codec declaration that will not resolve, a setting that will not parse, or a stored payload that will not decode, instead of degrading. |
+| `WT_CACHE__LAZY` | Serve hits without reading their payloads until a step that runs needs them. Off by default. See [lazy hits](#lazy-hits). |
 
 ### Where settings come from
 
-All six are fields of one `CacheSettings` model, read **once per run** — a DAG
+All seven are fields of one `CacheSettings` model, read **once per run** — a DAG
 does not re-read the environment per step, and changing a variable mid-run
 takes effect at the next run, not the next step.
 
@@ -377,8 +378,31 @@ failure that matters. Under `WT_CACHE__STRICT=1` it raises instead. The same
 holds for any setting that will not parse, each falling back to whatever costs
 time rather than risking a wrong serve: `verify` to on, `scope` to unset, and
 an unreadable `store` or `epoch` — which may have been the invalidation you
-needed — to an inert cache. `strict` is resolved on its own first, so a broken
+needed — to an inert cache, and `lazy` to off. `strict` is resolved on its own first, so a broken
 neighbour cannot hide it; if `strict` itself will not parse, it reads as off.
+
+### Lazy hits
+
+By default a hit reads and decodes its payload when it is served. With
+`WT_CACHE__LAZY=1`, a hit inside a compiled run is served from its key entry
+alone, as a `LazyCachedValue` handle that carries the digest its dependents key
+on. The payload is read only when a step that executes consumes it, and then
+once, however many steps consume it. A warm run whose steps all hit reads
+nothing but the final result; a mapped step that hits never reads the list it
+maps over.
+
+The cost is that a missing payload is discovered late. Eagerly, a hit whose
+payload is gone, written in a format this build no longer reads, or corrupt is
+a miss: the step recomputes and rewrites it. Lazily, the run has already
+committed to the hit by the time a dependent asks, so it fails with
+`CacheEvictedError`, attributed to the consuming step and naming the upstream
+step and both store paths. The key entry is left alone, so every later lazy run
+fails the same way until the store is repaired, which is yours to do: delete
+the key entry, run once with `WT_CACHE__LAZY=0` to recompute and rewrite it, or
+stop the store's retention from removing payloads before their keys. Only turn
+it on where a store keeps payloads as long as keys.
+
+A task called on its own, outside a run, always gets the value.
 
 ### Verify mode
 
@@ -431,8 +455,8 @@ results store as `result.json`, which itself carries no cache information:
     "scope_set": true
   },
   "steps": {
-    "source": {"digest": "json/v1/3f2a…", "outcome": "hit", "reason": null},
-    "shaped": {"digest": "json/v1/9c41…", "outcome": "miss", "reason": null}
+    "source": {"digest": "json/v1/3f2a…", "outcome": "hit", "reason": null, "ms": 3.1, "loaded": 87.4},
+    "shaped": {"digest": "json/v1/9c41…", "outcome": "miss", "reason": null, "ms": 412.0, "loaded": null}
   }
 }
 ```
@@ -447,7 +471,10 @@ results store as `result.json`, which itself carries no cache information:
   never its URL, which can name a bucket path; whether `epoch` and `scope` are
   set, but never their values, since a scope is often derived from a token.
 - **`steps`** has one row per step that recorded an outcome, keyed by
-  task-instance id.
+  task-instance id. `ms` is the step's wall time: the run on a miss; on a hit,
+  the lookup and payload read, or only the lookup when [served
+  lazily](#lazy-hits). For a lazy hit, `loaded` is the payload read's wall time
+  once a dependent consumed it, and `null` if nothing did.
 
 In-process, `wt_task.cache.run_report()` returns the `steps` rows alone, and
 `cache_report()` the whole document — inside an open `run_scope` it describes
@@ -504,7 +531,8 @@ its payload has been evicted.
 
 The payload format's version is folded into the content digest, so a future
 encoding of the same value cannot land on the old bytes. A payload written by a
-format this build no longer reads is a **miss**, not an error.
+format this build no longer reads is a **miss**, not an error — unless the hit
+was [served lazily](#lazy-hits).
 
 ---
 
@@ -574,6 +602,7 @@ its `reason`:
 | *io step with `WT_CACHE__SCOPE` unset* | Working as designed: unscoped sources are never served. Set a scope. |
 | *store would not accept the write* (with a *Could not write cache entry* warning) | The value was digested but could not be stored — usually a codec that cannot encode it. Its dependents still cache; the warning names the cause. |
 | *Could not decode `content/...` (warning)* | A stored payload is present but unreadable. The step recomputed and rewrote it; `WT_CACHE__STRICT=1` raises `CacheCorruptionError` instead. |
+| *`CacheEvictedError`: ... served as a lazy cache hit ...* | Under `WT_CACHE__LAZY=1`, a hit's payload could not be read when a dependent needed it, and the key entry is still there. Delete the named key entry, or rerun once with `WT_CACHE__LAZY=0`. See [lazy hits](#lazy-hits). |
 | *Ignoring unusable cache settings (...)* | A setting would not parse and was dropped to its safest value. Fix it, or set `WT_CACHE__STRICT=1` to make it fail loudly. |
 
 **Everything misses on a warm run.** Check `WT_CACHE__EPOCH` and

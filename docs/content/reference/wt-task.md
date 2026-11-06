@@ -158,12 +158,15 @@ that function with a `functools.partial`.
 | `Tree` | The codec for a whole step, built from a declared structure |
 | `Undigestible` | Raised by a codec declining a value; the step runs and is not cached |
 | `StructureMismatch` | A stored payload no longer matches the declaration — read as a miss |
-| `CacheCorruptionError` | A payload is present and unreadable; raised under `WT_CACHE__STRICT`, otherwise warned and recomputed |
+| `CacheCorruptionError` | A payload is present and unreadable; raised under `WT_CACHE__STRICT`, otherwise warned and recomputed (or, for a lazy hit, `CacheEvictedError`) |
+| `CacheEvictedError` | Under `WT_CACHE__LAZY`, a hit's payload could not be read when a dependent needed it; raised wrapped in the consuming step's `TaskInstanceError` |
+| `LazyCachedValue` | A hit served under `WT_CACHE__LAZY` without reading its payload; `.get()` reads it once |
+| `materialize(value)` | Replaces `LazyCachedValue`s in a value, through builtin lists, tuples and dicts, with their values |
 | `CacheMismatchWarning` | Warned under `WT_CACHE__VERIFY` when a step did not reproduce |
 | `run_scope(params=..., settings=...)` | Scopes one DAG execution's record table, parameters and settings |
-| `CacheSettings` | The run's knobs — `store`, `epoch`, `scope`, `io_ttl`, `verify`, `strict` — from `WT_CACHE__*`, a `.env` file or `[tool.wt.cache]` |
+| `CacheSettings` | The run's knobs — `store`, `epoch`, `scope`, `io_ttl`, `verify`, `strict`, `lazy` — from `WT_CACHE__*`, a `.env` file or `[tool.wt.cache]` |
 | `load_settings()` | Builds them, degrading a value that will not parse unless `strict` |
-| `run_report()` | Per-step outcomes for the run, as JSON-able rows |
+| `run_report()` | Per-step outcomes for the run, as JSON-able rows: `digest`, `outcome`, `reason`, `ms`, `loaded` |
 | `cache_report(error=None)` | The whole `cache-report.json` document: status, failure, summary, redacted settings, rows |
 | `put_cache_report(store, error=None)` | Writes it to a results store as `cache-report.json`; warns rather than raises |
 | `resolve_task` / `resolve_structure` | Build a `TaskEncoding` / a `Tree` |

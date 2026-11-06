@@ -34,6 +34,7 @@ from wt_task.cache._key import (
     step_identity,
     step_params,
 )
+from wt_task.exceptions import TaskInstanceError
 from wt_task.executors.base import AsyncExecutor
 from wt_task.executors.python import PythonExecutor
 from wt_task.skip import SKIP_SENTINEL
@@ -1379,3 +1380,367 @@ def test_the_report_carries_each_steps_wall_time(cache_dir):
     assert (miss["outcome"], hit["outcome"]) == ("miss", "hit")
     assert miss["ms"] is not None
     assert hit["ms"] is not None
+
+
+# --- lazy hits ---------------------------------------------------------------
+
+
+class _CountingStore:
+    """Wraps a store and counts the payload reads, which is what a lazy hit saves."""
+
+    def __init__(self, inner):
+        self.inner = inner
+        self.content_reads: list[str] = []
+
+    def get(self, key: str):
+        if key.startswith("content/"):
+            self.content_reads.append(key)
+        return self.inner.get(key)
+
+    def put(self, key: str, data: bytes) -> None:
+        self.inner.put(key, data)
+
+
+@pytest.fixture
+def lazy(cache_dir, monkeypatch):
+    monkeypatch.setenv("WT_CACHE__LAZY", "1")
+    return cache_dir
+
+
+@pytest.fixture
+def counting_store(lazy, monkeypatch):
+    real_open = _runtime.open_store
+    stores: list[_CountingStore] = []
+
+    def open_counting(url=None):
+        inner = real_open(url)
+        if inner is None:
+            return None
+        counting = _CountingStore(inner)
+        stores.append(counting)
+        return counting
+
+    monkeypatch.setattr(_runtime, "open_store", open_counting)
+    return stores
+
+
+def _content_reads(stores):
+    return [key for store in stores for key in store.content_reads]
+
+
+def _producer_and_consumer(label: str = "x"):
+    """producer -> consumer, both cached; consumer's key folds producer's digest and
+    `label` (as a fixed input, which is how a call-site constant reaches the key)."""
+
+    @task
+    def produce(n: int) -> Frame:
+        return {"n": n}
+
+    @task
+    def consume(frame: Frame, label: str) -> Frame:
+        return {"label": label, **frame}
+
+    producer = produce.set_task_instance_id("producer").cached(spec(signature="p"))
+    consumer = consume.set_task_instance_id("consumer").cached(
+        spec(signature="c", fixed_inputs=label, upstream_inputs={"frame": ["producer"]})
+    )
+    return producer, consumer
+
+
+def test_a_hit_is_served_by_digest_and_its_payload_is_never_read_when_nothing_runs(
+    counting_store,
+):
+    producer, consumer = _producer_and_consumer()
+    with run_scope():
+        consumer.call(frame=producer.call(n=1), label="x")
+    assert _content_reads(counting_store) == []  # a cold run only writes
+
+    with run_scope() as ids:
+        result = consumer.call(frame=producer.call(n=1), label="x")
+    assert outcome(ids, "producer") == outcome(ids, "consumer") == "hit"
+    assert isinstance(result, _runtime.LazyCachedValue)
+    assert _content_reads(counting_store) == []
+    assert ids["producer"].loaded is None
+    assert ids["consumer"].loaded is None
+
+
+def test_a_dependent_that_runs_reads_its_upstream_hit_once_and_sees_the_value(counting_store):
+    producer, consumer = _producer_and_consumer("x")
+    with run_scope():
+        consumer.call(frame=producer.call(n=1), label="x")
+
+    producer, consumer = _producer_and_consumer("y")
+    with run_scope() as ids:
+        result = consumer.call(frame=producer.call(n=1), label="y")  # consumer misses
+    assert outcome(ids, "producer") == "hit"
+    assert outcome(ids, "consumer") == "miss"
+    assert result == {"label": "y", "n": 1}
+    assert len(_content_reads(counting_store)) == 1
+    assert ids["producer"].loaded is not None
+
+
+def test_a_hit_consumed_by_several_steps_is_read_once(counting_store):
+    @task
+    def produce(n: int) -> Frame:
+        return {"n": n}
+
+    @task
+    def consume(frame: Frame, label: str) -> Frame:
+        return {"label": label, **frame}
+
+    producer = produce.set_task_instance_id("producer").cached(spec(signature="p"))
+
+    def consumers(label):
+        return [
+            consume.set_task_instance_id(f"consumer_{i}").cached(
+                spec(signature=f"c{i}", fixed_inputs=label, upstream_inputs={"frame": ["producer"]})
+            )
+            for i in range(3)
+        ]
+
+    with run_scope():
+        frame = producer.call(n=1)
+        for consumer in consumers("x"):
+            consumer.call(frame=frame, label="x")
+    with run_scope():
+        frame = producer.call(n=1)
+        for consumer in consumers("y"):
+            consumer.call(frame=frame, label="y")
+    assert len(_content_reads(counting_store)) == 1
+
+
+def test_materialize_reads_hits_inside_a_list_argument(counting_store):
+    @task
+    def produce(n: int) -> Frame:
+        return {"n": n}
+
+    @task
+    def gather(frames: list[Frame]) -> Frame:
+        return {"total": sum(frame["n"] for frame in frames)}
+
+    producers = [
+        produce.set_task_instance_id(f"p{i}").cached(spec(signature=f"p{i}")) for i in range(2)
+    ]
+    gatherer = gather.set_task_instance_id("gather").cached(
+        spec(signature="g", upstream_inputs={"frames": ["p0", "p1"]})
+    )
+    with run_scope():
+        gatherer.call(frames=[p.call(n=i) for i, p in enumerate(producers)])
+    with run_scope():
+        gatherer2 = gather.set_task_instance_id("gather").cached(
+            spec(signature="g2", upstream_inputs={"frames": ["p0", "p1"]})
+        )
+        result = gatherer2.call(frames=[p.call(n=i) for i, p in enumerate(producers)])
+    assert result == {"total": 1}
+    assert len(_content_reads(counting_store)) == 2
+
+
+def test_a_hit_bound_by_partial_reaches_validation_as_the_value(counting_store):
+    """Compiled DAGs bind upstream results with `.partial`, ahead of `validate_call`."""
+
+    @task
+    def produce(n: int) -> Frame:
+        return {"n": n}
+
+    @task
+    def consume(frame: dict[str, int], label: str) -> Frame:
+        return {"label": label, **frame}
+
+    producer = produce.set_task_instance_id("producer").cached(spec(signature="p"))
+
+    def consumer(label):
+        return (
+            consume.validate()
+            .set_task_instance_id("consumer")
+            .cached(
+                spec(signature="c", fixed_inputs=label, upstream_inputs={"frame": ["producer"]})
+            )
+            .partial(frame=producer.call(n=1), label=label)
+        )
+
+    with run_scope():
+        consumer("x").call()
+    with run_scope():
+        assert consumer("y").call() == {"label": "y", "n": 1}
+
+
+def test_a_skip_condition_on_a_miss_sees_the_value_not_the_handle(counting_store):
+    seen = []
+
+    def looks_lazy(*args):
+        seen.extend(type(arg).__name__ for arg in args)
+        return False
+
+    @task
+    def produce(n: int) -> Frame:
+        return {"n": n}
+
+    @task
+    def consume(frame: Frame, label: str) -> Frame:
+        return {"label": label, **frame}
+
+    producer = produce.set_task_instance_id("producer").cached(spec(signature="p"))
+    consumer = (
+        consume.set_task_instance_id("consumer")
+        .cached(spec(signature="c", upstream_inputs={"frame": ["producer"]}))
+        .skipif([looks_lazy])
+    )
+    with run_scope():
+        consumer.call(frame=producer.call(n=1), label="x")
+    with run_scope():
+        consumer.call(frame=producer.call(n=1), label="y")
+    assert "LazyCachedValue" not in seen
+
+
+def test_map_over_a_hit_reads_it(counting_store):
+    @task
+    def produce(n: int) -> Json:
+        return list(range(n))
+
+    @task
+    def square(x: int) -> int:
+        return x * x
+
+    producer = produce.set_task_instance_id("producer").cached(spec(signature="p"))
+    squares = square.set_task_instance_id("squares")
+    with run_scope():
+        squares.map("x", producer.call(n=3))
+    with run_scope():
+        assert squares.map("x", producer.call(n=3)) == [0, 1, 4]
+    assert len(_content_reads(counting_store)) == 1
+
+
+def _drop_payloads(cache_dir):
+    for payload in (cache_dir / "content").rglob("*"):
+        if payload.is_file():
+            payload.unlink()
+
+
+def test_an_evicted_payload_under_a_lazy_hit_fails_as_the_consuming_step(lazy):
+    producer, consumer = _producer_and_consumer("x")
+    with run_scope():
+        consumer.call(frame=producer.call(n=1), label="x")
+    _drop_payloads(lazy)
+    producer, consumer = _producer_and_consumer("y")
+    with run_scope(), pytest.raises(TaskInstanceError) as raised:
+        consumer.call(frame=producer.call(n=1), label="y")
+    assert raised.value.task_instance_id == "consumer"
+    evicted = raised.value.exc
+    assert isinstance(evicted, _runtime.CacheEvictedError)
+    assert "'producer'" in str(evicted)
+    assert "WT_CACHE__LAZY=0" in str(evicted)
+
+
+def test_an_evicted_payload_is_a_miss_with_lazy_off(cache_dir):
+    producer, consumer = _producer_and_consumer("x")
+    with run_scope():
+        consumer.call(frame=producer.call(n=1), label="x")
+    _drop_payloads(cache_dir)
+    producer, consumer = _producer_and_consumer("y")
+    with run_scope() as ids:
+        assert consumer.call(frame=producer.call(n=1), label="y") == {"label": "y", "n": 1}
+    assert outcome(ids, "producer") == "miss"
+
+
+def test_hits_are_read_at_once_by_default(cache_dir):
+    producer, _ = _producer_and_consumer()
+    with run_scope():
+        producer.call(n=1)
+    with run_scope() as ids:
+        assert producer.call(n=1) == {"n": 1}
+    assert outcome(ids, "producer") == "hit"
+
+
+def test_a_mapped_step_that_hits_never_reads_its_upstream(counting_store):
+    @task
+    def produce(n: int) -> Json:
+        return list(range(n))
+
+    @task
+    def square(x: int) -> int:
+        return x * x
+
+    producer = produce.set_task_instance_id("producer").cached(spec(signature="p"))
+    squares = square.set_task_instance_id("squares").cached(
+        spec(signature="s", upstream_inputs={"x": ["producer"]})
+    )
+    with run_scope():
+        squares.map("x", producer.call(n=3))
+    with run_scope() as ids:
+        result = squares.map("x", producer.call(n=3))
+    assert outcome(ids, "squares") == "hit"
+    assert isinstance(result, _runtime.LazyCachedValue)
+    assert _content_reads(counting_store) == []
+
+
+@pytest.mark.parametrize(
+    ("method", "skipped"), [("map", [SKIP_SENTINEL]), ("mapvalues", [(None, SKIP_SENTINEL)])]
+)
+def test_mapping_over_a_lazy_skipped_hit_propagates_the_skip(counting_store, method, skipped):
+    @task
+    def produce(n: int) -> Json:
+        return [("a", n)]
+
+    @task
+    def square(x: int) -> int:
+        return x * x
+
+    producer = (
+        produce.set_task_instance_id("producer")
+        .cached(spec(signature="p"))
+        .skipif([lambda *_: True])
+    )
+
+    def squares(signature):
+        return square.set_task_instance_id("squares").cached(
+            spec(signature=signature, upstream_inputs={"x": ["producer"]})
+        )
+
+    with run_scope():
+        getattr(squares("s1"), method)("x", producer.call(n=3))
+    with run_scope() as ids:
+        result = getattr(squares("s2"), method)("x", producer.call(n=3))
+    assert outcome(ids, "producer") == "hit"
+    assert outcome(ids, "squares") == "miss"
+    assert result == skipped
+
+
+def test_a_hit_nested_in_a_partial_dict_is_read(counting_store):
+    @task
+    def produce(n: int) -> Frame:
+        return {"n": n}
+
+    @task
+    def consume(config: dict[str, Any]) -> Frame:
+        return {"n": config["layers"][0]["frame"]["n"]}
+
+    producer = produce.set_task_instance_id("producer").cached(spec(signature="p"))
+    with run_scope():
+        producer.call(n=1)
+    with run_scope():
+        consumer = consume.set_task_instance_id("consumer").partial(
+            config={"layers": [{"frame": producer.call(n=1)}]}
+        )
+        assert consumer.call() == {"n": 1}
+
+
+def test_lazy_off_reads_every_hit_at_once(counting_store, monkeypatch):
+    monkeypatch.setenv("WT_CACHE__LAZY", "0")
+    producer, consumer = _producer_and_consumer()
+    with run_scope():
+        consumer.call(frame=producer.call(n=1), label="x")
+    with run_scope() as ids:
+        result = consumer.call(frame=producer.call(n=1), label="x")
+    assert outcome(ids, "consumer") == "hit"
+    assert result == {"label": "x", "n": 1}
+    assert len(_content_reads(counting_store)) == 2
+
+
+def test_a_hit_outside_a_run_is_the_value(counting_store):
+    """A task called on its own has no DAG to hand a handle to."""
+    add, calls = counting_task()
+    cached = add.set_task_instance_id("step").cached(spec())
+    assert cached.call(1, 2) == 3
+    assert cached.call(1, 2) == 3
+    assert len(calls) == 1
+    assert len(_content_reads(counting_store)) == 1
