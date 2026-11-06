@@ -129,14 +129,9 @@ class LazyCachedValue:
                 raise CacheEvictedError(
                     f"Task instance {self._task_instance_id!r} was served as a lazy cache "
                     f"hit from {_path(KEYS_PREFIX, self._identity)}, but its payload "
-                    f"{_path(CONTENT_PREFIX, self._entry.content_id)} could not be read "
-                    "when a dependent needed it: it is missing (evicted, or a retention "
-                    "rule that removes payloads before keys), was written in a format "
-                    "this codec no longer decodes, or is corrupt. The key entry is "
-                    "unchanged, so later lazy runs will fail the same way. Delete that "
-                    f"key entry, rerun with {ENV_PREFIX}LAZY=0 (which treats an unreadable "
-                    "payload as a miss and rewrites it), or keep keys from outliving "
-                    "their payloads in the store."
+                    f"{_path(CONTENT_PREFIX, self._entry.content_id)} is missing, "
+                    "undecodable, or corrupt. Delete that key entry or rerun once with "
+                    f"{ENV_PREFIX}LAZY=0 to rewrite it."
                 )
             self._loaded = loaded
             record_loaded(self._task_instance_id, round((time.perf_counter() - t0) * 1000, 1))
