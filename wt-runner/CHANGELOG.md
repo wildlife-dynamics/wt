@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.3.3 — 2026-11-09
+
+- `/run-from-pubsub` skips Pub/Sub redeliveries of a run that is already claimed or finished, via a create-only `lock.json` claim in the results location. A claim is never released, so a run whose attempt died is not retried ([#290](https://github.com/wildlife-dynamics/wt/pull/290))
+- Fix the Pub/Sub wait timeout so it is actually capped at `PUBSUB_ACK_MAX_TIMEOUT` (570s); a larger requested timeout previously passed through unchanged ([#290](https://github.com/wildlife-dynamics/wt/pull/290))
+
 ## v0.3.2 — 2026-11-03
 
 - Release to pick up the new `wt-invokers-gcp>=0.7.0` floor in `wt-runner-gcp`; no changes to the Python package contents
