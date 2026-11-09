@@ -85,7 +85,7 @@ def test_first_delivery_runs_and_claims(
 
     assert body["status"] == "processed"
     assert len(invoker.run_calls) == 1
-    assert (results_dir / "started.json").exists()
+    assert (results_dir / "lock.json").exists()
 
 
 def test_redelivery_after_result_is_skipped(
@@ -102,7 +102,7 @@ def test_redelivery_while_running_is_skipped(
     invoker: FakeInvoker, results_dir: Path
 ) -> None:
     # A claim without a result is what an attempt still in progress (or one that died) leaves.
-    (results_dir / "started.json").write_text("{}")
+    (results_dir / "lock.json").write_text("{}")
 
     body = push(results_dir)
 

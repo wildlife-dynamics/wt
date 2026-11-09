@@ -93,7 +93,7 @@ TIMEOUT_EXPIRED_ERROR_MSG = (
     "The workflow timed out. Consider reducing the amount of data being processed."
 )
 PUBSUB_ACK_MAX_TIMEOUT = 570  # seconds
-RUN_CLAIM_FILENAME = "started.json"
+RUN_LOCK_FILENAME = "lock.json"
 
 
 async def get_results_json(results_url: str) -> dict[str, Any]:
@@ -614,7 +614,7 @@ async def claim_run(results_url: str) -> bool:
     else:
         return False  # finished before claims existed, or the claim's attempt wrote it
     try:
-        await store.put_async(RUN_CLAIM_FILENAME, b"{}", mode="create")
+        await store.put_async(RUN_LOCK_FILENAME, b"{}", mode="create")
     except AlreadyExistsError:
         return False
     return True
