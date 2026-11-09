@@ -12,7 +12,7 @@ classifiers = [
     "License :: OSI Approved :: BSD License",
 ]
 dependencies = [
-    "wt-runner>=0.3.2,<1.0.0",
+    "wt-runner>=0.3.3,<1.0.0",
     "ecoscope-eda-core @ git+https://github.com/wildlife-dynamics/ecoscope-eda-core.git",
     "opentelemetry-sdk>=1.37.0,<2",
     "opentelemetry-exporter-gcp-trace>=1.9.0,<2",
@@ -110,7 +110,7 @@ convention = "google"
 
 [tool.pixi.package]
 name = "wt-runner-gcp"
-version = "0.3.2"
+version = "0.3.3"
 
 [tool.pixi.package.build]
 backend = { name = "pixi-build-python", version = "*", channels = ["conda-forge", "https://prefix.dev/pixi-build-backends"] }
@@ -126,7 +126,7 @@ pip = "*"
 
 [tool.pixi.package.run-dependencies]
 python = ">=3.13,<3.14"
-wt-runner = ">=0.3.2,<1.0.0"
+wt-runner = ">=0.3.3,<1.0.0"
 ecoscope-eda-core = ">=0.2.0"
 opentelemetry-sdk = ">=1.37.0,<2"
 opentelemetry-exporter-gcp-trace = ">=1.9.0,<2"

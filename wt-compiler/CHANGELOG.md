@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.11.1 — 2026-11-09
+
+- Cached DAGs now return `materialize(_main(...))` inside `run_scope`, so a run whose final step is a lazy hit still returns the value. Generated packages now require `wt-task>=0.3.0` ([#287](https://github.com/wildlife-dynamics/wt/pull/287))
+- Raise the bundled default env-injection floors to `wt-task>=0.3.0` and `wt-runner>=0.3.3`
+
 ## v0.11.0 — 2026-11-03
 
 - Add `--with-caching`: each step is wrapped in `.cached()` with a minimal `CacheSpec`, the DAG runs inside `run_scope`, and `cache-report.json` is written beside `result.json`. The result envelope is unchanged. A compile-time cache report lists uncacheable and unservable steps; a codec declaration error fails the compile only under `--with-caching` ([#275](https://github.com/wildlife-dynamics/wt/pull/275))
