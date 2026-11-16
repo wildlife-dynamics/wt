@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.3.4 — 2026-11-16
+
+- Lockstep release with wt-runner v0.3.4
+- Raise the `wt-runner` floor to `>=0.3.4` and the `wt-invokers-gcp` floor to `>=0.7.1`
+
 ## v0.3.2 — 2026-11-03
 
 - Lockstep release with wt-runner v0.3.2

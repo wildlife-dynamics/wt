@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.7.1 — 2026-11-16
+
+- Fix `cancel_requested` logging "Cancel check failed" with a traceback on every poll of an object-store run that has no cancel marker. A missing marker now reads as not cancelled without a warning ([#294](https://github.com/wildlife-dynamics/wt/pull/294))
+
 ## v0.7.0 — 2026-11-03
 
 - Add `CompiledPackageInvoker`, which runs a compiled workflow package from a pre-solved environment, optionally in a named pixi environment ([#277](https://github.com/wildlife-dynamics/wt/pull/277))

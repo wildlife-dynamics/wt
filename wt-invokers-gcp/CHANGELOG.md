@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.7.1 — 2026-11-16
+
+- Lockstep release with wt-invokers v0.7.1
+- Raise the `wt-invokers` floor to `>=0.7.1`
+
 ## v0.7.0 — 2026-11-03
 
 - Lockstep release with wt-invokers v0.7.0

@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.11.2 — 2026-11-16
+
+- Raise the bundled default env-injection floor to `wt-runner>=0.3.4`
+
 ## v0.11.1 — 2026-11-09
 
 - Cached DAGs now return `materialize(_main(...))` inside `run_scope`, so a run whose final step is a lazy hit still returns the value. Generated packages now require `wt-task>=0.3.0` ([#287](https://github.com/wildlife-dynamics/wt/pull/287))
