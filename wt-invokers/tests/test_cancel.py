@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import sys
 import time
 
+import pytest
 from rattler import MatchSpec
 
 from wt_invokers import CompiledPackageInvoker
@@ -75,3 +77,10 @@ async def test_a_missing_results_dir_is_not_cancelled(tmp_path):
 async def test_without_obstore_a_remote_run_reads_as_not_cancelled(monkeypatch):
     monkeypatch.setitem(sys.modules, "obstore", None)  # import obstore -> ImportError
     assert await cancel_requested("gs://some-bucket/user/run") is False
+
+
+async def test_a_missing_marker_in_an_object_store_is_not_a_failed_check(caplog):
+    pytest.importorskip("obstore")
+    with caplog.at_level(logging.WARNING, logger="wt_invokers.cancel"):
+        assert await cancel_requested("memory:///user/run") is False
+    assert not caplog.records
