@@ -54,8 +54,8 @@ async def cancel_requested(results_url: str) -> bool:
         return False
     try:
         await obstore.head_async(obstore.store.from_url(results_url), CANCEL_MARKER)
-    except obstore.exceptions.NotFoundError:
-        return False
+    except (FileNotFoundError, obstore.exceptions.NotFoundError):
+        return False  # obstore raises the built-in for a missing object
     except Exception:
         logger.warning("Cancel check failed for %s", results_url, exc_info=True)
         return False
